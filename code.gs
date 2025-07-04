@@ -26,8 +26,9 @@ function getData() {
     // 獲取數據
     var scheduleDataJson = dataSheet.getRange("A2").getValue();
     var classroomsJson = dataSheet.getRange("A3").getValue();
+    var lastModified = dataSheet.getRange("A4").getValue(); // 讀取修改時間
     
-    Logger.log("從試算表獲取的原始數據: scheduleData=" + scheduleDataJson + ", classrooms=" + classroomsJson);
+    Logger.log("從試算表獲取的原始數據: scheduleData=" + scheduleDataJson + ", classrooms=" + classroomsJson + ", lastModified=" + lastModified);
     
     // 解析數據
     var scheduleData = {};
@@ -65,7 +66,8 @@ function getData() {
     // 返回數據
     var result = {
       scheduleData: scheduleData,
-      classrooms: classrooms
+      classrooms: classrooms,
+      lastModified: lastModified ? new Date(lastModified).toISOString() : null // 回傳 ISO 格式時間
     };
     
     Logger.log("返回數據: " + JSON.stringify(result));
@@ -82,37 +84,54 @@ function getData() {
 
 // 保存數據
 function saveData(data) {
+  var lock = LockService.getScriptLock();
+  // 等待最多 30 秒
+  try {
+    lock.waitLock(30000);
+  } catch (e) {
+    Logger.log('無法獲取鎖: ' + e);
+    return {
+      error: "伺服器正忙，請稍後再試。 Could not obtain lock.",
+      success: false
+    };
+  }
+
   try {
     Logger.log("開始保存數據");
-    Logger.log("接收到的數據: " + JSON.stringify(data));
     
-    // 獲取 SpreadsheetApp 對象
+    // 基本的數據驗證
+    if (!data || typeof data.scheduleData !== 'object' || !Array.isArray(data.classrooms)) {
+      Logger.log("接收到的數據格式不正確: " + JSON.stringify(data));
+      throw new Error("無效的數據格式。");
+    }
+    
+    Logger.log("接收到的數據 (前500字元): " + JSON.stringify(data).substring(0, 500));
+    
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var dataSheet = ss.getSheetByName("Data");
     
-    // 如果沒有 Data 表，創建一個
     if (!dataSheet) {
       Logger.log("未找到 Data 表，創建新表");
       dataSheet = ss.insertSheet("Data");
       dataSheet.getRange("A1").setValue("Data");
     }
     
-    // 確保數據有效
-    var scheduleData = data.scheduleData || {};
-    var classrooms = data.classrooms || [];
+    var scheduleData = data.scheduleData;
+    var classrooms = data.classrooms;
     
-    // 將數據轉換為 JSON 字符串
     var scheduleDataJson = JSON.stringify(scheduleData);
     var classroomsJson = JSON.stringify(classrooms);
     
-    // 保存數據
+    var lastModified = new Date();
     dataSheet.getRange("A2").setValue(scheduleDataJson);
     dataSheet.getRange("A3").setValue(classroomsJson);
+    dataSheet.getRange("A4").setValue(lastModified.toISOString()); // 寫入 ISO 格式時間
     
     Logger.log("數據保存成功");
     
     return {
-      success: true
+      success: true,
+      lastModified: lastModified.toISOString() // 將新時間回傳給前端
     };
     
   } catch (e) {
@@ -121,5 +140,8 @@ function saveData(data) {
       error: "保存數據失敗: " + e.toString(),
       success: false
     };
+  } finally {
+    // 確保釋放鎖
+    lock.releaseLock();
   }
 }
