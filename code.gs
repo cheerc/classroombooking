@@ -85,63 +85,178 @@ function getData() {
 // 保存數據
 function saveData(data) {
   var lock = LockService.getScriptLock();
-  // 等待最多 30 秒
   try {
     lock.waitLock(30000);
   } catch (e) {
     Logger.log('無法獲取鎖: ' + e);
-    return {
-      error: "伺服器正忙，請稍後再試。 Could not obtain lock.",
-      success: false
-    };
+    return { error: "伺服器正忙，請稍後再試。", success: false };
   }
 
   try {
-    Logger.log("開始保存數據");
-    
-    // 基本的數據驗證
+    Logger.log("開始保存數據 v2");
     if (!data || typeof data.scheduleData !== 'object' || !Array.isArray(data.classrooms)) {
-      Logger.log("接收到的數據格式不正確: " + JSON.stringify(data));
       throw new Error("無效的數據格式。");
     }
-    
-    Logger.log("接收到的數據 (前500字元): " + JSON.stringify(data).substring(0, 500));
-    
+
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var userEmail = Session.getActiveUser().getEmail();
+    var timestamp = new Date();
+
+    // 1. 更新 "Data" 工作表 (永遠是最新版)
     var dataSheet = ss.getSheetByName("Data");
-    
     if (!dataSheet) {
-      Logger.log("未找到 Data 表，創建新表");
       dataSheet = ss.insertSheet("Data");
-      dataSheet.getRange("A1").setValue("Data");
+      dataSheet.getRange("A1").setValue("Latest Data");
     }
-    
-    var scheduleData = data.scheduleData;
-    var classrooms = data.classrooms;
-    
-    var scheduleDataJson = JSON.stringify(scheduleData);
-    var classroomsJson = JSON.stringify(classrooms);
-    
-    var lastModified = new Date();
+    var scheduleDataJson = JSON.stringify(data.scheduleData);
+    var classroomsJson = JSON.stringify(data.classrooms);
     dataSheet.getRange("A2").setValue(scheduleDataJson);
     dataSheet.getRange("A3").setValue(classroomsJson);
-    dataSheet.getRange("A4").setValue(lastModified.toISOString()); // 寫入 ISO 格式時間
+    dataSheet.getRange("A4").setValue(timestamp.toISOString());
+
+    // 2. 更新 "History" 工作表
+    var historySheet = ss.getSheetByName("History");
+    if (!historySheet) {
+      historySheet = ss.insertSheet("History");
+      historySheet.getRange("A1:D1").setValues([["Timestamp", "SavedBy", "ScheduleData", "Classrooms"]]);
+      historySheet.setFrozenRows(1);
+    }
     
-    Logger.log("數據保存成功");
-    
+    historySheet.insertRowBefore(2); // 在標題下方插入新的一行
+    historySheet.getRange("A2:D2").setValues([[
+      timestamp.toISOString(),
+      userEmail,
+      scheduleDataJson,
+      classroomsJson
+    ]]);
+
+    // 3. 維護歷史紀錄，只保留最新的10筆
+    var maxHistory = 11; // 10筆紀錄 + 1個標題列
+    if (historySheet.getMaxRows() > maxHistory) {
+      historySheet.deleteRows(maxHistory + 1, historySheet.getMaxRows() - maxHistory);
+    }
+
+    Logger.log("數據保存成功 by " + userEmail);
     return {
       success: true,
-      lastModified: lastModified.toISOString() // 將新時間回傳給前端
+      lastModified: timestamp.toISOString()
     };
-    
+
   } catch (e) {
     Logger.log("保存數據時發生錯誤: " + e);
-    return {
-      error: "保存數據失敗: " + e.toString(),
-      success: false
-    };
+    return { error: "保存數據失敗: " + e.toString(), success: false };
   } finally {
-    // 確保釋放鎖
     lock.releaseLock();
+  }
+}
+
+// 獲取版本歷史列表
+function getVersions() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var historySheet = ss.getSheetByName("History");
+    if (!historySheet) {
+      return []; // 如果沒有歷史紀錄表，返回空陣列
+    }
+    var data = historySheet.getRange("A2:B").getValues(); // 只取時間戳和儲存者
+    var versions = data.filter(function(row) {
+      return row[0]; // 確保時間戳存在
+    }).map(function(row) {
+      return { id: row[0], user: row[1] };
+    });
+    return versions;
+  } catch (e) {
+    Logger.log("獲取版本列表失敗: " + e);
+    return { error: e.toString() };
+  }
+}
+
+// 根據版本ID(時間戳)獲取特定版本的數據
+function getVersionData(versionId) {
+  try {
+    if (!versionId) {
+      throw new Error("未提供版本ID");
+    }
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var historySheet = ss.getSheetByName("History");
+    if (!historySheet) {
+      throw new Error("找不到歷史紀錄表");
+    }
+    var data = historySheet.getRange("A:D").getValues();
+    for (var i = 1; i < data.length; i++) { // 從第二行開始找
+      if (data[i][0] && data[i][0].toString() === versionId) {
+        var scheduleData = JSON.parse(data[i][2]);
+        var classrooms = JSON.parse(data[i][3]);
+        return {
+          success: true,
+          scheduleData: scheduleData,
+          classrooms: classrooms,
+          versionId: versionId
+        };
+      }
+    }
+    return { success: false, error: "找不到指定的版本" };
+  } catch (e) {
+    Logger.log("獲取版本數據失敗: " + e);
+    return { success: false, error: e.toString() };
+  }
+}
+
+// 一次性資料庫結構初始化函式
+function initializeDatabaseSchema() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var userEmail = Session.getActiveUser().getEmail();
+    var now = new Date();
+
+    // 1. 處理 Data 工作表
+    var dataSheet = ss.getSheetByName("Data");
+    if (!dataSheet) {
+      Logger.log("Data 表不存在，創建新表並初始化");
+      dataSheet = ss.insertSheet("Data");
+      dataSheet.getRange("A1").setValue("Latest Data");
+      dataSheet.getRange("A2").setValue("{}"); // 預設空 JSON
+      dataSheet.getRange("A3").setValue("[]"); // 預設空陣列
+      dataSheet.getRange("A4").setValue(now.toISOString());
+    } else {
+      // 確保 A4 有時間戳
+      var lastModifiedValue = dataSheet.getRange("A4").getValue();
+      if (!lastModifiedValue || !(lastModifiedValue instanceof Date)) {
+        Logger.log("Data 表 A4 無效時間戳，更新為當前時間");
+        dataSheet.getRange("A4").setValue(now.toISOString());
+      }
+    }
+
+    // 讀取 Data 表的當前內容，作為歷史紀錄的第一個版本
+    var currentScheduleDataJson = dataSheet.getRange("A2").getValue();
+    var currentClassroomsJson = dataSheet.getRange("A3").getValue();
+
+    // 2. 處理 History 工作表
+    var historySheet = ss.getSheetByName("History");
+    if (!historySheet) {
+      Logger.log("History 表不存在，創建新表並初始化");
+      historySheet = ss.insertSheet("History");
+      historySheet.getRange("A1:D1").setValues([["Timestamp", "SavedBy", "ScheduleData", "Classrooms"]]);
+      historySheet.setFrozenRows(1);
+      
+      // 將 Data 表的當前內容作為第一個歷史版本寫入
+      historySheet.insertRowAfter(1); // 在標題下方插入新的一行
+      historySheet.getRange("A2:D2").setValues([[
+        now.toISOString(),
+        userEmail,
+        currentScheduleDataJson,
+        currentClassroomsJson
+      ]]);
+      Logger.log("History 表已初始化，並寫入第一個版本");
+    } else {
+      Logger.log("History 表已存在，跳過初始化");
+    }
+
+    Logger.log("資料庫結構初始化完成。");
+    return { success: true, message: "資料庫結構初始化完成。" };
+
+  } catch (e) {
+    Logger.log("資料庫結構初始化失敗: " + e);
+    return { success: false, error: e.toString() };
   }
 }

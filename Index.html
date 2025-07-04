@@ -284,6 +284,17 @@
                 </div>
             </div>
 
+            <div class="bg-yellow-100 p-4 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-3 text-yellow-700">版本紀錄</h2>
+                <div class="flex mb-4">
+                    <select id="version-history" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-yellow-500">
+                        <option>請先從雲端讀取資料</option>
+                    </select>
+                    <button id="refresh-versions" class="bg-yellow-600 text-white px-4 rounded-r-md hover:bg-yellow-700 transition">刷新</button>
+                </div>
+                <button id="load-version" class="w-full bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 transition">讀取選定版本 (僅在本地預覽)</button>
+            </div>
+
             <div class="bg-green-100 p-4 rounded-lg shadow">
                 <h2 class="text-xl font-semibold mb-3 text-green-700">課程登記</h2>
                 <div class="grid grid-cols-1 gap-3">
@@ -428,6 +439,9 @@
                 startHandle: document.querySelector('.time-handle.start'),
                 endHandle: document.querySelector('.time-handle.end'),
                 sliderContainer: document.querySelector('.time-slider-container'),
+                versionHistorySelect: document.getElementById('version-history'),
+                refreshVersionsBtn: document.getElementById('refresh-versions'),
+                loadVersionBtn: document.getElementById('load-version'),
             },
             isDraggingStart: false,
             isDraggingEnd: false,
@@ -453,8 +467,73 @@
 
                 console.log("頁面初始化完成，自動從雲端載入數據");
                 setTimeout(() => {
-                    this.loadDataFromServer();
+                    this.loadDataFromServer().then(() => {
+                        this.loadVersions(); // 初始載入版本列表
+                    });
                 }, 500);
+            },
+
+            loadVersions: function() {
+                this.showNotification('正在獲取版本列表...', 'info');
+                google.script.run
+                    .withSuccessHandler((versions) => {
+                        if (versions && !versions.error) {
+                            const select = this.elements.versionHistorySelect;
+                            select.innerHTML = '';
+                            if (versions.length > 0) {
+                                versions.forEach(v => {
+                                    const option = document.createElement('option');
+                                    option.value = v.id;
+                                    const d = new Date(v.id);
+                                    option.textContent = `${d.toLocaleString()} by ${v.user}`;
+                                    select.appendChild(option);
+                                });
+                            } else {
+                                select.innerHTML = '<option>沒有歷史紀錄</option>';
+                            }
+                            this.showNotification('版本列表已更新', 'success');
+                        } else {
+                            this.showNotification('獲取版本列表失敗: ' + (versions ? versions.error : '未知錯誤'), 'error');
+                        }
+                    })
+                    .withFailureHandler((error) => {
+                        this.showNotification('獲取版本列表失敗: ' + error.message, 'error');
+                    })
+                    .getVersions();
+            },
+
+            handleLoadVersion: function() {
+                const versionId = this.elements.versionHistorySelect.value;
+                if (!versionId || versionId === '沒有歷史紀錄') {
+                    this.showNotification('請選擇一個有效的版本', 'error');
+                    return;
+                }
+
+                if (!confirm(`確定要讀取這個歷史版本嗎？\n\n${versionId}\n\n這將會覆蓋您目前的本地資料。`)) {
+                    return;
+                }
+
+                this.showLoading('正在讀取歷史版本...');
+                google.script.run
+                    .withSuccessHandler((data) => {
+                        this.hideLoading();
+                        if (data && data.success) {
+                            this.classrooms = data.classrooms || [];
+                            this.scheduleData = data.scheduleData || {};
+                            this.saveDataToLocal();
+                            this.updateClassroomList();
+                            this.renderScheduleTable();
+                            this.updateSyncStatus('offline', this.lastCloudModifiedTime); // 狀態變為離線，因為本地資料已不是最新
+                            this.showNotification(`已在本地載入版本: ${new Date(data.versionId).toLocaleString()}`, 'info');
+                        } else {
+                            this.showNotification('讀取版本失敗: ' + (data ? data.error : '未知錯誤'), 'error');
+                        }
+                    })
+                    .withFailureHandler((error) => {
+                        this.hideLoading();
+                        this.showNotification('讀取版本失敗: ' + error.message, 'error');
+                    })
+                    .getVersionData(versionId);
             },
 
             addEventListeners: function() {
@@ -473,16 +552,18 @@
                 els.addClassroomBtn.addEventListener('click', () => this.handleAddClassroom());
                 els.addClassBtn.addEventListener('click', () => this.handleAddClass());
                 els.saveToCloudBtn.addEventListener('click', () => {
-                    if (confirm('確定要將本地資料儲存到雲端嗎？這將覆蓋雲端的資料。')) {
+                    if (confirm('確定要將本地資料儲存到雲端嗎？這將會建立一個新的版本紀錄。')) {
                         this.saveDataToServer();
                     }
                 });
                 els.loadFromCloudBtn.addEventListener('click', () => {
-                    if (confirm('確定要從雲端讀取資料嗎？這將覆蓋本地的資料。')) {
+                    if (confirm('確定要從雲端讀取最新資料嗎？這將覆蓋本地的資料。')) {
                         this.loadDataFromServer();
                     }
                 });
                 els.clearAllBtn.addEventListener('click', () => this.handleClearAll());
+                els.refreshVersionsBtn.addEventListener('click', () => this.loadVersions());
+                els.loadVersionBtn.addEventListener('click', () => this.handleLoadVersion());
 
                 els.timeInputMethods.forEach(radio => {
                     radio.addEventListener('change', () => {
@@ -690,6 +771,7 @@
                                 this.renderScheduleTable();
                                 this.updateSyncStatus('online', result.lastModified);
                                 this.showNotification('從雲端讀取數據成功！');
+                                this.loadVersions(); // 更新版本列表
                             } catch (error) {
                                 console.error('處理服務器返回數據時出錯:', error);
                                 this.showNotification('處理數據失敗: ' + (error.message || '未知錯誤'), 'error');
@@ -708,7 +790,7 @@
                             this.isConnecting = false;
                             this.elements.loadFromCloudBtn.disabled = false;
                             this.elements.saveToCloudBtn.disabled = false;
-                            this.updateSyncStatus('error'); // 更新為錯誤狀態
+                            this.updateSyncStatus('error'); // 確保正確呼叫並傳遞錯誤狀態
                         })
                         .getData();
                 } catch (error) {
@@ -718,7 +800,7 @@
                     this.isConnecting = false;
                     this.elements.loadFromCloudBtn.disabled = false;
                     this.elements.saveToCloudBtn.disabled = false;
-                    this.updateSyncStatus(); // 更新為本地模式
+                    this.updateSyncStatus('error'); // 確保正確呼叫並傳遞錯誤狀態
                 }
             },
 
@@ -763,6 +845,7 @@
                                 this.updateSyncStatus('online', result.lastModified);
                                 this.showNotification('數據已成功儲存到雲端！');
                                 this.saveDataToLocal();
+                                this.loadVersions(); // 更新版本列表
                             } else {
                                 throw new Error(result && result.error ? result.error : '未知錯誤');
                             }
@@ -784,12 +867,11 @@
                 } catch (error) {
                     console.error('調用 Google Apps Script 失敗:', error);
                     this.showNotification(`連接失敗: ${error.message || '未知錯誤'}`, 'error');
-                    this.elements.syncStatusText.textContent = '同步失敗';
-                    this.elements.syncStatusText.parentElement.className = 'sync-status offline';
                     this.hideLoading();
                     this.isConnecting = false;
                     this.elements.loadFromCloudBtn.disabled = false;
                     this.elements.saveToCloudBtn.disabled = false;
+                    this.updateSyncStatus('error'); // 確保正確呼叫並傳遞錯誤狀態
                 }
             },
 
