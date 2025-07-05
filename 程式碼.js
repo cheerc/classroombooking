@@ -1,19 +1,3 @@
-// 確保 "Data" 工作表存在，如果不存在則創建
-function ensureDataSheetExists() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var dataSheet = ss.getSheetByName("Data");
-  if (!dataSheet) {
-    Logger.log("未找到 Data 表，創建新表");
-    dataSheet = ss.insertSheet("Data");
-    // 設定標頭和初始的空資料結構
-    dataSheet.getRange("A1").setValue("Latest Data");
-    dataSheet.getRange("A2").setValue("{}"); // scheduleData
-    dataSheet.getRange("A3").setValue("[]"); // classrooms
-    dataSheet.getRange("A4").setValue(new Date().toISOString()); // lastModified
-  }
-  return dataSheet;
-}
-
 // 處理 Web App 請求
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('Index')
@@ -26,8 +10,18 @@ function getData() {
   try {
     Logger.log("開始獲取數據");
     
-    // 確保 Data 表存在並獲取它
-    var dataSheet = ensureDataSheetExists();
+    // 獲取 SpreadsheetApp 對象
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var dataSheet = ss.getSheetByName("Data");
+    
+    // 如果沒有 Data 表，創建一個
+    if (!dataSheet) {
+      Logger.log("未找到 Data 表，創建新表");
+      dataSheet = ss.insertSheet("Data");
+      dataSheet.getRange("A1").setValue("Data");
+      dataSheet.getRange("A2").setValue("{}");
+      dataSheet.getRange("A3").setValue("[]");
+    }
     
     // 獲取數據
     var scheduleDataJson = dataSheet.getRange("A2").getValue();
@@ -123,7 +117,11 @@ function saveData(data) {
     var timestamp = new Date();
 
     // 1. 更新 "Data" 工作表 (永遠是最新版)
-    var dataSheet = ensureDataSheetExists(); // 使用新的輔助函式
+    var dataSheet = ss.getSheetByName("Data");
+    if (!dataSheet) {
+      dataSheet = ss.insertSheet("Data");
+      dataSheet.getRange("A1").setValue("Latest Data");
+    }
     var scheduleDataJson = JSON.stringify(data.scheduleData);
     var classroomsJson = JSON.stringify(data.classrooms);
     dataSheet.getRange("A2").setValue(scheduleDataJson);
@@ -217,3 +215,4 @@ function getVersionData(versionId) {
     return { success: false, error: e.toString() };
   }
 }
+
