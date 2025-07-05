@@ -55,50 +55,6 @@
             background-color: rgba(255,255,255,0.5);
         }
 
-        .time-slider-container {
-            position: relative;
-            height: 40px;
-            background-color: #f0f0f0;
-            border-radius: 4px;
-            margin: 10px 0;
-        }
-
-        .time-slider {
-            position: absolute;
-            height: 100%;
-            background-color: #4299e1;
-            opacity: 0.7;
-            border-radius: 4px;
-        }
-
-        .time-handle {
-            position: absolute;
-            width: 12px;
-            height: 40px;
-            background-color: #2b6cb0;
-            cursor: ew-resize;
-            top: 0;
-        }
-
-        .time-handle.start {
-            border-radius: 4px 0 0 4px;
-            left: 0;
-        }
-
-        .time-handle.end {
-            border-radius: 0 4px 4px 0;
-            right: 0;
-        }
-
-        .time-labels {
-            position: relative;
-            width: 100%;
-            display: flex;
-            justify-content: space-between;
-            font-size: 10px;
-            margin-bottom: 5px;
-        }
-
         .bg-pastel-1 { background-color: #FFD6E0; }
         .bg-pastel-2 { background-color: #FFEFB5; }
         .bg-pastel-3 { background-color: #BDEAEE; }
@@ -179,13 +135,9 @@
         }
 
         .sync-status {
-            position: fixed;
-            top: 10px;
-            left: 10px;
             padding: 6px 12px;
             border-radius: 6px;
             font-size: 14px;
-            z-index: 1000;
             transition: background-color 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
@@ -235,13 +187,16 @@
 
     <div id="notification" class="notification"></div>
 
-    <div id="sync-status" class="sync-status">
-        <div id="sync-status-text">本地模式</div>
-        <div id="last-sync-time" class="last-sync-time"></div>
-    </div>
-
     <div class="max-w-7xl mx-auto bg-white rounded-lg shadow-lg p-6">
-        <h1 class="text-3xl font-bold text-center text-blue-800 mb-6">教室使用登記表</h1>
+        <div class="relative mb-6">
+            <div class="absolute top-1/2 left-0 transform -translate-y-1/2">
+                <div id="sync-status" class="sync-status">
+                    <div id="sync-status-text">本地模式</div>
+                    <div id="last-sync-time" class="last-sync-time"></div>
+                </div>
+            </div>
+            <h1 class="text-3xl font-bold text-center text-blue-800 py-2">教室使用登記表</h1>
+        </div>
 
         <div class="overflow-x-auto mb-8">
             <table id="schedule-table" class="schedule-table w-full border-collapse">
@@ -324,46 +279,14 @@
                     </div>
 
                     <div>
-                        <div class="flex justify-between mb-1">
-                            <label>使用時間:</label>
-                            <div class="flex gap-2">
-                                <label class="inline-flex items-center">
-                                    <input type="radio" name="time-input-method" value="manual" checked class="form-radio h-4 w-4 text-green-600">
-                                    <span class="ml-1 text-sm">手動輸入</span>
-                                </label>
-                                <label class="inline-flex items-center">
-                                    <input type="radio" name="time-input-method" value="slider" class="form-radio h-4 w-4 text-green-600">
-                                    <span class="ml-1 text-sm">時間軸</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div id="manual-time-input" class="flex flex-col">
+                        <label class="w-24 flex items-center">使用時間:</label>
+                        <div id="manual-time-input" class="flex flex-col mt-1">
                             <div class="flex">
                                 <input type="text" id="class-time-start" placeholder="開始 (如: 09:00)" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-green-500">
                                 <span class="px-2 py-2 bg-gray-200 flex items-center">至</span>
                                 <input type="text" id="class-time-end" placeholder="結束 (如: 12:00)" class="flex-1 px-3 py-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-green-500">
                             </div>
                             <div class="time-format-hint">請使用24小時制 (例如: 08:00, 13:30)</div>
-                        </div>
-
-                        <div id="slider-time-input" class="hidden">
-                            <div class="time-labels">
-                                <span>00:00</span>
-                                <span>06:00</span>
-                                <span>12:00</span>
-                                <span>18:00</span>
-                                <span>23:59</span>
-                            </div>
-                            <div class="time-slider-container">
-                                <div class="time-slider"></div>
-                                <div class="time-handle start"></div>
-                                <div class="time-handle end"></div>
-                            </div>
-                            <div class="flex justify-between text-sm">
-                                <span id="slider-time-start">08:00</span>
-                                <span id="slider-time-end">12:00</span>
-                            </div>
                         </div>
                     </div>
 
@@ -412,13 +335,13 @@
 
     </div>
 
-    <div class="version-badge">版本 5.8</div>
+    <div class="version-badge">版本 5.11</div>
 
     <script>
     (function() {
         // 將全局變數放入一個命名空間或對象，減少污染
         const App = {
-            APP_VERSION: '5.8',
+            APP_VERSION: '5.11',
             TIME_REGEX: /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/,
 
             classrooms: [],
@@ -435,6 +358,7 @@
                 loadingText: document.getElementById('loading-text'),
                 loadingCancel: document.getElementById('loading-cancel'),
                 notification: document.getElementById('notification'),
+                syncStatus: document.getElementById('sync-status'),
                 syncStatusText: document.getElementById('sync-status-text'),
                 lastSyncTimeText: document.getElementById('last-sync-time'),
                 classroomNameInput: document.getElementById('classroom-name'),
@@ -453,15 +377,6 @@
                 clearAllBtn: document.getElementById('clear-all'),
                 undoBtn: document.getElementById('undo-btn'),
                 redoBtn: document.getElementById('redo-btn'),
-                manualTimeInput: document.getElementById('manual-time-input'),
-                sliderTimeInput: document.getElementById('slider-time-input'),
-                timeInputMethods: document.querySelectorAll('input[name="time-input-method"]'),
-                sliderTimeStart: document.getElementById('slider-time-start'),
-                sliderTimeEnd: document.getElementById('slider-time-end'),
-                timeSlider: document.querySelector('.time-slider'),
-                startHandle: document.querySelector('.time-handle.start'),
-                endHandle: document.querySelector('.time-handle.end'),
-                sliderContainer: document.querySelector('.time-slider-container'),
                 versionHistorySelect: document.getElementById('version-history'),
                 refreshVersionsBtn: document.getElementById('refresh-versions'),
                 loadVersionBtn: document.getElementById('load-version'),
@@ -470,8 +385,6 @@
                 toggleVersionHistory: document.getElementById('toggle-version-history'),
                 versionHistoryContent: document.getElementById('version-history-content'),
             },
-            isDraggingStart: false,
-            isDraggingEnd: false,
 
             init: function() {
                 console.log("頁面初始化開始");
@@ -489,7 +402,6 @@
                 this.updateClassroomList();
                 this.renderScheduleTable();
                 this.updateSyncStatus('offline'); // 初始狀態為離線
-                this.initTimeSlider();
                 this.addEventListeners(); // 新增一個函數來集中管理事件監聽器
 
                 console.log("頁面初始化完成，自動從雲端載入數據");
@@ -597,18 +509,6 @@
                 els.undoBtn.addEventListener('click', () => this.undo());
                 els.redoBtn.addEventListener('click', () => this.redo());
 
-                els.timeInputMethods.forEach(radio => {
-                    radio.addEventListener('change', () => {
-                        if (radio.value === 'manual') {
-                            els.manualTimeInput.classList.remove('hidden');
-                            els.sliderTimeInput.classList.add('hidden');
-                        } else {
-                            els.manualTimeInput.classList.add('hidden');
-                            els.sliderTimeInput.classList.remove('hidden');
-                        }
-                    });
-                });
-
                 // Collapsible sections
                 els.toggleClassroomManager.addEventListener('click', (e) => {
                     els.classroomManagerContent.classList.toggle('hidden');
@@ -626,7 +526,6 @@
                 this.elements.loadingOverlay.style.display = 'flex';
                 if (this.loadingTimeout) {
                     clearTimeout(this.loadingTimeout);
-                    this.loadingTimeout = null;
                 }
                 this.loadingTimeout = setTimeout(() => {
                     this.hideLoading();
@@ -645,7 +544,7 @@
 
             updateSyncStatus: function(status, time) {
                 const els = this.elements;
-                const statusContainer = els.syncStatusText.parentElement;
+                const statusContainer = els.syncStatus;
                 let statusText = '';
                 let timeText = '';
                 let statusClass = '';
@@ -1352,7 +1251,6 @@
                 const els = this.elements;
                 const classroom = els.classClassroomSelect.value;
                 const name = els.classNameInput.value.trim();
-                let timeStart, timeEnd;
                 const teacher = els.classTeacherInput.value.trim();
 
                 const selectedDays = [];
@@ -1375,38 +1273,27 @@
                     return;
                 }
 
-                if (els.timeInputMethods[0].checked) { // 手動輸入
-                    timeStart = els.classTimeStartInput.value.trim();
-                    timeEnd = els.classTimeEndInput.value.trim();
+                const timeStart = els.classTimeStartInput.value.trim();
+                const timeEnd = els.classTimeEndInput.value.trim();
 
-                    if (!this.TIME_REGEX.test(timeStart) || !this.TIME_REGEX.test(timeEnd)) {
-                        this.showNotification('請輸入有效的時間格式 (HH:MM)！', 'error');
-                        return;
-                    }
-                    timeStart = this.formatTime(timeStart);
-                    timeEnd = this.formatTime(timeEnd);
-                    // 驗證開始時間不晚於結束時間
-                    if (this.timeToMinutes(timeStart) >= this.timeToMinutes(timeEnd)) {
-                        this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
-                        return;
-                    }
-                } else { // 時間軸選擇
-                    timeStart = els.sliderTimeStart.textContent;
-                    timeEnd = els.sliderTimeEnd.textContent;
-                    // 再次驗證時間軸選擇的時間邏輯
-                    if (this.timeToMinutes(timeStart) >= this.timeToMinutes(timeEnd)) {
-                        this.showNotification('時間軸選擇的開始時間不能晚於或等於結束時間！請調整。', 'error');
-                        return;
-                    }
+                if (!this.TIME_REGEX.test(timeStart) || !this.TIME_REGEX.test(timeEnd)) {
+                    this.showNotification('請輸入有效的時間格式 (HH:MM)！', 'error');
+                    return;
+                }
+                const formattedTimeStart = this.formatTime(timeStart);
+                const formattedTimeEnd = this.formatTime(timeEnd);
+                
+                if (this.timeToMinutes(formattedTimeStart) >= this.timeToMinutes(formattedTimeEnd)) {
+                    this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
+                    return;
                 }
 
-                const classItem = { name, timeStart, timeEnd, teacher };
+                const classItem = { name, timeStart: formattedTimeStart, timeEnd: formattedTimeEnd, teacher };
 
                 let hasConflictOccurred = false;
                 selectedDays.forEach(day => {
-                    // 檢查時間衝突並警告用戶，但仍允許添加
                     if (this.checkTimeConflict(classroom, day, classItem)) {
-                        this.showNotification('在 ' + classroom + ' 星期 ' + (day+1) + ' 有時間衝突！', 'info', 5000); // 延長顯示時間
+                        this.showNotification('在 ' + classroom + ' 星期 ' + (day+1) + ' 有時間衝突！', 'info', 5000);
                         hasConflictOccurred = true;
                     }
 
@@ -1421,7 +1308,7 @@
 
                 els.classNameInput.value = '';
                 els.classTeacherInput.value = '';
-                els.classTimeStartInput.value = ''; // 清空手動輸入時間
+                els.classTimeStartInput.value = '';
                 els.classTimeEndInput.value = '';
                 els.dayCheckboxes.forEach(checkbox => checkbox.checked = false);
 
@@ -1457,97 +1344,6 @@
                         this.showNotification('清除數據失敗: ' + (error.message || '未知錯誤'), 'error');
                     }
                 }
-            },
-
-            initTimeSlider: function() {
-                const els = this.elements;
-                let startPos = 33.33; // 8:00
-                let endPos = 50; // 12:00
-                this.updateSliderPosition(startPos, endPos);
-
-                const handleMouseMove = (e) => {
-                    if (!this.isDraggingStart && !this.isDraggingEnd) return;
-                    e.preventDefault(); // 防止文本選擇等默認行為
-
-                    const rect = els.sliderContainer.getBoundingClientRect();
-                    const containerWidth = rect.width;
-                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                    const offsetX = clientX - rect.left;
-                    let position = (offsetX / containerWidth) * 100;
-
-                    position = Math.max(0, Math.min(100, position));
-
-                    let minutes = Math.round((position / 100) * 1440);
-                    minutes = Math.round(minutes / 5) * 5; // 調整為5分鐘的倍數
-                    position = (minutes / 1440) * 100;
-
-                    const currentStartPos = parseFloat(els.startHandle.style.left);
-                    const currentEndPos = parseFloat(els.endHandle.style.left);
-
-                    if (this.isDraggingStart) {
-                        position = Math.min(position, currentEndPos - (12/containerWidth * 100)); // 至少保留一點寬度
-                        els.startHandle.style.left = position + '%';
-                        els.timeSlider.style.left = position + '%';
-                        els.timeSlider.style.width = (currentEndPos - position) + '%';
-                        els.sliderTimeStart.textContent = this.minutesToTime(minutes);
-                    } else if (this.isDraggingEnd) {
-                        position = Math.max(position, currentStartPos + (12/containerWidth * 100)); // 至少保留一點寬度
-                        els.endHandle.style.left = position + '%';
-                        els.timeSlider.style.width = (position - currentStartPos) + '%';
-                        els.sliderTimeEnd.textContent = this.minutesToTime(minutes);
-                    }
-                };
-
-                const handleMouseUp = () => {
-                    this.isDraggingStart = false;
-                    this.isDraggingEnd = false;
-                    document.removeEventListener('mousemove', handleMouseMove);
-                    document.removeEventListener('mouseup', handleMouseUp);
-                    document.removeEventListener('touchmove', handleMouseMove);
-                    document.removeEventListener('touchend', handleMouseUp);
-                };
-
-                els.startHandle.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    this.isDraggingStart = true;
-                    document.addEventListener('mousemove', handleMouseMove);
-                    document.addEventListener('mouseup', handleMouseUp);
-                });
-
-                els.endHandle.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    this.isDraggingEnd = true;
-                    document.addEventListener('mousemove', handleMouseMove);
-                    document.addEventListener('mouseup', handleMouseUp);
-                });
-
-                els.startHandle.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    this.isDraggingStart = true;
-                    document.addEventListener('touchmove', handleMouseMove);
-                    document.addEventListener('touchend', handleMouseUp);
-                }, { passive: false }); // passive: false 允許preventDefault
-
-                els.endHandle.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    this.isDraggingEnd = true;
-                    document.addEventListener('touchmove', handleMouseMove);
-                    document.addEventListener('touchend', handleMouseUp);
-                }, { passive: false }); // passive: false 允許preventDefault
-
-            },
-
-            updateSliderPosition: function(startPos, endPos) {
-                const els = this.elements;
-                els.startHandle.style.left = startPos + '%';
-                els.endHandle.style.left = endPos + '%';
-                els.timeSlider.style.left = startPos + '%';
-                els.timeSlider.style.width = (endPos - startPos) + '%';
-
-                const startMinutes = Math.round((startPos / 100) * 24 * 60);
-                const endMinutes = Math.round((endPos / 100) * 24 * 60);
-                els.sliderTimeStart.textContent = this.minutesToTime(startMinutes);
-                els.sliderTimeEnd.textContent = this.minutesToTime(endMinutes);
             },
 
             saveState: function() {
