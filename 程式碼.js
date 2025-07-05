@@ -1,3 +1,19 @@
+// 確保 "Data" 工作表存在，如果不存在則創建
+function ensureDataSheetExists() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var dataSheet = ss.getSheetByName("Data");
+  if (!dataSheet) {
+    Logger.log("未找到 Data 表，創建新表");
+    dataSheet = ss.insertSheet("Data");
+    // 設定標頭和初始的空資料結構
+    dataSheet.getRange("A1").setValue("Latest Data");
+    dataSheet.getRange("A2").setValue("{}"); // scheduleData
+    dataSheet.getRange("A3").setValue("[]"); // classrooms
+    dataSheet.getRange("A4").setValue(new Date().toISOString()); // lastModified
+  }
+  return dataSheet;
+}
+
 // 處理 Web App 請求
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('Index')
@@ -10,18 +26,8 @@ function getData() {
   try {
     Logger.log("開始獲取數據");
     
-    // 獲取 SpreadsheetApp 對象
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var dataSheet = ss.getSheetByName("Data");
-    
-    // 如果沒有 Data 表，創建一個
-    if (!dataSheet) {
-      Logger.log("未找到 Data 表，創建新表");
-      dataSheet = ss.insertSheet("Data");
-      dataSheet.getRange("A1").setValue("Data");
-      dataSheet.getRange("A2").setValue("{}");
-      dataSheet.getRange("A3").setValue("[]");
-    }
+    // 確保 Data 表存在並獲取它
+    var dataSheet = ensureDataSheetExists();
     
     // 獲取數據
     var scheduleDataJson = dataSheet.getRange("A2").getValue();
@@ -93,21 +99,31 @@ function saveData(data) {
   }
 
   try {
-    Logger.log("開始保存數據 v4.8");
+    Logger.log("開始保存數據 v5.3");
     if (!data || typeof data.scheduleData !== 'object' || !Array.isArray(data.classrooms)) {
       throw new Error("無效的數據格式。");
     }
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var userEmail = Session.getActiveUser().getEmail();
+    var userName = userEmail; // Initialize userName with email as fallback
+
+    try {
+      // Attempt to get user's display name using People API
+      // Ensure People API is enabled in your Apps Script project (Services -> People API)
+      const person = People.People.get('people/me', {personFields: 'names'});
+      if (person.names && person.names.length > 0 && person.names[0].displayName) {
+        userName = person.names[0].displayName;
+      }
+    } catch (e) {
+      Logger.log("無法獲取使用者姓名，將使用Email: " + e.message);
+      // userName already initialized with userEmail, so no need to re-assign here
+    }
+    
     var timestamp = new Date();
 
     // 1. 更新 "Data" 工作表 (永遠是最新版)
-    var dataSheet = ss.getSheetByName("Data");
-    if (!dataSheet) {
-      dataSheet = ss.insertSheet("Data");
-      dataSheet.getRange("A1").setValue("Latest Data");
-    }
+    var dataSheet = ensureDataSheetExists(); // 使用新的輔助函式
     var scheduleDataJson = JSON.stringify(data.scheduleData);
     var classroomsJson = JSON.stringify(data.classrooms);
     dataSheet.getRange("A2").setValue(scheduleDataJson);
@@ -125,7 +141,7 @@ function saveData(data) {
     historySheet.insertRowBefore(2); // 在標題下方插入新的一行
     historySheet.getRange("A2:D2").setValues([[
       timestamp.toISOString(),
-      userEmail,
+      userName, // Use userName (either display name or email)
       scheduleDataJson,
       classroomsJson
     ]]);
@@ -136,7 +152,7 @@ function saveData(data) {
       historySheet.deleteRows(maxHistory + 1, historySheet.getMaxRows() - maxHistory);
     }
 
-    Logger.log("數據保存成功 by " + userEmail);
+    Logger.log("數據保存成功 by " + userName);
     return {
       success: true,
       lastModified: timestamp.toISOString()
