@@ -1,16 +1,23 @@
-// 共用函式：獲取或創建指定名稱的工作表
+// Version 5.25
+const SHEET_DATA = "Data";
+const SHEET_HISTORY = "History";
+
+/**
+ * Gets a sheet by name, creating it if it doesn't exist.
+ * @param {string} name The name of the sheet.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet} The sheet object.
+ */
 function getSheet_(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
     Logger.log(`已創建新的工作表: ${name}`);
-    // 可在此處進行新表的初始化，例如設定標頭
-    if (name === "Data") {
+    if (name === SHEET_DATA) {
       sheet.getRange("A1").setValue("Latest Data");
       sheet.getRange("A2").setValue("{}"); // scheduleData
       sheet.getRange("A3").setValue("[]"); // classrooms
-    } else if (name === "History") {
+    } else if (name === SHEET_HISTORY) {
       sheet.getRange("A1:D1").setValues([["Timestamp", "SavedBy", "ScheduleData", "Classrooms"]]);
       sheet.setFrozenRows(1);
     }
@@ -18,18 +25,25 @@ function getSheet_(name) {
   return sheet;
 }
 
-// 處理 Web App 請求
+/**
+ * Handles HTTP GET requests to serve the web app.
+ * @returns {GoogleAppsScript.HTML.HtmlOutput} The HTML output for the web app.
+ */
 function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
+  return HtmlService.createTemplateFromFile('Index')
+    .evaluate()
     .setTitle('教室使用登記表')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-// 獲取數據
+/**
+ * Retrieves the latest schedule data from the spreadsheet.
+ * @returns {object} An object containing scheduleData, classrooms, and lastModified time, or an error object.
+ */
 function getData() {
   try {
     Logger.log("開始獲取數據");
-    const dataSheet = getSheet_("Data");
+    const dataSheet = getSheet_(SHEET_DATA);
     
     const scheduleDataJson = dataSheet.getRange("A2").getValue();
     const classroomsJson = dataSheet.getRange("A3").getValue();
@@ -70,7 +84,11 @@ function getData() {
   }
 }
 
-// 保存數據
+/**
+ * Saves schedule data to the spreadsheet and creates a history entry.
+ * @param {object} data The data object to save, containing scheduleData and classrooms.
+ * @returns {object} A success object with the new lastModified time, or an error object.
+ */
 function saveData(data) {
   const lock = LockService.getScriptLock();
   try {
@@ -103,18 +121,20 @@ function saveData(data) {
     const classroomsJson = JSON.stringify(data.classrooms);
 
     // 1. 更新 "Data" 工作表
-    const dataSheet = getSheet_("Data");
+    const dataSheet = getSheet_(SHEET_DATA);
     dataSheet.getRange("A2:A4").setValues([[scheduleDataJson], [classroomsJson], [timestampISO]]);
 
     // 2. 更新 "History" 工作表
-    const historySheet = getSheet_("History");
+    const historySheet = getSheet_(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
     historySheet.getRange("A2:D2").setValues([[timestampISO, userName, scheduleDataJson, classroomsJson]]);
 
     // 3. 維護歷史紀錄，只保留最新的10筆
-    const maxHistory = 11; // 10筆紀錄 + 1個標題列
-    if (historySheet.getMaxRows() > maxHistory) {
-      historySheet.deleteRows(maxHistory + 1, historySheet.getMaxRows() - maxHistory);
+    const maxHistoryRecords = 10;
+    const headerRows = 1;
+    const totalAllowedRows = maxHistoryRecords + headerRows;
+    if (historySheet.getLastRow() > totalAllowedRows) {
+      historySheet.deleteRows(totalAllowedRows + 1, historySheet.getLastRow() - totalAllowedRows);
     }
 
     Logger.log(`數據保存成功 by ${userName}`);
@@ -128,11 +148,16 @@ function saveData(data) {
   }
 }
 
-// 獲取版本歷史列表
+/**
+ * Retrieves a list of saved versions from the history sheet.
+ * @returns {Array<object>|object} An array of version objects or an error object.
+ */
 function getVersions() {
   try {
-    const historySheet = getSheet_("History");
-    const data = historySheet.getRange("A2:B" + historySheet.getLastRow()).getValues();
+    const historySheet = getSheet_(SHEET_HISTORY);
+    const lastRow = historySheet.getLastRow();
+    if (lastRow < 2) return []; // No data rows
+    const data = historySheet.getRange("A2:B" + lastRow).getValues();
     const versions = data
       .filter(row => row[0]) // 確保時間戳存在
       .map(row => ({ id: row[0], user: row[1] || '未知使用者' }));
@@ -143,24 +168,31 @@ function getVersions() {
   }
 }
 
-// 根據版本ID(時間戳)獲取特定版本的數據
+/**
+ * Retrieves the data for a specific version ID (timestamp).
+ * @param {string} versionId The ISO timestamp string of the version to retrieve.
+ * @returns {object} A success object with the version data, or an error object.
+ */
 function getVersionData(versionId) {
   try {
-    if (!versionId) throw new Error("未提供版本ID");
-    
-    const historySheet = getSheet_("History");
+    if (!versionId) {
+      throw new Error("未提供版本ID");
+    }
+    const historySheet = getSheet_(SHEET_HISTORY);
     const data = historySheet.getRange("A:D").getValues();
     
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] && data[i][0].toString() === versionId) {
-        return {
-          success: true,
-          scheduleData: JSON.parse(data[i][2]),
-          classrooms: JSON.parse(data[i][3]),
-          versionId: versionId
-        };
-      }
+    // Find the row matching the versionId. Comparing by string representation is safer.
+    const versionRow = data.slice(1).find(row => row[0] && new Date(row[0]).toISOString() === versionId);
+
+    if (versionRow) {
+      return {
+        success: true,
+        scheduleData: JSON.parse(versionRow[2]),
+        classrooms: JSON.parse(versionRow[3]),
+        versionId: versionId
+      };
     }
+    
     return { success: false, error: "找不到指定的版本" };
   } catch (e) {
     Logger.log(`獲取版本數據失敗: ${e}`);
