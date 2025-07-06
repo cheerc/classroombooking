@@ -227,7 +227,7 @@
             <div class="flex flex-wrap gap-2">
                 <button id="save-to-cloud-btn" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition">儲存資料到雲端</button>
                 <button id="load-from-cloud-btn" class="bg-teal-600 text-white px-6 py-2 rounded-md hover:bg-teal-700 transition">從雲端讀取資料</button>
-                <button id="clear-all" class="bg-red-600 text-white px-6 py-2 rounded-md hover:bg-red-700 transition hidden">清除本地暫存資料</button>
+                <button id="clear-all" class="bg-red-600 text-white px-6 py-2 rounded-md hover:bg-red-700 transition">清除本地暫存資料</button>
             </div>
         </div>
 
@@ -335,24 +335,34 @@
 
     </div>
 
-    <div class="version-badge">版本 5.11</div>
+    <div class="version-badge">版本 5.14</div>
+
+    <div id="confirm-modal" class="loading-overlay" style="display: none;">
+        <div class="bg-white p-6 rounded-lg shadow-lg text-center max-w-sm w-full">
+            <p id="confirm-text" class="text-lg mb-4"></p>
+            <div class="flex justify-center gap-4">
+                <button id="confirm-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded-md">取消</button>
+                <button id="confirm-ok" class="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-md">確定</button>
+            </div>
+        </div>
+    </div>
 
     <script>
     (function() {
         // 將全局變數放入一個命名空間或對象，減少污染
         const App = {
-            APP_VERSION: '5.11',
+            APP_VERSION: '5.14', // Incremented version
             TIME_REGEX: /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/,
 
             classrooms: [],
             scheduleData: {},
             lastSyncTime: null,
-            lastCloudModifiedTime: null, // 新增變數
+            lastCloudModifiedTime: null,
             loadingTimeout: null,
             isConnecting: false,
             history: [],
             historyIndex: -1,
-            // DOM 元素
+            
             elements: {
                 loadingOverlay: document.getElementById('loading-overlay'),
                 loadingText: document.getElementById('loading-text'),
@@ -384,75 +394,223 @@
                 classroomManagerContent: document.getElementById('classroom-manager-content'),
                 toggleVersionHistory: document.getElementById('toggle-version-history'),
                 versionHistoryContent: document.getElementById('version-history-content'),
+                confirmModal: document.getElementById('confirm-modal'),
+                confirmText: document.getElementById('confirm-text'),
+                confirmOk: document.getElementById('confirm-ok'),
+                confirmCancel: document.getElementById('confirm-cancel'),
             },
 
             init: function() {
                 console.log("頁面初始化開始");
-
                 try {
-                    console.log("從本地載入數據");
                     this.loadDataFromLocal();
-                    console.log("本地數據載入成功");
                 } catch (e) {
                     console.error('從本地載入數據失敗:', e);
                     this.classrooms = [];
                     this.scheduleData = {};
                 }
-
                 this.updateClassroomList();
                 this.renderScheduleTable();
-                this.updateSyncStatus('offline'); // 初始狀態為離線
-                this.addEventListeners(); // 新增一個函數來集中管理事件監聽器
+                this.updateSyncStatus('offline');
+                this.addEventListeners();
+                this.resetHistory();
 
                 console.log("頁面初始化完成，自動從雲端載入數據");
                 setTimeout(() => {
                     this.loadDataFromServer().catch(error => {
                         console.warn("Initial data load failed:", error.message);
-                        this.resetHistory(); // 即使載入失敗，也重設歷史紀錄
+                        this.resetHistory();
                     });
                 }, 500);
             },
 
+            // --- Event Handling ---
+            addEventListeners: function() {
+                const els = this.elements;
+                els.loadingCancel.addEventListener('click', () => {
+                    if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
+                    this.hideLoading();
+                    this.showNotification('已取消載入，使用本地數據', 'info');
+                    this.isConnecting = false;
+                });
+                els.addClassroomBtn.addEventListener('click', () => this.handleAddClassroom());
+                els.addClassBtn.addEventListener('click', () => this.handleAddClass());
+                els.saveToCloudBtn.addEventListener('click', async () => {
+                    if (await this.showConfirm('確定要將本地資料儲存到雲端嗎？<br>這將會建立一個新的版本紀錄。')) {
+                        this.saveDataToServer();
+                    }
+                });
+                els.loadFromCloudBtn.addEventListener('click', async () => {
+                    if (await this.showConfirm('確定要從雲端讀取最新資料嗎？<br>這將覆蓋本地的資料，且無法復原。')) {
+                        this.loadDataFromServer();
+                    }
+                });
+                els.clearAllBtn.addEventListener('click', () => this.handleClearAll());
+                els.refreshVersionsBtn.addEventListener('click', () => this.loadVersions());
+                els.loadVersionBtn.addEventListener('click', () => this.handleLoadVersion());
+                els.undoBtn.addEventListener('click', () => this.undo());
+                els.redoBtn.addEventListener('click', () => this.redo());
+                els.toggleClassroomManager.addEventListener('click', (e) => {
+                    els.classroomManagerContent.classList.toggle('hidden');
+                    e.currentTarget.querySelector('svg').classList.toggle('rotate-180');
+                });
+                els.toggleVersionHistory.addEventListener('click', (e) => {
+                    els.versionHistoryContent.classList.toggle('hidden');
+                    e.currentTarget.querySelector('svg').classList.toggle('rotate-180');
+                });
+                els.classroomList.addEventListener('click', this.handleDeleteClassroomClick.bind(this));
+                els.scheduleBody.addEventListener('click', this.handleScheduleBodyClick.bind(this));
+                els.scheduleBody.addEventListener('dblclick', this.handleEditFieldClick.bind(this));
+            },
+
+            handleScheduleBodyClick: function(event) {
+                if (event.target.closest('.delete-btn')) {
+                    this.handleDeleteClassClick(event);
+                }
+            },
+
+            handleDeleteClassroomClick: async function(event) {
+                const btn = event.target.closest('.delete-classroom');
+                if (!btn) return;
+                const classroom = btn.getAttribute('data-classroom');
+                if (this.scheduleData[classroom] && Object.keys(this.scheduleData[classroom]).length > 0) {
+                    this.showNotification('無法刪除教室：請先移除此教室的所有課程登記！', 'error', 5000);
+                    return;
+                }
+                if (await this.showConfirm(`確定要刪除教室 "${classroom}" 嗎？`)) {
+                    this.classrooms = this.classrooms.filter(c => c !== classroom);
+                    delete this.scheduleData[classroom];
+                    this.updateClassroomList();
+                    this.renderScheduleTable();
+                    this.saveDataToLocal();
+                    this.showNotification('已刪除教室: ' + classroom);
+                    this.saveState();
+                }
+            },
+
+            handleDeleteClassClick: function(event) {
+                const btn = event.target.closest('.delete-btn');
+                if (!btn) return;
+                const classroom = btn.getAttribute('data-classroom');
+                const day = parseInt(btn.getAttribute('data-day'));
+                const index = parseInt(btn.getAttribute('data-index'));
+                if (!this.scheduleData[classroom] || !this.scheduleData[classroom][day]) return;
+                
+                this.scheduleData[classroom][day].splice(index, 1);
+                if (this.scheduleData[classroom][day].length === 0) delete this.scheduleData[classroom][day];
+                if (Object.keys(this.scheduleData[classroom]).length === 0) delete this.scheduleData[classroom];
+                
+                this.renderScheduleTable();
+                this.saveDataToLocal();
+                this.showNotification('已刪除課程');
+                this.saveState();
+            },
+
+            handleEditFieldClick: function(e) {
+                const element = e.target.closest('.editable');
+                if (!element || element.querySelector('input')) return;
+                e.stopPropagation();
+                const field = element.dataset.field;
+                const classroom = element.closest('td').dataset.classroom;
+                const day = parseInt(element.closest('td').dataset.day);
+                const index = parseInt(element.closest('.class-item').dataset.index);
+                const classItem = this.scheduleData[classroom]?.[day]?.[index];
+                if (!classItem) return;
+
+                let currentValue = field === 'name' ? classItem.name : (field === 'time' ? `${classItem.timeStart}-${classItem.timeEnd}` : classItem.teacher);
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = currentValue;
+                input.className = 'w-full p-1 border border-blue-500 rounded';
+                element.innerHTML = '';
+                element.appendChild(input);
+                input.focus();
+                input.select();
+
+                const cleanup = () => {
+                    input.removeEventListener('blur', handleUpdate);
+                    input.removeEventListener('keydown', handleKeydown);
+                    this.renderScheduleTable();
+                };
+
+                const handleUpdate = () => {
+                    let newValue = input.value.trim();
+                    let isValid = true;
+                    let tempClassItem = { ...classItem };
+                    if (field === 'time') {
+                        const timeRangeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])-([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+                        if (!timeRangeRegex.test(newValue)) {
+                            this.showNotification('請輸入有效���時間格式 (HH:MM-HH:MM)！', 'error');
+                            isValid = false;
+                        } else {
+                            const [start, end] = newValue.split('-');
+                            tempClassItem.timeStart = this.formatTime(start);
+                            tempClassItem.timeEnd = this.formatTime(end);
+                            if (this.timeToMinutes(tempClassItem.timeStart) >= this.timeToMinutes(tempClassItem.timeEnd)) {
+                                this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
+                                isValid = false;
+                            }
+                        }
+                    } else if (field === 'name' && !newValue) {
+                        this.showNotification('課程名稱不能為空！', 'error');
+                        isValid = false;
+                    } else {
+                        tempClassItem[field] = newValue;
+                    }
+
+                    if (isValid) {
+                        this.scheduleData[classroom][day][index] = tempClassItem;
+                        this.saveDataToLocal();
+                        this.showNotification('已更新課程資訊');
+                        this.saveState();
+                        cleanup();
+                    }
+                };
+                const handleKeydown = (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); handleUpdate(); } 
+                    else if (e.key === 'Escape') { e.preventDefault(); cleanup(); }
+                };
+                input.addEventListener('blur', handleUpdate);
+                input.addEventListener('keydown', handleKeydown);
+            },
+
+            // --- Data & API ---
             loadVersions: function() {
                 this.showNotification('正在獲取版本列表...', 'info');
                 google.script.run
                     .withSuccessHandler((versions) => {
-                        if (versions && !versions.error) {
-                            const select = this.elements.versionHistorySelect;
-                            select.innerHTML = '';
-                            if (versions.length > 0) {
-                                versions.forEach(v => {
-                                    const option = document.createElement('option');
-                                    option.value = v.id;
-                                    const d = new Date(v.id);
-                                    option.textContent = d.toLocaleString() + ' by ' + v.user;
-                                    select.appendChild(option);
-                                });
-                            } else {
-                                select.innerHTML = '<option>沒有歷史紀錄</option>';
-                            }
-                            this.showNotification('版本列表已更新', 'success');
-                        } else {
+                        if (!versions || versions.error) {
                             this.showNotification('獲取版本列表失敗: ' + (versions ? versions.error : '未知錯誤'), 'error');
+                            return;
                         }
+                        const select = this.elements.versionHistorySelect;
+                        select.innerHTML = '';
+                        if (versions.length > 0) {
+                            versions.forEach(v => {
+                                const option = document.createElement('option');
+                                option.value = v.id;
+                                option.textContent = `${new Date(v.id).toLocaleString()} by ${v.user}`;
+                                select.appendChild(option);
+                            });
+                        } else {
+                            select.innerHTML = '<option>沒有歷史紀錄</option>';
+                        }
+                        this.showNotification('版本列表已更新', 'success');
                     })
-                    .withFailureHandler((error) => {
-                        this.showNotification('獲取版本列表失敗: ' + error.message, 'error');
-                    })
+                    .withFailureHandler((error) => this.showNotification('獲取版本列表失敗: ' + error.message, 'error'))
                     .getVersions();
             },
 
-            handleLoadVersion: function() {
-                const versionId = this.elements.versionHistorySelect.value;
-                if (!versionId || versionId === '沒有歷史紀錄' || versionId === '請點擊刷新按鈕獲取紀錄') {
+            handleLoadVersion: async function() {
+                const select = this.elements.versionHistorySelect;
+                const versionId = select.value;
+                if (!versionId || select.options[select.selectedIndex].text === '沒有歷史紀錄') {
                     this.showNotification('請選擇一個有效的版本', 'error');
                     return;
                 }
-
-                if (!confirm('確定要讀取這個歷史版本嗎？\n\n' + versionId + '\n\n這將會覆蓋您目前的本地資料，且無法復原。')) {
+                if (!await this.showConfirm(`確定要讀取這個歷史版本嗎？<br><br>${select.options[select.selectedIndex].text}<br><br>這將會覆蓋您目前的本地資料，且無法復原。`)) {
                     return;
                 }
-
                 this.showLoading('正在讀取歷史版本...');
                 google.script.run
                     .withSuccessHandler((data) => {
@@ -465,7 +623,7 @@
                             this.renderScheduleTable();
                             this.updateSyncStatus('offline', this.lastCloudModifiedTime);
                             this.showNotification('已在本地載入版本: ' + new Date(data.versionId).toLocaleString(), 'info');
-                            this.resetHistory(); // 重設歷史紀錄
+                            this.resetHistory();
                         } else {
                             this.showNotification('讀取版本失敗: ' + (data ? data.error : '未知錯誤'), 'error');
                         }
@@ -477,166 +635,14 @@
                     .getVersionData(versionId);
             },
 
-            addEventListeners: function() {
-                const els = this.elements;
-
-                els.loadingCancel.addEventListener('click', () => {
-                    if (this.loadingTimeout) {
-                        clearTimeout(this.loadingTimeout);
-                        this.loadingTimeout = null;
-                    }
-                    this.hideLoading();
-                    this.showNotification('已取消載入，使用本地數據', 'info');
-                    this.isConnecting = false;
-                });
-
-                els.addClassroomBtn.addEventListener('click', () => this.handleAddClassroom());
-                els.addClassBtn.addEventListener('click', () => this.handleAddClass());
-                els.saveToCloudBtn.addEventListener('click', () => {
-                    if (confirm('確定要將本地資料儲存到雲端嗎？這將會建立一個新的版本紀錄。')) {
-                        this.saveDataToServer();
-                    }
-                });
-                els.loadFromCloudBtn.addEventListener('click', () => {
-                    if (confirm('確定要從雲端讀取最新資料嗎？這將覆蓋本地的資料，且無法復原。')) {
-                        this.loadDataFromServer();
-                    }
-                });
-                els.clearAllBtn.addEventListener('click', () => this.handleClearAll());
-                els.refreshVersionsBtn.addEventListener('click', () => this.loadVersions());
-                els.loadVersionBtn.addEventListener('click', () => this.handleLoadVersion());
-
-                els.undoBtn.addEventListener('click', () => this.undo());
-                els.redoBtn.addEventListener('click', () => this.redo());
-
-                // Collapsible sections
-                els.toggleClassroomManager.addEventListener('click', (e) => {
-                    els.classroomManagerContent.classList.toggle('hidden');
-                    e.currentTarget.querySelector('svg').classList.toggle('rotate-180');
-                });
-
-                els.toggleVersionHistory.addEventListener('click', (e) => {
-                    els.versionHistoryContent.classList.toggle('hidden');
-                    e.currentTarget.querySelector('svg').classList.toggle('rotate-180');
-                });
-            },
-
-            showLoading: function(message = '載入中，請稍候...') {
-                this.elements.loadingText.textContent = message;
-                this.elements.loadingOverlay.style.display = 'flex';
-                if (this.loadingTimeout) {
-                    clearTimeout(this.loadingTimeout);
-                }
-                this.loadingTimeout = setTimeout(() => {
-                    this.hideLoading();
-                    this.showNotification('載入超時，使用本地數據', 'error');
-                    this.isConnecting = false;
-                }, 30000);
-            },
-
-            hideLoading: function() {
-                this.elements.loadingOverlay.style.display = 'none';
-                if (this.loadingTimeout) {
-                    clearTimeout(this.loadingTimeout);
-                    this.loadingTimeout = null;
-                }
-            },
-
-            updateSyncStatus: function(status, time) {
-                const els = this.elements;
-                const statusContainer = els.syncStatus;
-                let statusText = '';
-                let timeText = '';
-                let statusClass = '';
-
-                switch (status) {
-                    case 'syncing':
-                        statusText = '正在同步...';
-                        statusClass = 'syncing';
-                        break;
-                    case 'online':
-                        statusText = '資料已是最新';
-                        statusClass = 'online';
-                        if (time) {
-                            try {
-                                timeText = '雲端更新於: ' + new Date(time).toLocaleString();
-                            } catch (e) {
-                                timeText = '雲端更新於: 無效日期';
-                            }
-                        }
-                        break;
-                    case 'offline':
-                        statusText = '離線模式';
-                        statusClass = 'offline';
-                        if (this.lastCloudModifiedTime) {
-                           timeText = '雲端最後更新: ' + this.lastCloudModifiedTime.toLocaleString();
-                        }
-                        break;
-                    case 'error':
-                        statusText = '同步失敗';
-                        statusClass = 'error';
-                        timeText = '請檢查網路連線或稍後再試';
-                        break;
-                }
-
-                els.syncStatusText.textContent = statusText;
-                els.lastSyncTimeText.textContent = timeText;
-                statusContainer.className = 'sync-status ' + statusClass;
-            },
-
-            updateLastModifiedTime: function(time) {
-                if (time) {
-                    try {
-                        this.lastCloudModifiedTime = new Date(time);
-                    } catch (e) {
-                        console.error("解析雲端修改時間失敗:", e);
-                    }
-                } else {
-                    this.lastCloudModifiedTime = null;
-                }
-            },
-
-            showNotification: function(message, type = 'success', duration = 3000) {
-                const notification = this.elements.notification;
-                notification.textContent = message;
-                notification.className = 'notification ' + type;
-                notification.classList.add('show');
-                setTimeout(() => {
-                    notification.classList.remove('show');
-                }, duration);
-            },
-
             loadDataFromLocal: function() {
                 try {
-                    const savedClassrooms = localStorage.getItem('classrooms');
-                    const savedScheduleData = localStorage.getItem('scheduleData');
-                    const savedLastSyncTime = localStorage.getItem('lastSyncTime');
-
-                    if (savedClassrooms) {
-                        this.classrooms = JSON.parse(savedClassrooms) || [];
-                        console.log("從本地載入教室數據:", this.classrooms.length, "個教室");
-                    } else {
-                        this.classrooms = [];
-                        console.log("本地無教室數據");
-                    }
-
-                    if (savedScheduleData) {
-                        this.scheduleData = JSON.parse(savedScheduleData) || {};
-                        console.log("從本地載入課程數據");
-                    } else {
-                        this.scheduleData = {};
-                        console.log("本地無課程數據");
-                    }
-
-                    if (savedLastSyncTime) {
-                        this.lastSyncTime = new Date(savedLastSyncTime);
-                        console.log("上次同步時間:", this.lastSyncTime);
-                    }
+                    this.classrooms = JSON.parse(localStorage.getItem('classrooms')) || [];
+                    this.scheduleData = JSON.parse(localStorage.getItem('scheduleData')) || {};
+                    this.lastSyncTime = localStorage.getItem('lastSyncTime') ? new Date(localStorage.getItem('lastSyncTime')) : null;
                 } catch (e) {
                     console.error('從本地載入數據失敗:', e);
-                    this.classrooms = [];
-                    this.scheduleData = {};
-                    this.lastSyncTime = null;
+                    this.classrooms = []; this.scheduleData = {}; this.lastSyncTime = null;
                     this.showNotification("從本地載入數據失敗，數據可能已損壞", "error");
                 }
             },
@@ -646,532 +652,241 @@
                     localStorage.setItem('classrooms', JSON.stringify(this.classrooms || []));
                     localStorage.setItem('scheduleData', JSON.stringify(this.scheduleData || {}));
                     localStorage.setItem('app_version', this.APP_VERSION);
-                    if (this.lastSyncTime) {
-                        localStorage.setItem('lastSyncTime', this.lastSyncTime.toISOString());
-                    }
-                    console.log("數據已保存到本地存儲");
+                    if (this.lastSyncTime) localStorage.setItem('lastSyncTime', this.lastSyncTime.toISOString());
                 } catch (e) {
                     console.error("保存數據到本地失敗:", e);
-                    this.showNotification("保存數據失敗，可能是存儲空間不足", "error");
+                    this.showNotification("保存數據失敗，可能��存儲空間不足", "error");
                 }
             },
 
             loadDataFromServer: function() {
                 return new Promise((resolve, reject) => {
-                    if (this.isConnecting) {
-                        return reject(new Error("A sync operation is already in progress."));
-                    }
+                    if (this.isConnecting) return reject(new Error("A sync operation is already in progress."));
                     this.isConnecting = true;
                     this.showLoading('從雲端讀取數據...');
                     this.updateSyncStatus('syncing');
+                    [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
 
-                    this.elements.loadFromCloudBtn.disabled = true;
-                    this.elements.saveToCloudBtn.disabled = true;
-
-                    try {
-                        if (typeof google === 'undefined' || !google.script || !google.script.run) {
-                            console.error('google.script.run 不可用');
-                            setTimeout(() => {
-                                this.hideLoading();
-                                this.showNotification('無法連接到雲端，使用本地數據', 'info');
-                                this.isConnecting = false;
-                                this.elements.loadFromCloudBtn.disabled = false;
-                                this.elements.saveToCloudBtn.disabled = false;
-                                this.updateSyncStatus('offline');
-                                reject(new Error('google.script.run is not available.'));
-                            }, 1000);
-                            return;
-                        }
-
-                        google.script.run
-                            .withSuccessHandler((result) => {
-                                try {
-                                    if (!result || result.error) {
-                                        throw new Error(result ? result.error : '從服務器獲取的數據為空');
-                                    }
-                                    this.classrooms = result.classrooms || [];
-                                    this.scheduleData = result.scheduleData || {};
-                                    this.updateLastModifiedTime(result.lastModified);
-                                    this.lastSyncTime = new Date();
-                                    this.saveDataToLocal();
-                                    this.updateClassroomList();
-                                    this.renderScheduleTable();
-                                    this.updateSyncStatus('online', result.lastModified);
-                                    this.showNotification('從雲端讀取數據成功！');
-                                    this.resetHistory(); // 重設歷史紀錄
-                                    resolve(result);
-                                } catch (error) {
-                                    this.showNotification('處理數據失敗: ' + error.message, 'error');
-                                    this.updateSyncStatus('error');
-                                    reject(error);
-                                } finally {
-                                    this.hideLoading();
-                                    this.isConnecting = false;
-                                    this.elements.loadFromCloudBtn.disabled = false;
-                                    this.elements.saveToCloudBtn.disabled = false;
-                                }
-                            })
-                            .withFailureHandler((error) => {
-                                this.showNotification('從雲端讀取數據失敗: ' + error.message, 'error');
-                                this.updateSyncStatus('error');
-                                this.hideLoading();
-                                this.isConnecting = false;
-                                this.elements.loadFromCloudBtn.disabled = false;
-                                this.elements.saveToCloudBtn.disabled = false;
-                                reject(error);
-                            })
-                            .getData();
-                    } catch (error) {
-                        this.showNotification('連接失敗: ' + error.message, 'error');
-                        this.updateSyncStatus('error');
-                        this.hideLoading();
-                        this.isConnecting = false;
-                        this.elements.loadFromCloudBtn.disabled = false;
-                        this.elements.saveToCloudBtn.disabled = false;
-                        reject(error);
+                    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+                        return setTimeout(() => this.handleApiError(reject, new Error('google.script.run is not available.')), 1000);
                     }
+
+                    google.script.run
+                        .withSuccessHandler((result) => {
+                            this.handleApiSuccess(() => {
+                                if (!result || result.error) throw new Error(result ? result.error : '從服務器獲取的數據為空');
+                                this.classrooms = result.classrooms || [];
+                                this.scheduleData = result.scheduleData || {};
+                                this.updateLastModifiedTime(result.lastModified);
+                                this.lastSyncTime = new Date();
+                                this.saveDataToLocal();
+                                this.updateClassroomList();
+                                this.renderScheduleTable();
+                                this.updateSyncStatus('online', result.lastModified);
+                                this.showNotification('從雲端讀取數據成功！');
+                                this.resetHistory();
+                                resolve(result);
+                            }, reject);
+                        })
+                        .withFailureHandler((error) => this.handleApiError(reject, error, '從雲端讀取數據失敗'))
+                        .getData();
                 });
             },
 
             saveDataToServer: function() {
                 if (this.isConnecting) return;
                 this.isConnecting = true;
-                this.showLoading('保存數據到 Google 試算表...');
+                this.showLoading('正在檢查雲端資料版本...');
                 this.updateSyncStatus('syncing');
+                [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
 
-                // 禁用按鈕防止重複點擊
-                this.elements.loadFromCloudBtn.disabled = true;
-                this.elements.saveToCloudBtn.disabled = true;
+                if (typeof google === 'undefined' || !google.script || !google.script.run) {
+                    return setTimeout(() => this.handleApiError(() => {}, new Error('google.script.run is not available.')), 1000);
+                }
 
+                google.script.run
+                    .withSuccessHandler(latestData => {
+                        if (latestData.error) throw new Error(latestData.error);
+                        const serverLastModified = latestData.lastModified ? new Date(latestData.lastModified).getTime() : null;
+                        const localLastModified = this.lastCloudModifiedTime ? this.lastCloudModifiedTime.getTime() : null;
+
+                        if (serverLastModified === localLastModified) {
+                            this.showLoading('版本一致，正在保存數據...');
+                            const dataToSend = {
+                                classrooms: JSON.parse(JSON.stringify(this.classrooms || [])),
+                                scheduleData: JSON.parse(JSON.stringify(this.scheduleData || {}))
+                            };
+                            google.script.run
+                                .withSuccessHandler(saveResult => {
+                                    this.handleApiSuccess(() => {
+                                        if (!saveResult || !saveResult.success) throw new Error(saveResult?.error || '儲存時發生未知錯誤');
+                                        this.lastSyncTime = new Date();
+                                        this.updateLastModifiedTime(saveResult.lastModified);
+                                        this.updateSyncStatus('online', saveResult.lastModified);
+                                        this.showNotification('數據已成功儲存到雲端！');
+                                        this.saveDataToLocal();
+                                    });
+                                })
+                                .withFailureHandler(error => this.handleApiError(() => {}, error, '數據儲存失敗'))
+                                .saveData(dataToSend);
+                        } else {
+                            this.handleApiSuccess(() => {
+                                this.updateSyncStatus('error');
+                                const conflictMessage = '儲存失敗！雲端資料已被其他人修改。<br><br>為避免覆蓋他人工作，請先「從雲端讀取資料」同步後，再重新進行您的變更。';
+                                this.showConfirm(conflictMessage, true); // Only show OK button
+                            });
+                        }
+                    })
+                    .withFailureHandler(error => this.handleApiError(() => {}, error, '檢查雲端版本失敗'))
+                    .getData();
+            },
+
+            handleApiSuccess: function(logic, reject) {
                 try {
-                    console.log("嘗試保存數據到 Google 試算表...");
-                    const dataToSend = {
-                        classrooms: JSON.parse(JSON.stringify(this.classrooms || [])),
-                        scheduleData: JSON.parse(JSON.stringify(this.scheduleData || {}))
-                    };
-                    console.log("要保存的數據 (部分):");
-
-                    if (typeof google === 'undefined' || !google.script || !google.script.run) {
-                        console.error('google.script.run 不可用，可能是在本地環境運行');
-                        setTimeout(() => {
-                            this.hideLoading();
-                            this.showNotification('無法連接到雲端，使用本地數據', 'info');
-                            this.isConnecting = false;
-                            this.elements.loadFromCloudBtn.disabled = false;
-                            this.elements.saveToCloudBtn.disabled = false;
-                            this.updateSyncStatus(); // 更新為本地模式
-                        }, 1000);
-                        return;
-                    }
-
-                    google.script.run
-                        .withSuccessHandler((result) => {
-                            console.log("Google 試算表保存結果:", result);
-                            if (result && result.success) {
-                                this.lastSyncTime = new Date();
-                                this.updateLastModifiedTime(result.lastModified);
-                                this.updateSyncStatus('online', result.lastModified);
-                                this.showNotification('數據已成功儲存到雲端！');
-                                this.saveDataToLocal();
-                            } else {
-                                throw new Error(result && result.error ? result.error : '未知錯誤');
-                            }
-                            this.hideLoading();
-                            this.isConnecting = false;
-                            this.elements.loadFromCloudBtn.disabled = false;
-                            this.elements.saveToCloudBtn.disabled = false;
-                        })
-                        .withFailureHandler((error) => {
-                            console.error('數據同步失敗:', error);
-                            this.showNotification('數據儲存失敗: ' + (error.message || error), 'error');
-                            this.updateSyncStatus('error');
-                            this.hideLoading();
-                            this.isConnecting = false;
-                            this.elements.loadFromCloudBtn.disabled = false;
-                            this.elements.saveToCloudBtn.disabled = false;
-                        })
-                        .saveData(dataToSend);
+                    logic();
                 } catch (error) {
-                    console.error('調用 Google Apps Script 失敗:', error);
-                    this.showNotification('連接失敗: ' + (error.message || '未知錯誤'), 'error');
+                    this.showNotification('處理數據失敗: ' + error.message, 'error');
+                    this.updateSyncStatus('error');
+                    if (reject) reject(error);
+                } finally {
                     this.hideLoading();
                     this.isConnecting = false;
-                    this.elements.loadFromCloudBtn.disabled = false;
-                    this.elements.saveToCloudBtn.disabled = false;
-                    this.updateSyncStatus('error');
+                    [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
                 }
             },
 
-            sortClassrooms: function(classroomList) {
-                try {
-                    if (!Array.isArray(classroomList)) {
-                        console.error('sortClassrooms: classroomList 不是數組', classroomList);
-                        return [];
-                    }
-                    return [...classroomList].sort((a, b) => {
-                        const numA = parseInt((a.match(/\d+/) || ['0'])[0]);
-                        const numB = parseInt((b.match(/\d+/) || ['0'])[0]);
-                        const hundredsA = Math.floor(numA / 100);
-                        const hundredsB = Math.floor(numB / 100);
-                        const remainderA = numA % 100;
-                        const remainderB = numB % 100;
-                        if (hundredsA !== hundredsB) {
-                            return hundredsB - hundredsA;
-                        }
-                        return remainderA - remainderB;
-                    });
-                } catch (e) {
-                    console.error('排序教室失敗:', e);
-                    return classroomList || [];
+            handleApiError: function(reject, error, message = '無法連接到雲端') {
+                this.showNotification(`${message}: ${error.message}`, 'error');
+                this.updateSyncStatus('error');
+                this.hideLoading();
+                this.isConnecting = false;
+                [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
+                if (reject) reject(error);
+            },
+
+            // --- UI & Rendering ---
+            showLoading: function(message = '載入中，請稍候...') {
+                this.elements.loadingText.textContent = message;
+                this.elements.loadingOverlay.style.display = 'flex';
+                if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
+                this.loadingTimeout = setTimeout(() => {
+                    this.hideLoading();
+                    this.showNotification('載入超時，使用本地數據', 'error');
+                    this.isConnecting = false;
+                }, 30000);
+            },
+
+            hideLoading: function() {
+                this.elements.loadingOverlay.style.display = 'none';
+                if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
+            },
+
+            showConfirm: function(message, isAlert = false) {
+                return new Promise((resolve) => {
+                    this.elements.confirmText.innerHTML = message;
+                    this.elements.confirmCancel.style.display = isAlert ? 'none' : 'inline-block';
+                    this.elements.confirmModal.style.display = 'flex';
+
+                    const okHandler = () => {
+                        cleanup();
+                        resolve(true);
+                    };
+
+                    const cancelHandler = () => {
+                        cleanup();
+                        resolve(false);
+                    };
+
+                    const cleanup = () => {
+                        this.elements.confirmOk.removeEventListener('click', okHandler);
+                        this.elements.confirmCancel.removeEventListener('click', cancelHandler);
+                        this.elements.confirmModal.style.display = 'none';
+                    };
+
+                    this.elements.confirmOk.addEventListener('click', okHandler, { once: true });
+                    this.elements.confirmCancel.addEventListener('click', cancelHandler, { once: true });
+                });
+            },
+
+            updateSyncStatus: function(status, time) {
+                const els = this.elements;
+                let statusText = '', timeText = '', statusClass = '';
+                switch (status) {
+                    case 'syncing': statusText = '正在同步...'; statusClass = 'syncing'; break;
+                    case 'online': statusText = '資料已是最新'; statusClass = 'online'; if (time) timeText = '雲端更新於: ' + new Date(time).toLocaleString(); break;
+                    case 'offline': statusText = '離線模式'; statusClass = 'offline'; if (this.lastCloudModifiedTime) timeText = '雲端最後更新: ' + this.lastCloudModifiedTime.toLocaleString(); break;
+                    case 'error': statusText = '同步失敗'; statusClass = 'error'; timeText = '請檢查網路連線或稍後再試'; break;
                 }
+                els.syncStatusText.textContent = statusText;
+                els.lastSyncTimeText.textContent = timeText;
+                els.syncStatus.className = 'sync-status ' + statusClass;
+            },
+
+            updateLastModifiedTime: function(time) {
+                try { this.lastCloudModifiedTime = time ? new Date(time) : null; } 
+                catch (e) { console.error("解析雲端修改時間失敗:", e); this.lastCloudModifiedTime = null; }
+            },
+
+            showNotification: function(message, type = 'success', duration = 3000) {
+                const notification = this.elements.notification;
+                notification.innerHTML = message;
+                notification.className = 'notification ' + type;
+                notification.classList.add('show');
+                setTimeout(() => notification.classList.remove('show'), duration);
             },
 
             updateClassroomList: function() {
                 try {
-                    if (!Array.isArray(this.classrooms)) {
-                        console.error('classrooms 不是數組:', this.classrooms);
-                        this.classrooms = [];
-                    }
-
                     const els = this.elements;
                     els.classroomList.innerHTML = '';
                     els.classClassroomSelect.innerHTML = '';
-
                     const sortedClassrooms = this.sortClassrooms(this.classrooms);
-
-                    sortedClassrooms.forEach((classroom) => {
+                    sortedClassrooms.forEach(classroom => {
                         const li = document.createElement('li');
                         li.className = 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded';
-                        
-                        const span = document.createElement('span');
-                        span.textContent = classroom;
-
-                        const button = document.createElement('button');
-                        button.className = 'delete-classroom text-red-600 hover:text-red-800';
-                        button.setAttribute('data-classroom', classroom);
-                        button.innerHTML = '\n                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />\n                            </svg>\n                        '; // SVG 是安全的
-
-                        li.appendChild(span);
-                        li.appendChild(button);
+                        li.innerHTML = `<span>${classroom}</span><button class="delete-classroom text-red-600 hover:text-red-800" data-classroom="${classroom}"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>`;
                         els.classroomList.appendChild(li);
-
                         const option = document.createElement('option');
-                        option.value = classroom;
-                        option.textContent = classroom;
+                        option.value = option.textContent = classroom;
                         els.classClassroomSelect.appendChild(option);
                     });
-
-                    // 使用事件委託來處理刪除教室按鈕的點擊事件
-                    els.classroomList.removeEventListener('click', this.handleDeleteClassroomDelegate); // 移除舊的監聽器
-                    this.handleDeleteClassroomDelegate = (event) => { // 創建一個新的函數實例
-                        const btn = event.target.closest('.delete-classroom');
-                        if (btn) {
-                            const classroom = btn.getAttribute('data-classroom');
-                            // 刪除教室
-                            const index = this.classrooms.indexOf(classroom);
-                            if (index !== -1) {
-                                this.classrooms.splice(index, 1);
-                            }
-                            // 刪除相關的課程數據
-                            delete this.scheduleData[classroom];
-                            // 更新 UI
-                            this.updateClassroomList();
-                            this.renderScheduleTable();
-                            this.saveDataToLocal();
-                            this.showNotification('已刪除教室: ' + classroom);
-                            this.saveState();
-                        }
-                    };
-                    els.classroomList.addEventListener('click', this.handleDeleteClassroomDelegate);
                 } catch (e) {
                     console.error('更新教室列表失敗:', e);
                     this.showNotification('更新教室列表失敗', 'error');
                 }
             },
 
-            checkTimeConflict: function(classroom, day, newClass, excludeIndex = -1) {
-                try {
-                    if (!this.scheduleData[classroom] || !this.scheduleData[classroom][day]) {
-                        return false;
-                    }
-                    const newStart = this.timeToMinutes(newClass.timeStart);
-                    const newEnd = this.timeToMinutes(newClass.timeEnd);
-                    return this.scheduleData[classroom][day].some((existingClass, index) => {
-                        if (index === excludeIndex) return false;
-                        const existingStart = this.timeToMinutes(existingClass.timeStart);
-                        const existingEnd = this.timeToMinutes(existingClass.timeEnd);
-                        return (newStart < existingEnd && newEnd > existingStart);
-                    });
-                } catch (e) {
-                    console.error('檢查時間衝突失敗:', e);
-                    return false;
-                }
-            },
-
-            timeToMinutes: function(timeStr) {
-                try {
-                    const [hours, minutes] = timeStr.split(':').map(Number);
-                    return hours * 60 + minutes;
-                } catch (e) {
-                    console.error('時間轉換失敗:', e, timeStr);
-                    return 0;
-                }
-            },
-
-            minutesToTime: function(minutes) {
-                try {
-                    const hours = Math.floor(minutes / 60);
-                    const mins = minutes % 60;
-                    return hours.toString().padStart(2, '0') + ':' + mins.toString().padStart(2, '0');
-                } catch (e) {
-                    console.error('分鐘轉換為時間失敗:', e);
-                    return '00:00';
-                }
-            },
-
-            formatTime: function(timeStr) {
-                try {
-                    if (!timeStr) return '00:00';
-                    timeStr = timeStr.trim();
-                    if (this.TIME_REGEX.test(timeStr)) {
-                        const [hours, minutes] = timeStr.split(':');
-                        return hours.padStart(2, '0') + ':' + minutes;
-                    }
-                    const parts = timeStr.split(':');
-                    if (parts.length === 2) {
-                        let hours = parseInt(parts[0]);
-                        let minutes = parseInt(parts[1]);
-                        if (isNaN(hours) || isNaN(minutes)) {
-                            return '00:00';
-                        }
-                        hours = Math.max(0, Math.min(23, hours));
-                        minutes = Math.max(0, Math.min(59, minutes));
-                        return hours.toString().padStart(2, '0') + ':' + minutes.toString().padStart(2, '0');
-                    }
-                    return '00:00';
-                } catch (e) {
-                    console.error('格式化時間失敗:', e);
-                    return '00:00';
-                }
-            },
-
             renderScheduleTable: function() {
                 try {
-                    if (!this.scheduleData || typeof this.scheduleData !== 'object') {
-                        console.error('scheduleData 無效:', this.scheduleData);
-                        this.scheduleData = {};
-                    }
-                    if (!Array.isArray(this.classrooms)) {
-                        console.error('classrooms 不是數組:', this.classrooms);
-                        this.classrooms = [];
-                    }
-
                     this.elements.scheduleBody.innerHTML = '';
-
-                    const classroomsWithSchedule = new Set([
-                        ...this.classrooms,
-                        ...Object.keys(this.scheduleData)
-                    ]);
+                    const classroomsWithSchedule = new Set([...this.classrooms, ...Object.keys(this.scheduleData)]);
                     const sortedClassrooms = this.sortClassrooms(Array.from(classroomsWithSchedule));
-
                     sortedClassrooms.forEach(classroom => {
                         const tr = document.createElement('tr');
-                        const tdClassroom = document.createElement('td');
-                        tdClassroom.className = 'border border-gray-300 p-2 font-medium bg-gray-100';
-                        tdClassroom.textContent = classroom;
-                        tr.appendChild(tdClassroom);
-
+                        tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100">${classroom}</td>`;
                         for (let day = 0; day < 7; day++) {
                             const td = document.createElement('td');
                             td.className = 'border border-gray-300 p-2 schedule-cell align-top';
-                            td.setAttribute('data-classroom', classroom);
-                            td.setAttribute('data-day', day);
-
-                            const classes = this.scheduleData[classroom]?.[day] || [];
-                            classes.sort((a, b) => this.timeToMinutes(a.timeStart) - this.timeToMinutes(b.timeStart));
-
+                            td.dataset.classroom = classroom;
+                            td.dataset.day = day;
+                            const classes = (this.scheduleData[classroom]?.[day] || []).sort((a, b) => this.timeToMinutes(a.timeStart) - this.timeToMinutes(b.timeStart));
                             classes.forEach((classItem, index) => {
-                                const colorClasses = ['bg-pastel-1', 'bg-pastel-2', 'bg-pastel-3', 'bg-pastel-4', 'bg-pastel-5', 'bg-pastel-6', 'bg-pastel-7'];
-                                const colorClass = colorClasses[index % colorClasses.length];
+                                const colorClass = ['bg-pastel-1', 'bg-pastel-2', 'bg-pastel-3', 'bg-pastel-4', 'bg-pastel-5', 'bg-pastel-6', 'bg-pastel-7'][index % 7];
                                 const hasConflict = this.checkTimeConflict(classroom, day, classItem, index);
-
                                 const classDiv = document.createElement('div');
-                                classDiv.className = 'class-item ' + colorClass + (hasConflict ? ' conflict' : '');
-                                classDiv.setAttribute('data-classroom', classroom);
-                                classDiv.setAttribute('data-day', day);
-                                classDiv.setAttribute('data-index', index);
-
-                                // 使用 textContent 避免 XSS
-                                const nameDiv = document.createElement('div');
-                                nameDiv.className = 'font-medium editable';
-                                nameDiv.setAttribute('data-field', 'name');
-                                nameDiv.setAttribute('data-classroom', classroom);
-                                nameDiv.setAttribute('data-day', day);
-                                nameDiv.setAttribute('data-index', index);
-                                nameDiv.textContent = classItem.name;
-
-                                const timeDiv = document.createElement('div');
-                                timeDiv.className = 'editable';
-                                timeDiv.setAttribute('data-field', 'time');
-                                timeDiv.setAttribute('data-classroom', classroom);
-                                timeDiv.setAttribute('data-day', day);
-                                timeDiv.setAttribute('data-index', index);
-                                timeDiv.textContent = classItem.timeStart + '-' + classItem.timeEnd;
-
-                                const teacherDiv = document.createElement('div');
-                                teacherDiv.className = 'editable';
-                                teacherDiv.setAttribute('data-field', 'teacher');
-                                teacherDiv.setAttribute('data-classroom', classroom);
-                                teacherDiv.setAttribute('data-day', day);
-                                teacherDiv.setAttribute('data-index', index);
-                                teacherDiv.textContent = '使用人: ' + classItem.teacher;
-
-                                const deleteSpan = document.createElement('span');
-                                deleteSpan.className = 'delete-btn';
-                                deleteSpan.setAttribute('data-classroom', classroom);
-                                deleteSpan.setAttribute('data-day', day);
-                                deleteSpan.setAttribute('data-index', index);
-                                deleteSpan.innerHTML = '×'; // 這個是安全的
-
-                                classDiv.appendChild(nameDiv);
-                                classDiv.appendChild(timeDiv);
-                                classDiv.appendChild(teacherDiv);
-                                classDiv.appendChild(deleteSpan);
-
+                                classDiv.className = `class-item ${colorClass} ${hasConflict ? 'conflict' : ''}`;
+                                classDiv.dataset.index = index;
+                                classDiv.innerHTML = `
+                                    <div class="font-medium editable" data-field="name">${classItem.name}</div>
+                                    <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
+                                    <div class="editable" data-field="teacher">${classItem.teacher}</div>
+                                    <span class="delete-btn" data-classroom="${classroom}" data-day="${day}" data-index="${index}">×</span>`;
                                 td.appendChild(classDiv);
                             });
                             tr.appendChild(td);
                         }
                         this.elements.scheduleBody.appendChild(tr);
                     });
-
-                    // 使用事件委託處理刪除課程和編輯字段的事件
-                    this.elements.scheduleBody.removeEventListener('click', this.handleDeleteClassDelegate);
-                    this.elements.scheduleBody.removeEventListener('dblclick', this.handleEditFieldDelegate);
-
-                    this.handleDeleteClassDelegate = (event) => {
-                        const btn = event.target.closest('.delete-btn');
-                        if (btn) {
-                            const classroom = btn.getAttribute('data-classroom');
-                            const day = parseInt(btn.getAttribute('data-day'));
-                            const index = parseInt(btn.getAttribute('data-index'));
-
-                            if (!this.scheduleData[classroom] || !this.scheduleData[classroom][day]) return;
-
-                            this.scheduleData[classroom][day].splice(index, 1);
-                            if (this.scheduleData[classroom][day].length === 0) {
-                                delete this.scheduleData[classroom][day];
-                            }
-                            if (Object.keys(this.scheduleData[classroom]).length === 0) {
-                                delete this.scheduleData[classroom];
-                            }
-                            this.renderScheduleTable();
-                            this.saveDataToLocal();
-                            this.showNotification('已刪除課程');
-                            this.saveState();
-                        }
-                    };
-                    this.elements.scheduleBody.addEventListener('click', this.handleDeleteClassDelegate);
-
-                    this.handleEditFieldDelegate = (e) => {
-                        const element = e.target.closest('.editable');
-                        if (!element) return;
-
-                        e.stopPropagation();
-                        const field = element.getAttribute('data-field');
-                        const classroom = element.getAttribute('data-classroom');
-                        const day = parseInt(element.getAttribute('data-day'));
-                        const index = parseInt(element.getAttribute('data-index'));
-
-                        const classItem = this.scheduleData[classroom]?.[day]?.[index];
-                        if (!classItem) return;
-
-                        let currentValue = '';
-                        switch(field) {
-                            case 'name':
-                                currentValue = classItem.name;
-                                break;
-                            case 'time':
-                                currentValue = classItem.timeStart + '-' + classItem.timeEnd;
-                                break;
-                            case 'teacher':
-                                currentValue = classItem.teacher;
-                                break;
-                        }
-
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.value = field === 'teacher' ? currentValue.replace('使用人: ', '') : currentValue;
-                        input.className = 'w-full p-1 border border-blue-500 rounded';
-
-                        element.innerHTML = '';
-                        element.appendChild(input);
-                        input.focus();
-                        input.select();
-
-                        const cleanup = () => {
-                            input.removeEventListener('blur', handleUpdate);
-                            input.removeEventListener('keydown', handleKeydown);
-                            this.renderScheduleTable(); // 確保恢復原狀
-                        };
-
-                        const handleUpdate = () => {
-                            let newValue = input.value.trim();
-                            let isValid = true;
-                            let tempClassItem = { ...classItem }; // 創建臨時副本進行驗證
-
-                            if (field === 'time') {
-                                const timeRangeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])-([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
-                                if (!timeRangeRegex.test(newValue)) {
-                                    this.showNotification('請輸入有效的時間格式 (HH:MM-HH:MM)！', 'error');
-                                    isValid = false;
-                                } else {
-                                    const [start, end] = newValue.split('-');
-                                    tempClassItem.timeStart = this.formatTime(start);
-                                    tempClassItem.timeEnd = this.formatTime(end);
-                                    if (this.timeToMinutes(tempClassItem.timeStart) >= this.timeToMinutes(tempClassItem.timeEnd)) {
-                                        this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
-                                        isValid = false;
-                                    }
-                                }
-                            } else if (field === 'name') {
-                                if (!newValue) {
-                                    this.showNotification('課程名稱不能為空！', 'error');
-                                    isValid = false;
-                                } else {
-                                    tempClassItem.name = newValue;
-                                }
-                            } else if (field === 'teacher') {
-                                tempClassItem.teacher = newValue;
-                            }
-
-                            if (isValid) {
-                                // 只有在驗證通過後才更新真實數據
-                                this.scheduleData[classroom][day][index] = tempClassItem;
-                                this.saveDataToLocal();
-                                this.showNotification('已更新課程資訊');
-                                this.saveState();
-                                cleanup();
-                            } else {
-                                // 驗證失敗，不移除監聽器，讓用戶可以繼續編輯或按Esc取消
-                            }
-                        };
-                        
-                        const handleKeydown = (e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleUpdate();
-                            } else if (e.key === 'Escape') {
-                                e.preventDefault();
-                                cleanup();
-                            }
-                        };
-
-                        input.addEventListener('blur', handleUpdate);
-                        input.addEventListener('keydown', handleKeydown);
-                    };
-                    this.elements.scheduleBody.addEventListener('dblclick', this.handleEditFieldDelegate);
-
                     this.setupDragAndDrop();
                 } catch (e) {
                     console.error('渲染課程表失敗:', e);
@@ -1182,44 +897,21 @@
             setupDragAndDrop: function() {
                 try {
                     document.querySelectorAll('.schedule-cell').forEach(cell => {
-                        new Sortable(cell, {
+                        if (cell.sortable) cell.sortable.destroy();
+                        cell.sortable = new Sortable(cell, {
                             group: 'classes',
                             animation: 150,
                             onEnd: (evt) => {
-                                const fromClassroom = evt.from.getAttribute('data-classroom');
-                                const fromDay = parseInt(evt.from.getAttribute('data-day'));
-                                const toClassroom = evt.to.getAttribute('data-classroom');
-                                const toDay = parseInt(evt.to.getAttribute('data-day'));
-                                const oldIndex = evt.oldDraggableIndex;
-                                const newIndex = evt.newDraggableIndex;
-
-                                // Atomically remove the item from the source array
-                                const [movedItem] = this.scheduleData[fromClassroom][fromDay].splice(oldIndex, 1);
-
-                                // Ensure the destination array exists
-                                if (!this.scheduleData[toClassroom]) {
-                                    this.scheduleData[toClassroom] = {};
-                                }
-                                if (!this.scheduleData[toClassroom][toDay]) {
-                                    this.scheduleData[toClassroom][toDay] = [];
-                                }
-
-                                // Add the item to the destination array at the new position
-                                this.scheduleData[toClassroom][toDay].splice(newIndex, 0, movedItem);
-
-                                // Clean up the source array if it's now empty
-                                if (this.scheduleData[fromClassroom][fromDay].length === 0) {
-                                    delete this.scheduleData[fromClassroom][fromDay];
-                                    if (Object.keys(this.scheduleData[fromClassroom]).length === 0) {
-                                        delete this.scheduleData[fromClassroom];
-                                    }
-                                }
-
-                                // Defer re-rendering to avoid conflicts, but save and notify immediately.
-                                setTimeout(() => {
-                                    this.renderScheduleTable();
-                                }, 0);
-                                
+                                const from = evt.from, to = evt.to;
+                                const fromClassroom = from.dataset.classroom, fromDay = parseInt(from.dataset.day);
+                                const toClassroom = to.dataset.classroom, toDay = parseInt(to.dataset.day);
+                                const [movedItem] = this.scheduleData[fromClassroom][fromDay].splice(evt.oldDraggableIndex, 1);
+                                if (!this.scheduleData[toClassroom]) this.scheduleData[toClassroom] = {};
+                                if (!this.scheduleData[toClassroom][toDay]) this.scheduleData[toClassroom][toDay] = [];
+                                this.scheduleData[toClassroom][toDay].splice(evt.newDraggableIndex, 0, movedItem);
+                                if (this.scheduleData[fromClassroom][fromDay].length === 0) delete this.scheduleData[fromClassroom][fromDay];
+                                if (Object.keys(this.scheduleData[fromClassroom]).length === 0) delete this.scheduleData[fromClassroom];
+                                this.renderScheduleTable();
                                 this.saveDataToLocal();
                                 this.showNotification('已移動課程');
                                 this.saveState();
@@ -1232,143 +924,85 @@
                 }
             },
 
+            // --- Business Logic & Actions ---
             handleAddClassroom: function() {
                 const classroomName = this.elements.classroomNameInput.value.trim();
-                if (classroomName && !this.classrooms.includes(classroomName)) {
-                    this.classrooms.push(classroomName);
-                    this.elements.classroomNameInput.value = '';
-                    this.updateClassroomList();
-                    this.renderScheduleTable();
-                    this.saveDataToLocal();
-                    this.showNotification('已新增教室: ' + classroomName);
-                    this.saveState();
-                } else if (this.classrooms.includes(classroomName)) {
+                if (!classroomName) return;
+                if (this.classrooms.includes(classroomName)) {
                     this.showNotification('此教室名稱已存在！', 'error');
+                    return;
                 }
+                this.classrooms.push(classroomName);
+                this.elements.classroomNameInput.value = '';
+                this.updateClassroomList();
+                this.renderScheduleTable();
+                this.saveDataToLocal();
+                this.showNotification('已新增教室: ' + classroomName);
+                this.saveState();
             },
 
             handleAddClass: function() {
                 const els = this.elements;
-                const classroom = els.classClassroomSelect.value;
-                const name = els.classNameInput.value.trim();
-                const teacher = els.classTeacherInput.value.trim();
-
-                const selectedDays = [];
-                els.dayCheckboxes.forEach(checkbox => {
-                    if (checkbox.checked) {
-                        selectedDays.push(parseInt(checkbox.value));
-                    }
-                });
-
-                if (!classroom) {
-                    this.showNotification('請選擇教室！', 'error');
+                const classroom = els.classClassroomSelect.value, name = els.classNameInput.value.trim();
+                const teacher = els.classTeacherInput.value.trim(), timeStart = els.classTimeStartInput.value.trim(), timeEnd = els.classTimeEndInput.value.trim();
+                const selectedDays = Array.from(els.dayCheckboxes).filter(cb => cb.checked).map(cb => parseInt(cb.value));
+                if (!classroom || selectedDays.length === 0 || !name || !this.TIME_REGEX.test(timeStart) || !this.TIME_REGEX.test(timeEnd)) {
+                    this.showNotification('請填寫所有必填欄位並確保時間格式正確！', 'error');
                     return;
                 }
-                if (selectedDays.length === 0) {
-                    this.showNotification('請至少選擇一個星期！', 'error');
-                    return;
-                }
-                if (!name) {
-                    this.showNotification('請輸入課程名稱！', 'error');
-                    return;
-                }
-
-                const timeStart = els.classTimeStartInput.value.trim();
-                const timeEnd = els.classTimeEndInput.value.trim();
-
-                if (!this.TIME_REGEX.test(timeStart) || !this.TIME_REGEX.test(timeEnd)) {
-                    this.showNotification('請輸入有效的時間格式 (HH:MM)！', 'error');
-                    return;
-                }
-                const formattedTimeStart = this.formatTime(timeStart);
-                const formattedTimeEnd = this.formatTime(timeEnd);
-                
+                const formattedTimeStart = this.formatTime(timeStart), formattedTimeEnd = this.formatTime(timeEnd);
                 if (this.timeToMinutes(formattedTimeStart) >= this.timeToMinutes(formattedTimeEnd)) {
                     this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
                     return;
                 }
-
                 const classItem = { name, timeStart: formattedTimeStart, timeEnd: formattedTimeEnd, teacher };
-
                 let hasConflictOccurred = false;
                 selectedDays.forEach(day => {
                     if (this.checkTimeConflict(classroom, day, classItem)) {
-                        this.showNotification('在 ' + classroom + ' 星期 ' + (day+1) + ' 有時間衝突！', 'info', 5000);
+                        this.showNotification(`在 ${classroom} 星期${'一二三四五六日'[day]} 有時間衝突！`, 'info', 5000);
                         hasConflictOccurred = true;
                     }
-
-                    if (!this.scheduleData[classroom]) {
-                        this.scheduleData[classroom] = {};
-                    }
-                    if (!this.scheduleData[classroom][day]) {
-                        this.scheduleData[classroom][day] = [];
-                    }
-                    this.scheduleData[classroom][day].push({...classItem});
+                    if (!this.scheduleData[classroom]) this.scheduleData[classroom] = {};
+                    if (!this.scheduleData[classroom][day]) this.scheduleData[classroom][day] = [];
+                    this.scheduleData[classroom][day].push({ ...classItem });
                 });
-
-                els.classNameInput.value = '';
-                els.classTeacherInput.value = '';
-                els.classTimeStartInput.value = '';
-                els.classTimeEndInput.value = '';
+                [els.classNameInput, els.classTeacherInput, els.classTimeStartInput, els.classTimeEndInput].forEach(el => el.value = '');
                 els.dayCheckboxes.forEach(checkbox => checkbox.checked = false);
-
                 this.renderScheduleTable();
                 this.saveDataToLocal();
-                if (!hasConflictOccurred) {
-                    this.showNotification('已新增課程');
-                }
+                if (!hasConflictOccurred) this.showNotification('已新增課程');
                 this.saveState();
             },
 
-            handleClearAll: function() {
-                if (confirm('確定要清除本地暫存資料嗎？此操作不可恢復！')) {
-                    try {
-                        console.log('開始清除所有本地數據');
-                        this.classrooms = [];
-                        this.scheduleData = {};
-                        this.lastSyncTime = null;
-                        this.updateLastModifiedTime(null); // 清除時間
-                        console.log('數據已清空，更新 UI');
-                        this.updateClassroomList();
-                        this.renderScheduleTable();
-                        this.updateSyncStatus('offline');
-                        console.log('保存空數據到本地');
-                        localStorage.removeItem('classrooms');
-                        localStorage.removeItem('scheduleData');
-                        localStorage.removeItem('lastSyncTime');
-                        this.showNotification('已清除本地暫存資料');
-                        this.resetHistory(); // 重設歷史紀錄
-                        console.log('所有本地數據已清除完成');
-                    } catch (error) {
-                        console.error('清除數據失敗:', error);
-                        this.showNotification('清除數據失敗: ' + (error.message || '未知錯誤'), 'error');
-                    }
+            handleClearAll: async function() {
+                if (await this.showConfirm('確定要清除所有本地暫存資料嗎？<br>此操作不可恢復！')) {
+                    this.classrooms = []; this.scheduleData = {}; this.lastSyncTime = null;
+                    this.updateLastModifiedTime(null);
+                    this.updateClassroomList();
+                    this.renderScheduleTable();
+                    this.updateSyncStatus('offline');
+                    localStorage.removeItem('classrooms');
+                    localStorage.removeItem('scheduleData');
+                    localStorage.removeItem('lastSyncTime');
+                    this.showNotification('已清除本地暫存資料');
+                    this.resetHistory();
                 }
             },
 
+            // --- History (Undo/Redo) ---
             saveState: function() {
-                // Clear the history after the current state
                 this.history = this.history.slice(0, this.historyIndex + 1);
-
-                // Save a deep copy of the current state
                 const currentState = {
                     classrooms: JSON.parse(JSON.stringify(this.classrooms)),
                     scheduleData: JSON.parse(JSON.stringify(this.scheduleData))
                 };
                 this.history.push(currentState);
                 this.historyIndex = this.history.length - 1;
-
-                // Limit history size
-                if (this.history.length > 50) {
-                    this.history.shift();
-                    this.historyIndex--;
-                }
-
+                if (this.history.length > 50) { this.history.shift(); this.historyIndex--; }
                 this.updateUndoRedoButtons();
             },
 
             resetHistory: function() {
-                console.log("重設復原/重做歷史紀錄。");
                 const initialState = {
                     classrooms: JSON.parse(JSON.stringify(this.classrooms)),
                     scheduleData: JSON.parse(JSON.stringify(this.scheduleData))
@@ -1397,17 +1031,66 @@
                 this.scheduleData = JSON.parse(JSON.stringify(state.scheduleData));
                 this.updateClassroomList();
                 this.renderScheduleTable();
-                this.saveDataToLocal(); // Also update local storage to be in sync
+                this.saveDataToLocal();
                 this.updateUndoRedoButtons();
             },
 
             updateUndoRedoButtons: function() {
                 this.elements.undoBtn.disabled = this.historyIndex <= 0;
                 this.elements.redoBtn.disabled = this.historyIndex >= this.history.length - 1;
-            }
-        };
+            },
 
-        document.addEventListener('DOMContentLoaded', () => App.init());
+            // --- Utility ---
+            sortClassrooms: function(classroomList) {
+                try {
+                    return [...classroomList].sort((a, b) => {
+                        const numA = parseInt((a.match(/\d+/) || ['0'])[0]);
+                        const numB = parseInt((b.match(/\d+/) || ['0'])[0]);
+                        const hundredsA = Math.floor(numA / 100);
+                        const hundredsB = Math.floor(numB / 100);
+                        if (hundredsA !== hundredsB) return hundredsB - hundredsA;
+                        return (numA % 100) - (numB % 100);
+                    });
+                } catch (e) {
+                    console.error('排序教室失敗:', e);
+                    return classroomList || [];
+                }
+            },
+
+            checkTimeConflict: function(classroom, day, newClass, excludeIndex = -1) {
+                if (!this.scheduleData[classroom]?.[day]) return false;
+                const newStart = this.timeToMinutes(newClass.timeStart);
+                const newEnd = this.timeToMinutes(newClass.timeEnd);
+                return this.scheduleData[classroom][day].some((existingClass, index) => {
+                    if (index === excludeIndex) return false;
+                    const existingStart = this.timeToMinutes(existingClass.timeStart);
+                    const existingEnd = this.timeToMinutes(existingClass.timeEnd);
+                    return newStart < existingEnd && newEnd > existingStart;
+                });
+            },
+
+            timeToMinutes: function(timeStr) {
+                try {
+                    const [hours, minutes] = timeStr.split(':').map(Number);
+                    return hours * 60 + minutes;
+                } catch (e) {
+                    console.error('時間轉換失敗:', e, timeStr);
+                    return 0;
+                }
+            },
+
+            formatTime: function(timeStr) {
+                if (!timeStr) return '00:00';
+                timeStr = timeStr.trim();
+                if (this.TIME_REGEX.test(timeStr)) {
+                    const [hours, minutes] = timeStr.split(':');
+                    return hours.padStart(2, '0') + ':' + minutes.padStart(2, '0');
+                }
+                return '00:00';
+            },
+        };
+        App.init();
+        window.App = App;
     })();
     </script>
 </body>
