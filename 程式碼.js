@@ -105,15 +105,7 @@ function saveData(data) {
     }
 
     const userEmail = Session.getActiveUser().getEmail();
-    let userName = userEmail;
-    try {
-      const person = People.People.get('people/me', {personFields: 'names'});
-      if (person.names && person.names.length > 0 && person.names[0].displayName) {
-        userName = person.names[0].displayName;
-      }
-    } catch (e) {
-      Logger.log(`無法獲取使用者姓名，將使用Email: ${e.message}`);
-    }
+    const userName = userEmail;
     
     const timestamp = new Date();
     const timestampISO = timestamp.toISOString();
