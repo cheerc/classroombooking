@@ -2,25 +2,14 @@
 (function() {
     // 將全局變數放入一個命名空間或對象，減少污染
     const App = {
-        APP_VERSION: '5.25',
+        APP_VERSION: '5.27',
         TIME_REGEX: /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/,
         WEEKDAYS: ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'],
         // A curated, visually distinct color palette
         COURSE_COLORS: [
-            '#A7C7E7', // Light Steel Blue
-            '#BEE7E8', // Light Cyan
-            '#C1E1C1', // Pale Green
-            '#FFD8A8', // Apricot
-            '#E6E6FA', // Lavender
-            '#FFDAC1', // Peach
-            '#F8C8DC', // Pastel Pink
-            '#D2B48C', // Tan
-            '#C8E6C9', // Light Green
-            '#B3E5FC', // Light Blue
-            '#D1C4E9', // Light Purple
-            '#FFCCBC', // Light Salmon
-            '#CFD8DC', // Blue Grey
-            '#F0F4C3', // Lime Peel
+            '#A7C7E7', '#BEE7E8', '#C1E1C1', '#FFD8A8', '#E6E6FA', 
+            '#FFDAC1', '#F8C8DC', '#D2B48C', '#C8E6C9', '#B3E5FC', 
+            '#D1C4E9', '#FFCCBC', '#CFD8DC', '#F0F4C3'
         ],
 
         classrooms: [],
@@ -32,6 +21,8 @@
         isConnecting: false,
         history: [],
         historyIndex: -1,
+        activeInlineForm: null,
+        originalSourceListElement: null, // New variable to track the original source list for drag-and-drop
         
         elements: {
             loadingOverlay: document.getElementById('loading-overlay'),
@@ -71,7 +62,6 @@
         },
 
         init: function() {
-            console.log("頁面初始化開始");
             this.renderDayCheckboxes();
             try {
                 this.loadDataFromLocal();
@@ -86,7 +76,6 @@
             this.addEventListeners();
             this.resetHistory();
 
-            console.log("頁面初始化完成，自動從雲端載入數據");
             setTimeout(() => {
                 this.loadDataFromServer().catch(error => {
                     console.warn("Initial data load failed:", error.message);
@@ -95,7 +84,6 @@
             }, 500);
         },
 
-        // --- Event Handling ---
         addEventListeners: function() {
             const els = this.elements;
             els.loadingCancel.addEventListener('click', () => {
@@ -131,7 +119,135 @@
             });
             els.classroomList.addEventListener('click', this.handleDeleteClassroomClick.bind(this));
             els.scheduleBody.addEventListener('click', this.handleScheduleBodyClick.bind(this));
-            els.scheduleBody.addEventListener('dblclick', this.handleEditFieldClick.bind(this));
+            els.scheduleBody.addEventListener('dblclick', this.handleScheduleBodyDoubleClick.bind(this));
+            document.addEventListener('click', this.handleDocumentClick.bind(this), true);
+            document.addEventListener('keydown', this.handleGlobalKeydown.bind(this)); // Add global keydown listener
+        },
+
+        handleGlobalKeydown: function(e) {
+            // Check for Ctrl/Cmd + Z (Undo)
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                this.undo();
+            }
+            // Check for Ctrl/Cmd + Y or Ctrl/Cmd + Shift + Z (Redo)
+            if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+                e.preventDefault();
+                this.redo();
+            }
+        },
+
+        handleDocumentClick: function(e) {
+            if (!this.activeInlineForm || e.target.closest('.inline-add-form')) {
+                return;
+            }
+            if (!this.activeInlineForm.isDirty()) {
+                this.activeInlineForm.close(true);
+            }
+        },
+
+        handleScheduleBodyDoubleClick: function(e) {
+            const editableElement = e.target.closest('.editable');
+            if (editableElement) {
+                this.handleEditFieldClick(e, editableElement);
+                return;
+            }
+            const cell = e.target.closest('.schedule-cell');
+            if (cell && !cell.querySelector('.inline-add-form') && !e.target.closest('.class-item')) {
+                this.handleEmptyCellDoubleClick(e, cell);
+            }
+        },
+
+        handleEmptyCellDoubleClick: async function(e, cell) {
+            if (this.activeInlineForm) {
+                const isClosed = await this.activeInlineForm.close();
+                if (!isClosed) return;
+            }
+            const classroom = cell.dataset.classroom;
+            const day = parseInt(cell.dataset.day);
+            if (!classroom || isNaN(day)) return;
+            const daySelectorHtml = this.WEEKDAYS.map((dayName, index) => `
+                <label>
+                    <input type="checkbox" class="inline-day-checkbox" value="${index}" ${index === day ? 'checked' : ''}>
+                    ${dayName.replace('星期', '')}
+                </label>
+            `).join('');
+            const formDiv = document.createElement('div');
+            formDiv.className = 'inline-add-form';
+            formDiv.innerHTML = `
+                <button title="取消" class="inline-add-cancel-btn">×</button> <!-- Moved here -->
+                <div class="inline-day-selector">${daySelectorHtml}</div>
+                <input type="text" placeholder="課程名稱" class="inline-input" name="name" required>
+                <div class="inline-time-inputs">
+                    <input type="time" class="inline-input" name="timeStart" required>
+                    <span>-</span>
+                    <input type="time" class="inline-input" name="timeEnd" required>
+                </div>
+                <input type="text" placeholder="使用人" class="inline-input" name="teacher">
+                <div class="inline-form-actions">
+                    <button title="儲存" class="save-inline">✓</button>
+                </div>
+            `;
+            cell.appendChild(formDiv);
+            formDiv.querySelector('input[name="name"]').focus();
+            const isDirty = () => {
+                return formDiv.querySelector('input[name="name"]').value.trim() !== '' ||
+                       formDiv.querySelector('input[name="timeStart"]').value.trim() !== '' ||
+                       formDiv.querySelector('input[name="timeEnd"]').value.trim() !== '' ||
+                       formDiv.querySelector('input[name="teacher"]').value.trim() !== '';
+            };
+            const closeHandler = async (force = false) => {
+                if (!force && isDirty()) {
+                    if (!await this.showConfirm('您有未儲存的變更，確定要捨棄嗎？')) {
+                        return false;
+                    }
+                }
+                formDiv.remove();
+                this.activeInlineForm = null;
+                return true;
+            };
+            this.activeInlineForm = { close: closeHandler, isDirty: isDirty };
+            const handleSave = () => {
+                const name = formDiv.querySelector('input[name="name"]').value.trim();
+                const timeStart = formDiv.querySelector('input[name="timeStart"]').value.trim();
+                const timeEnd = formDiv.querySelector('input[name="timeEnd"]').value.trim();
+                const teacher = formDiv.querySelector('input[name="teacher"]').value.trim();
+                const selectedDays = Array.from(formDiv.querySelectorAll('.inline-day-checkbox:checked')).map(cb => parseInt(cb.value));
+                if (!name) { this.showNotification('課程名稱不能為空！', 'error'); return; }
+                if (selectedDays.length === 0) { this.showNotification('請至少選擇一個星期！', 'error'); return; }
+                if (!timeStart || !timeEnd) { this.showNotification('請輸入完整的開始與結束時間！', 'error'); return; }
+                const formattedTimeStart = this.formatTime(timeStart);
+                const formattedTimeEnd = this.formatTime(timeEnd);
+                if (this.timeToMinutes(formattedTimeStart) >= this.timeToMinutes(formattedTimeEnd)) { this.showNotification('開始時間不能晚於或等於結束時間！', 'error'); return; }
+                let hasConflictOccurred = false;
+                if (!this.courseColorMap[name]) this.buildCourseColorMap();
+                selectedDays.forEach(selectedDay => {
+                    const classItem = { id: this.generateUniqueId(), name, timeStart: formattedTimeStart, timeEnd: formattedTimeEnd, teacher };
+                    if (this.checkTimeConflict(classroom, selectedDay, classItem)) {
+                        this.showNotification(`在 ${classroom} ${this.WEEKDAYS[selectedDay]} 有時間衝突！`, 'info', 5000);
+                        hasConflictOccurred = true;
+                    }
+                    if (!this.scheduleData[classroom]) this.scheduleData[classroom] = {};
+                    if (!this.scheduleData[classroom][selectedDay]) this.scheduleData[classroom][selectedDay] = [];
+                    const daySchedule = this.scheduleData[classroom][selectedDay];
+                    const insertIndex = daySchedule.findIndex(item => this.timeToMinutes(item.timeStart) > this.timeToMinutes(classItem.timeStart));
+                    daySchedule.splice(insertIndex === -1 ? daySchedule.length : insertIndex, 0, classItem);
+                });
+                if (selectedDays.length > 0) {
+                    if (!hasConflictOccurred) this.showNotification('已新增課程');
+                    this.renderScheduleTable();
+                    this.saveDataToLocal();
+                    this.saveState();
+                }
+                formDiv.remove();
+                this.activeInlineForm = null;
+            };
+            formDiv.querySelector('.save-inline').addEventListener('click', handleSave);
+            formDiv.querySelector('.inline-add-cancel-btn').addEventListener('click', () => closeHandler()); // Updated event listener
+            formDiv.addEventListener('keydown', (evt) => {
+                if (evt.key === 'Enter') { evt.preventDefault(); handleSave(); } 
+                else if (evt.key === 'Escape') { evt.preventDefault(); closeHandler(); }
+            });
         },
 
         handleScheduleBodyClick: function(event) {
@@ -160,31 +276,30 @@
             }
         },
 
-        handleDeleteClassClick: function(event, btn) {
+        handleDeleteClassClick: async function(event, btn) {
             const classElement = btn.closest('.class-item');
             const classId = classElement.dataset.id;
             const classroom = btn.dataset.classroom;
             const day = parseInt(btn.dataset.day);
-
-            if (!this.scheduleData[classroom] || !this.scheduleData[classroom][day]) return;
-            
-            const classIndex = this.scheduleData[classroom][day].findIndex(c => c.id === classId);
-            if (classIndex > -1) {
-                this.scheduleData[classroom][day].splice(classIndex, 1);
-                if (this.scheduleData[classroom][day].length === 0) {
-                    delete this.scheduleData[classroom][day];
+            const className = classElement.querySelector('[data-field="name"]').textContent;
+            if (await this.showConfirm(`確定要刪除課程 "${className}" 嗎？`)) {
+                if (!this.scheduleData[classroom] || !this.scheduleData[classroom][day]) return;
+                const classIndex = this.scheduleData[classroom][day].findIndex(c => c.id === classId);
+                if (classIndex > -1) {
+                    this.scheduleData[classroom][day].splice(classIndex, 1);
+                    if (this.scheduleData[classroom][day].length === 0) {
+                        delete this.scheduleData[classroom][day];
+                    }
+                    this.renderScheduleTable();
+                    this.showNotification('已刪除課程');
+                    this.saveDataToLocal();
+                    this.saveState();
                 }
-                
-                this.renderScheduleTable(); // Re-render to ensure consistency
-                this.showNotification('已刪除課程');
-                this.saveDataToLocal();
-                this.saveState();
             }
         },
 
-        handleEditFieldClick: function(e) {
-            const element = e.target.closest('.editable');
-            if (!element || element.querySelector('input')) return;
+        handleEditFieldClick: function(e, element) {
+            if (element.querySelector('input')) return;
             e.stopPropagation();
 
             const field = element.dataset.field;
@@ -196,7 +311,84 @@
             if (!classItem) return;
 
             const originalName = classItem.name;
-            let currentValue = field === 'name' ? classItem.name : (field === 'time' ? `${classItem.timeStart}-${classItem.timeEnd}` : classItem.teacher);
+            const originalTeacher = classItem.teacher;
+            let currentValue = classItem[field];
+            if (field === 'time') {
+                currentValue = `${classItem.timeStart}-${classItem.timeEnd}`;
+            }
+            
+            if (field === 'time') {
+                const timeStartInput = document.createElement('input');
+                timeStartInput.type = 'time';
+                timeStartInput.value = classItem.timeStart;
+                timeStartInput.className = 'inline-input';
+                
+                const timeEndInput = document.createElement('input');
+                timeEndInput.type = 'time';
+                timeEndInput.value = classItem.timeEnd;
+                timeEndInput.className = 'inline-input';
+
+                const timeContainer = document.createElement('div');
+                timeContainer.className = 'inline-time-inputs';
+                timeContainer.appendChild(timeStartInput);
+                timeContainer.appendChild(document.createTextNode(' - '));
+                timeContainer.appendChild(timeEndInput);
+                
+                element.innerHTML = '';
+                element.appendChild(timeContainer);
+                timeStartInput.focus();
+
+                const cleanup = (isSuccess) => {
+                    timeStartInput.removeEventListener('blur', blurHandler);
+                    timeEndInput.removeEventListener('blur', blurHandler);
+                    timeContainer.removeEventListener('keydown', handleKeydown);
+                    if (!isSuccess) {
+                       this.renderScheduleTable();
+                    }
+                };
+
+                const handleUpdate = () => {
+                    const newStart = this.formatTime(timeStartInput.value);
+                    const newEnd = this.formatTime(timeEndInput.value);
+
+                    if (this.timeToMinutes(newStart) >= this.timeToMinutes(newEnd)) {
+                        this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
+                        cleanup(false);
+                        return;
+                    }
+                    
+                    classItem.timeStart = newStart;
+                    classItem.timeEnd = newEnd;
+                    
+                    this.renderScheduleTable();
+                    this.showNotification('已更新課程資訊');
+                    this.saveDataToLocal();
+                    this.saveState();
+                };
+
+                const handleKeydown = (e) => {
+                    if (e.key === 'Enter') { 
+                        e.preventDefault(); 
+                        timeEndInput.blur();
+                    } else if (e.key === 'Escape') { 
+                        e.preventDefault(); 
+                        cleanup(false); 
+                    }
+                };
+
+                const blurHandler = (e) => {
+                    if (e.relatedTarget === timeStartInput || e.relatedTarget === timeEndInput) {
+                        return;
+                    }
+                    handleUpdate();
+                };
+
+                timeStartInput.addEventListener('blur', blurHandler);
+                timeEndInput.addEventListener('blur', blurHandler);
+                timeContainer.addEventListener('keydown', handleKeydown);
+                return;
+            }
+
             const input = document.createElement('input');
             input.type = 'text';
             input.value = currentValue;
@@ -210,53 +402,64 @@
                 input.removeEventListener('blur', handleUpdate);
                 input.removeEventListener('keydown', handleKeydown);
                 if (!isSuccess) {
-                   element.innerHTML = currentValue;
+                   this.renderScheduleTable();
                 }
             };
 
-            const handleUpdate = () => {
+            const handleUpdate = async () => {
                 let newValue = input.value.trim();
-                let isValid = true;
                 
-                if (field === 'time') {
-                    const timeRangeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])-([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
-                    if (!timeRangeRegex.test(newValue)) {
-                        this.showNotification('請輸入有效的時間格式 (HH:MM-HH:MM)！', 'error');
-                        isValid = false;
-                    } else {
-                        const [start, end] = newValue.split('-');
-                        const formattedStart = this.formatTime(start);
-                        const formattedEnd = this.formatTime(end);
-                        if (this.timeToMinutes(formattedStart) >= this.timeToMinutes(formattedEnd)) {
-                            this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
-                            isValid = false;
-                        } else {
-                            classItem.timeStart = formattedStart;
-                            classItem.timeEnd = formattedEnd;
-                        }
-                    }
-                } else if (field === 'name' && !newValue) {
-                    this.showNotification('課程名稱不能為空！', 'error');
-                    isValid = false;
-                } else {
-                    classItem[field] = newValue;
+                if (newValue === currentValue) {
+                    cleanup(true);
+                    this.renderScheduleTable();
+                    return;
                 }
 
-                if (isValid) {
-                    if (field === 'name' && newValue !== originalName) {
-                        this.buildCourseColorMap();
-                    }
-                    this.renderScheduleTable();
-                    this.showNotification('已更新課程資訊');
-                    this.saveDataToLocal();
-                    this.saveState();
-                } else {
+                if (field === 'name' && !newValue) {
+                    this.showNotification('課程名稱不能為空！', 'error');
                     cleanup(false);
+                    return;
                 }
+
+                if (field === 'name') {
+                    const otherOccurrences = this.countNameOccurrences(originalName, classId);
+                    if (otherOccurrences > 0) {
+                        const confirmAll = await this.showConfirm(`找到 ${otherOccurrences} 個其他名為 "${originalName}" 的課程。<br>要全部一起改名為 "${newValue}" 嗎？`);
+                        if (confirmAll) {
+                            this.updateAllNameOccurrences(originalName, newValue);
+                        } else {
+                            classItem.name = newValue;
+                        }
+                    } else {
+                        classItem.name = newValue;
+                    }
+                    this.buildCourseColorMap();
+                } else if (field === 'teacher') {
+                    const otherOccurrences = this.countTeacherOccurrences(originalName, originalTeacher, classId);
+                    if (otherOccurrences > 0) {
+                        const confirmAll = await this.showConfirm(`找到 ${otherOccurrences} 堂其他由 "${originalTeacher}" 上的 "${originalName}" 課程。<br>要將使用人一起變更為 "${newValue}" 嗎？`);
+                        if (confirmAll) {
+                            this.updateAllTeacherOccurrences(originalName, originalTeacher, newValue);
+                        }
+                    } else {
+                        classItem.teacher = newValue;
+                    }
+                }
+
+                this.renderScheduleTable();
+                this.showNotification('已更新課程資訊');
+                this.saveDataToLocal();
+                this.saveState();
             };
+
             const handleKeydown = (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); input.blur(); } 
-                else if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+                if (e.key === 'Enter') { 
+                    e.preventDefault(); 
+                    input.blur(); 
+                } else if (e.key === 'Escape') { 
+                    e.preventDefault(); 
+                    cleanup(false); 
+                }
             };
             input.addEventListener('blur', handleUpdate);
             input.addEventListener('keydown', handleKeydown);
@@ -401,7 +604,7 @@
                     const serverLastModified = latestData.lastModified ? new Date(latestData.lastModified).getTime() : null;
                     const localLastModified = this.lastCloudModifiedTime ? this.lastCloudModifiedTime.getTime() : null;
 
-                    if (serverLastModified === localLastModified || !localLastModified) { // Allow first save
+                    if (serverLastModified === localLastModified || !localLastModified) {
                         this.showLoading('版本一致，正在保存數據...');
                         const dataToSend = {
                             classrooms: JSON.parse(JSON.stringify(this.classrooms || [])),
@@ -424,7 +627,7 @@
                         this.handleApiSuccess(() => {
                             this.updateSyncStatus('error');
                             const conflictMessage = '儲存失敗！雲端資料已被其他人修改。<br><br>為避免覆蓋他人工作，請先「從雲端讀取資料」同步後，再重新進行您的變更。';
-                            this.showConfirm(conflictMessage, true); // Only show OK button
+                            this.showConfirm(conflictMessage, true);
                         });
                     }
                 })
@@ -455,7 +658,6 @@
             if (reject) reject(error);
         },
 
-        // --- UI & Rendering ---
         showLoading: function(message = '載入中，請稍候...') {
             this.elements.loadingText.textContent = message;
             this.elements.loadingOverlay.style.display = 'flex';
@@ -477,23 +679,13 @@
                 this.elements.confirmText.innerHTML = message;
                 this.elements.confirmCancel.style.display = isAlert ? 'none' : 'inline-block';
                 this.elements.confirmModal.style.display = 'flex';
-
-                const okHandler = () => {
-                    cleanup();
-                    resolve(true);
-                };
-
-                const cancelHandler = () => {
-                    cleanup();
-                    resolve(false);
-                };
-
+                const okHandler = () => { cleanup(); resolve(true); };
+                const cancelHandler = () => { cleanup(); resolve(false); };
                 const cleanup = () => {
                     this.elements.confirmOk.removeEventListener('click', okHandler);
                     this.elements.confirmCancel.removeEventListener('click', cancelHandler);
                     this.elements.confirmModal.style.display = 'none';
                 };
-
                 this.elements.confirmOk.addEventListener('click', okHandler, { once: true });
                 this.elements.confirmCancel.addEventListener('click', cancelHandler, { once: true });
             });
@@ -567,10 +759,9 @@
             const conflictIcon = hasConflict 
                 ? `<div class="conflict-icon" title="時間衝突"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.752a3 3 0 01-2.598 4.5H4.644a3 3 0 01-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg></div>`
                 : '';
-
             const classDiv = document.createElement('div');
             classDiv.className = `class-item ${hasConflict ? 'conflict' : ''}`;
-            classDiv.style.backgroundColor = this.courseColorMap[classItem.name] || '#E2E8F0'; // Use mapped color or a default gray
+            classDiv.style.backgroundColor = this.courseColorMap[classItem.name] || '#E2E8F0';
             classDiv.dataset.id = classItem.id;
             classDiv.innerHTML = `
                 <div class="font-medium editable" data-field="name">${classItem.name}</div>
@@ -587,7 +778,6 @@
                 this.elements.scheduleBody.innerHTML = '';
                 const classroomsWithSchedule = new Set([...this.classrooms, ...Object.keys(this.scheduleData)]);
                 const sortedClassrooms = this.sortClassrooms(Array.from(classroomsWithSchedule));
-                
                 sortedClassrooms.forEach(classroom => {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${classroom}</td>`;
@@ -596,7 +786,6 @@
                         td.className = 'border border-gray-300 p-2 schedule-cell align-top';
                         td.dataset.classroom = classroom;
                         td.dataset.day = day;
-                        
                         const classes = (this.scheduleData[classroom]?.[day] || []);
                         classes.forEach((classItem) => {
                             const classDiv = this.createClassElement(classItem, classroom, day);
@@ -620,12 +809,39 @@
                     cell.sortable = new Sortable(cell, {
                         group: 'classes',
                         animation: 150,
+                        onStart: (evt) => {
+                            this.originalSourceListElement = evt.from; // Store the original source list
+                        },
+                        onMove: (evt) => {
+                            // Allow dragging back to the original source list
+                            if (evt.to === this.originalSourceListElement) {
+                                return true;
+                            }
+                            // Prevent reordering within any other list
+                            return evt.from !== evt.to;
+                        },
                         onEnd: (evt) => {
-                            const { from, to, item, newDraggableIndex } = evt;
+                            const { from, to, item, newIndex } = evt; // Use newIndex from Sortable.js
                             const classId = item.dataset.id;
                             const fromClassroom = from.dataset.classroom, fromDay = parseInt(from.dataset.day);
                             const toClassroom = to.dataset.classroom, toDay = parseInt(to.dataset.day);
 
+                            // Reset the original source list tracker
+                            this.originalSourceListElement = null;
+
+                            // If the item was dropped back into its original list, or never left it,
+                            // and onMove prevented reordering, then no data model change is needed.
+                            // Just re-render to ensure consistency.
+                            if (from === to) {
+                                // No actual data model change (splice/insert) needed as it stayed in the same list.
+                                // The visual order was prevented by onMove, so just re-render to ensure data model matches visual.
+                                this.renderScheduleTable();
+                                this.saveDataToLocal();
+                                this.saveState();
+                                return;
+                            }
+
+                            // --- Logic for cross-list movement (from !== to) ---
                             const fromDaySchedule = this.scheduleData[fromClassroom]?.[fromDay] || [];
                             const itemIndex = fromDaySchedule.findIndex(c => c.id === classId);
                             
@@ -640,11 +856,18 @@
                             if (!this.scheduleData[toClassroom]) this.scheduleData[toClassroom] = {};
                             if (!this.scheduleData[toClassroom][toDay]) this.scheduleData[toClassroom][toDay] = [];
                             
-                            this.scheduleData[toClassroom][toDay].splice(newDraggableIndex, 0, movedItem);
-                            
+                            // Insert the moved item at the new visual position.
+                            // The subsequent sort will correct its logical position.
+                            this.scheduleData[toClassroom][toDay].splice(newIndex, 0, movedItem);
+
+                            // Clean up empty source day if necessary
                             if (this.scheduleData[fromClassroom] && this.scheduleData[fromClassroom][fromDay] && this.scheduleData[fromClassroom][fromDay].length === 0) {
                                 delete this.scheduleData[fromClassroom][fromDay];
                             }
+                            
+                            // Always re-sort the target day's schedule after any drag-and-drop operation
+                            // This is crucial to enforce time-based ordering after a cross-list move.
+                            this.scheduleData[toClassroom][toDay].sort((a, b) => this.timeToMinutes(a.timeStart) - this.timeToMinutes(b.timeStart));
                             
                             this.renderScheduleTable();
                             this.saveDataToLocal();
@@ -682,7 +905,6 @@
             const teacher = els.classTeacherInput.value.trim(), timeStart = els.classTimeStartInput.value.trim(), timeEnd = els.classTimeEndInput.value.trim();
             const dayCheckboxes = document.querySelectorAll('.day-checkbox');
             const selectedDays = Array.from(dayCheckboxes).filter(cb => cb.checked).map(cb => parseInt(cb.value));
-            
             if (!classroom || selectedDays.length === 0 || !name || !this.TIME_REGEX.test(timeStart) || !this.TIME_REGEX.test(timeEnd)) {
                 this.showNotification('請填寫所有必填欄位並確保時間格式正確！', 'error');
                 return;
@@ -692,12 +914,10 @@
                 this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
                 return;
             }
-
             let hasConflictOccurred = false;
             if (!this.courseColorMap[name]) {
-                this.buildCourseColorMap(); // Rebuild if new course name is introduced
+                this.buildCourseColorMap();
             }
-
             selectedDays.forEach(day => {
                 const classItem = { 
                     id: this.generateUniqueId(),
@@ -712,24 +932,20 @@
                 }
                 if (!this.scheduleData[classroom]) this.scheduleData[classroom] = {};
                 if (!this.scheduleData[classroom][day]) this.scheduleData[classroom][day] = [];
-                
                 const daySchedule = this.scheduleData[classroom][day];
                 const insertIndex = daySchedule.findIndex(item => this.timeToMinutes(item.timeStart) > this.timeToMinutes(classItem.timeStart));
-
                 if (insertIndex === -1) {
                     daySchedule.push(classItem);
                 } else {
                     daySchedule.splice(insertIndex, 0, classItem);
                 }
             });
-
             if(selectedDays.length > 0) {
                 if (!hasConflictOccurred) this.showNotification('已新增課程');
                 this.renderScheduleTable();
                 this.saveDataToLocal();
                 this.saveState();
             }
-
             [els.classNameInput, els.classTeacherInput, els.classTimeStartInput, els.classTimeEndInput].forEach(el => el.value = '');
             dayCheckboxes.forEach(checkbox => checkbox.checked = false);
         },
@@ -832,7 +1048,6 @@
                     day.forEach(item => allNames.add(item.name));
                 });
             });
-
             const sortedNames = Array.from(allNames).sort();
             sortedNames.forEach((name, index) => {
                 this.courseColorMap[name] = this.COURSE_COLORS[index % this.COURSE_COLORS.length];
@@ -860,7 +1075,7 @@
             const newStart = this.timeToMinutes(newClass.timeStart);
             const newEnd = this.timeToMinutes(newClass.timeEnd);
             return this.scheduleData[classroom][day].some((existingClass) => {
-                if (existingClass.id === newClass.id) return false; // Don't compare with itself
+                if (existingClass.id === newClass.id) return false;
                 const existingStart = this.timeToMinutes(existingClass.timeStart);
                 const existingEnd = this.timeToMinutes(existingClass.timeEnd);
                 return newStart < existingEnd && newEnd > existingStart;
@@ -886,6 +1101,58 @@
             }
             return '00:00';
         },
+
+        countNameOccurrences: function(name, excludeId) {
+            let count = 0;
+            for (const classroom in this.scheduleData) {
+                for (const day in this.scheduleData[classroom]) {
+                    this.scheduleData[classroom][day].forEach(item => {
+                        if (item.name === name && item.id !== excludeId) {
+                            count++;
+                        }
+                    });
+                }
+            }
+            return count;
+        },
+
+        updateAllNameOccurrences: function(oldName, newName) {
+            for (const classroom in this.scheduleData) {
+                for (const day in this.scheduleData[classroom]) {
+                    this.scheduleData[classroom][day].forEach(item => {
+                        if (item.name === oldName) {
+                            item.name = newName;
+                        }
+                    });
+                }
+            }
+        },
+
+        countTeacherOccurrences: function(courseName, teacherName, excludeId) {
+            let count = 0;
+            for (const classroom in this.scheduleData) {
+                for (const day in this.scheduleData[classroom]) {
+                    this.scheduleData[classroom][day].forEach(item => {
+                        if (item.name === courseName && item.teacher === teacherName && item.id !== excludeId) {
+                            count++;
+                        }
+                    });
+                }
+            }
+            return count;
+        },
+
+        updateAllTeacherOccurrences: function(courseName, oldTeacher, newTeacher) {
+            for (const classroom in this.scheduleData) {
+                for (const day in this.scheduleData[classroom]) {
+                    this.scheduleData[classroom][day].forEach(item => {
+                        if (item.name === courseName && item.teacher === oldTeacher) {
+                            item.teacher = newTeacher;
+                        }
+                    });
+                }
+            }
+        }
     };
     App.init();
     window.App = App;

@@ -175,4 +175,90 @@
         margin-top: 2px;
         font-style: italic;
     }
+
+    .inline-add-form {
+        padding: 8px;
+        border: 1px dashed #4299e1; /* blue-500 */
+        border-radius: 4px;
+        background-color: #f0f8ff;
+        cursor: default;
+        position: relative; /* Added for positioning the close button */
+    }
+    .inline-add-cancel-btn {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 16px;
+        height: 16px;
+        line-height: 14px;
+        text-align: center;
+        border-radius: 50%;
+        background-color: rgba(0,0,0,0.2);
+        color: white;
+        cursor: pointer;
+        font-size: 12px;
+        border: none;
+        padding: 0;
+    }
+    .inline-input {
+        width: 100%;
+        padding: 4px;
+        margin-bottom: 4px;
+        border: 1px solid #cbd5e0; /* gray-400 */
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+    .inline-form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 4px;
+        margin-top: 4px;
+    }
+    .inline-form-actions button {
+        border: none;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        font-size: 14px;
+    }
+    .save-inline {
+        background-color: #48bb78; /* green-500 */
+    }
+    .cancel-inline {
+        background-color: #f56565; /* red-500 */
+    }
+    .inline-day-selector {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 6px;
+    }
+    .inline-day-selector label {
+        display: flex;
+        align-items: center;
+        font-size: 0.75rem;
+        cursor: pointer;
+    }
+    .inline-day-selector input {
+        margin-right: 2px;
+    }
+    .inline-time-inputs {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 4px;
+    }
+    .inline-time-inputs span {
+        font-weight: bold;
+    }
+    .inline-time-inputs .inline-input {
+        flex: 1;
+        margin-bottom: 0;
+    }
 </style>
