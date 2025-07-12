@@ -1,7 +1,26 @@
 <style>
+    .schedule-table {
+        border-collapse: separate; /* Use separate borders */
+        border-spacing: 0;
+    }
+
     .schedule-cell {
         min-height: 80px;
         height: 100%;
+    }
+
+    /* Adjust borders for separate model */
+    .schedule-table th,
+    .schedule-table td {
+        border-top-width: 0px;
+        border-left-width: 0px;
+    }
+    .schedule-table th:first-child,
+    .schedule-table td:first-child {
+        border-left-width: 1px;
+    }
+    .schedule-table tr:first-child th {
+        border-top-width: 1px;
     }
 
     .class-item {
@@ -12,6 +31,23 @@
         position: relative;
         cursor: move;
         color: #1f2937; /* Darker text for better contrast */
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+
+    .class-item.dark-background {
+        color: #FFFFFF; /* White text for dark backgrounds */
+    }
+
+    .class-item.selected {
+        transform: scale(1.02);
+        box-shadow: 0 0 18px 4px rgba(59, 130, 246, 0.85);
+        z-index: 5;
+    }
+
+    .class-item.primary-selection {
+        transform: scale(1.05);
+        box-shadow: 0 0 25px 7px rgba(251, 191, 36, 0.9);
+        z-index: 10;
     }
 
     .class-item.conflict {
@@ -83,6 +119,10 @@
         z-index: 9999;
     }
 
+    #confirm-modal {
+        z-index: 10000;
+    }
+
     .loading-spinner {
         border: 5px solid #f3f3f3;
         border-top: 5px solid #3498db;
@@ -112,7 +152,7 @@
         color: white;
         font-weight: 500;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        z-index: 1000;
+        z-index: 11000;
         opacity: 0;
         transform: translateY(-20px);
         transition: opacity 0.3s, transform 0.3s;
@@ -260,5 +300,52 @@
     .inline-time-inputs .inline-input {
         flex: 1;
         margin-bottom: 0;
+    }
+    #help-modal-close {
+        font-size: 2.5rem;
+        line-height: 1;
+        font-weight: 300;
+    }
+
+    [data-tooltip] {
+        position: relative;
+    }
+
+    [data-tooltip]::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        left: 50px; /* Position to the right of the button */
+        top: 50%;
+        transform: translateY(-50%);
+        background-color: #2d3748; /* gray-800 */
+        color: white;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.875rem; /* 14px */
+        white-space: nowrap;
+        z-index: 10000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease-in-out;
+    }
+
+    [data-tooltip]:hover::after {
+        opacity: 1;
+    }
+
+    /* Custom pulse animation for the save button */
+    .animate-pulse {
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% {
+            opacity: .85;
+            transform: scale(1.05);
+        }
     }
 </style>

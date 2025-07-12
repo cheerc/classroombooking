@@ -1,4 +1,4 @@
-// Version 5.27
+// Version 5.36
 const SHEET_DATA = "Data";
 const SHEET_HISTORY = "History";
 
@@ -191,3 +191,4 @@ function getVersionData(versionId) {
     return { success: false, error: e.toString() };
   }
 }
+
