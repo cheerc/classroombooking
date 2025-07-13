@@ -3,14 +3,20 @@
     // 將全局變數放入一個命名空間或對象，減少污染
     const App = {
         // --- STATE ---
-        APP_VERSION: '5.36',
+        APP_VERSION: '6.1',
         TIME_REGEX: /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/,
         WEEKDAYS: ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'],
         COURSE_COLORS: [
-            '#30C5FF', '#B09398', '#00A676', '#DB5461', '#C0DF85', '#FBFFB9', '#FB8B24',
-            '#F3DFC1', '#B4C292', '#D5A021', '#26547C', '#2E6171', '#FF9B71', '#2B3A67',
-            '#C8D6AF', '#FFECCC', '#F2D0A4', '#A4303F', '#449DD1', '#3943B7', '#78C0E0',
-            '#EDD83D', '#D8829D', '#76B041', '#639A88', '#DCDCDC'
+            '#93c5fd', // Jordy Blue
+            '#73EEDC', // Turquoise
+            '#DBF4A7', // Mindaro
+            '#fca5a5', // Melon
+            '#5BC0EB', // Aero
+            '#C5D8D1', // Ash grey
+            '#23CE6B', // Emerald
+            '#FDE74C', // Maize
+            '#F5AE80', // Sandy Brown
+            '#FF5E5B'  // Bittersweet
         ],
         classrooms: [],
         scheduleData: {},
@@ -25,6 +31,8 @@
         originalSourceListElement: null,
         isDirty: false, // Flag to track unsaved changes
         cleanStateSnapshot: '', // Snapshot of the last clean state
+        activeFilters: [], // Array to hold active course name filters
+        filterPresets: {}, // Object to hold all filter presets, loaded from server
 
         elements: {
             loadingOverlay: document.getElementById('loading-overlay'),
@@ -56,9 +64,28 @@
             confirmText: document.getElementById('confirm-text'),
             confirmOk: document.getElementById('confirm-ok'),
             confirmCancel: document.getElementById('confirm-cancel'),
+            promptModal: document.getElementById('prompt-modal'),
+            promptText: document.getElementById('prompt-text'),
+            promptInput: document.getElementById('prompt-input'),
+            promptOk: document.getElementById('prompt-ok'),
+            promptCancel: document.getElementById('prompt-cancel'),
             showHelpBtn: document.getElementById('show-help-btn'),
             helpModal: document.getElementById('help-modal'),
             helpModalClose: document.getElementById('help-modal-close'),
+            // Filter elements
+            showFilterBtn: document.getElementById('show-filter-btn'),
+            filterModal: document.getElementById('filter-modal'),
+            filterModalClose: document.getElementById('filter-modal-close'),
+            filterCourseList: document.getElementById('filter-course-list'),
+            filterSelectAll: document.getElementById('filter-select-all'),
+            filterDeselectAll: document.getElementById('filter-deselect-all'),
+            filterApply: document.getElementById('filter-apply'),
+            filterClear: document.getElementById('filter-clear'),
+            filterPresetSelect: document.getElementById('filter-preset-select'),
+            saveFilterPresetAsBtn: document.getElementById('save-filter-preset-as'),
+            loadFilterPresetBtn: document.getElementById('load-filter-preset'),
+            deleteFilterPresetBtn: document.getElementById('delete-filter-preset'),
+            activeFilterDisplay: document.getElementById('active-filter-display'),
         },
 
         init: function() {
@@ -146,6 +173,181 @@
                     e.returnValue = '';
                 }
             });
+
+            // Filter Listeners
+            els.showFilterBtn.addEventListener('click', () => this.showFilterModal());
+            els.filterModalClose.addEventListener('click', () => els.filterModal.style.display = 'none');
+            els.filterModal.addEventListener('click', (e) => {
+                if (e.target === els.filterModal) {
+                    els.filterModal.style.display = 'none';
+                }
+            });
+            els.filterSelectAll.addEventListener('click', () => this.toggleAllFilterCheckboxes(true));
+            els.filterDeselectAll.addEventListener('click', () => this.toggleAllFilterCheckboxes(false));
+            els.filterApply.addEventListener('click', () => this.applyFilters());
+            els.filterClear.addEventListener('click', () => this.clearFilters());
+            els.saveFilterPresetAsBtn.addEventListener('click', () => this.saveFilterPresetAs());
+            els.loadFilterPresetBtn.addEventListener('click', () => this.loadFilterPreset());
+            els.deleteFilterPresetBtn.addEventListener('click', () => this.deleteFilterPreset());
+        },
+
+        // --- Filter Logic ---
+        showFilterModal: function() {
+            this.populateFilterModal();
+            this.updateFilterPresetDropdown();
+            this.elements.filterModal.style.display = 'flex';
+        },
+
+        populateFilterModal: function() {
+            const courseNames = new Set();
+            Object.values(this.scheduleData).forEach(classroom => {
+                Object.values(classroom).forEach(day => {
+                    day.forEach(course => courseNames.add(course.name));
+                });
+            });
+
+            const sortedNames = Array.from(courseNames).sort();
+            const listElement = this.elements.filterCourseList;
+            listElement.innerHTML = '';
+
+            sortedNames.forEach(name => {
+                const isChecked = this.activeFilters.includes(name);
+                const div = document.createElement('div');
+                div.className = 'flex items-center';
+                div.innerHTML = `
+                    <input type="checkbox" id="filter-${name}" value="${name}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
+                    <label for="filter-${name}" class="ml-2 block text-sm text-gray-900 truncate">${name}</label>
+                `;
+                listElement.appendChild(div);
+            });
+        },
+
+        toggleAllFilterCheckboxes: function(shouldBeChecked) {
+            this.elements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = shouldBeChecked;
+            });
+        },
+
+        applyFilters: function() {
+            const selectedCourses = [];
+            this.elements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+                selectedCourses.push(cb.value);
+            });
+            this.activeFilters = selectedCourses;
+            this.renderScheduleTable();
+            this.updateActiveFilterDisplay();
+            this.elements.filterModal.style.display = 'none';
+            this.saveState(); // Make applying a filter an undoable action
+        },
+
+        clearFilters: function() {
+            this.activeFilters = [];
+            this.toggleAllFilterCheckboxes(false);
+            this.renderScheduleTable();
+            this.updateActiveFilterDisplay();
+            this.elements.filterModal.style.display = 'none';
+            this.saveState(); // Make clearing a filter an undoable action
+        },
+
+        updateActiveFilterDisplay: function() {
+            const display = this.elements.activeFilterDisplay;
+            if (this.activeFilters.length === 0) {
+                display.textContent = '未套用任何篩選';
+            } else {
+                display.textContent = `已篩選 ${this.activeFilters.length} 門課程`;
+            }
+        },
+
+        updateFilterPresetDropdown: function() {
+            const presets = this.filterPresets;
+            const select = this.elements.filterPresetSelect;
+            select.innerHTML = '';
+            const presetNames = Object.keys(presets);
+            if (presetNames.length === 0) {
+                select.innerHTML = '<option value="">沒有已儲存的組合</option>';
+                select.disabled = true;
+            } else {
+                presetNames.sort().forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    select.appendChild(option);
+                });
+                select.disabled = false;
+            }
+        },
+
+        saveFilterPresetAs: async function() {
+            const selectedCourses = Array.from(this.elements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+
+            if (selectedCourses.length === 0) {
+                this.showNotification('沒有選擇任何課程，無法儲存空篩選。', 'info');
+                return;
+            }
+
+            const presetName = await this.showPrompt('請為這個篩選組合命名：');
+            if (!presetName || presetName.trim() === '') {
+                this.showNotification('已取消儲存，名稱不能為空。', 'info');
+                return;
+            }
+
+            if (this.filterPresets[presetName] && !await this.showConfirm(`"${presetName}" 已存在，確定要覆蓋嗎？`)) {
+                return;
+            }
+
+            this.filterPresets[presetName] = selectedCourses;
+            this.showNotification(`已成功儲存篩選組合 "${presetName}"！`, 'success');
+            this.updateFilterPresetDropdown();
+            this.saveState(); // This will trigger dirty check
+        },
+
+        loadFilterPreset: function() {
+            const presetName = this.elements.filterPresetSelect.value;
+            if (!presetName) {
+                this.showNotification('請先從下拉選單中選擇一個組合。', 'info');
+                return;
+            }
+            const presetCourses = this.filterPresets[presetName];
+
+            if (presetCourses) {
+                this.activeFilters = presetCourses;
+                this.populateFilterModal(); // Refresh checkboxes in modal
+                this.applyFilters();
+                this.showNotification(`已成功讀取並套用 "${presetName}"！`, 'success');
+            } else {
+                this.showNotification('找不到指定的篩選組合。', 'error');
+            }
+        },
+
+        deleteFilterPreset: async function() {
+            const presetName = this.elements.filterPresetSelect.value;
+            if (!presetName) {
+                this.showNotification('請先從下拉選單中選擇一個要刪除的組合。', 'info');
+                return;
+            }
+
+            if (await this.showConfirm(`確定要刪除篩選組合 "${presetName}" 嗎？`)) {
+                delete this.filterPresets[presetName];
+                this.showNotification(`已刪除組合 "${presetName}"`, 'success');
+                this.updateFilterPresetDropdown();
+                this.saveState(); // This will trigger dirty check
+            }
+        },
+
+        syncFilterPresetsOnRename: function(oldName, newName) {
+            let isChanged = false;
+            for (const presetName in this.filterPresets) {
+                const courseList = this.filterPresets[presetName];
+                const index = courseList.indexOf(oldName);
+                if (index > -1) {
+                    courseList[index] = newName;
+                    isChanged = true;
+                }
+            }
+            if (isChanged) {
+                this.showNotification('已自動同步更新儲存的篩選組合。', 'info', 4000);
+                // No need to call saveState() here as it will be called by the parent function
+            }
         },
 
         handleGlobalKeydown: function(e) {
@@ -392,14 +594,11 @@
                 currentValue = `${classItem.timeStart}-${classItem.timeEnd}`;
             }
             
-            const isDark = classElement.classList.contains('dark-background');
-
             if (field === 'time') {
                 const timeStartInput = document.createElement('input');
                 timeStartInput.type = 'time';
                 timeStartInput.value = classItem.timeStart;
                 let timeInputClass = 'inline-input';
-                if (isDark) timeInputClass += ' text-black';
                 timeStartInput.setAttribute('class', timeInputClass);
                 
                 const timeEndInput = document.createElement('input');
@@ -473,9 +672,6 @@
             input.type = 'text';
             input.value = currentValue;
             let inputClasses = 'w-full p-1 border border-blue-500 rounded';
-            if (isDark) {
-                inputClasses += ' text-black';
-            }
             input.setAttribute('class', inputClasses);
             element.innerHTML = '';
             element.appendChild(input);
@@ -511,6 +707,13 @@
                         const confirmAll = await this.showConfirm(`找到 ${otherOccurrences} 個其他名為 "${originalName}" 的課程。<br>要全部一起改名為 "${newValue}" 嗎？`);
                         if (confirmAll) {
                             this.updateAllNameOccurrences(originalName, newValue);
+                            this.syncFilterPresetsOnRename(originalName, newValue);
+
+                            // Also update the currently active filter to reflect the change
+                            const activeFilterIndex = this.activeFilters.indexOf(originalName);
+                            if (activeFilterIndex > -1) {
+                                this.activeFilters[activeFilterIndex] = newValue;
+                            }
                         } else {
                             classItem.name = newValue;
                         }
@@ -591,8 +794,9 @@
                     if (data && data.success) {
                         this.classrooms = data.classrooms || [];
                         this.scheduleData = this.ensureDataIds(data.scheduleData || {});
+                        this.filterPresets = data.filterPresets || {}; // Load from server
                         this.buildCourseColorMap();
-                        this.saveDataToLocal();
+                        this.saveDataToLocal(); // Still save to local for offline access
                         this.updateClassroomList();
                         this.renderScheduleTable();
                         this.updateSyncStatus('offline', this.lastCloudModifiedTime);
@@ -613,6 +817,7 @@
             try {
                 this.classrooms = JSON.parse(localStorage.getItem('classrooms')) || [];
                 this.scheduleData = this.ensureDataIds(JSON.parse(localStorage.getItem('scheduleData')) || {});
+                // filterPresets are now loaded from server, not localStorage
                 this.buildCourseColorMap();
                 this.lastSyncTime = localStorage.getItem('lastSyncTime') ? new Date(localStorage.getItem('lastSyncTime')) : null;
             } catch (e) {
@@ -652,10 +857,11 @@
                             if (!result || result.error) throw new Error(result ? result.error : '從服務器獲取的數據為空');
                             this.classrooms = result.classrooms || [];
                             this.scheduleData = this.ensureDataIds(result.scheduleData || {});
+                            this.filterPresets = result.filterPresets || {}; // Load from server
                             this.buildCourseColorMap();
                             this.updateLastModifiedTime(result.lastModified);
                             this.lastSyncTime = new Date();
-                            this.saveDataToLocal();
+                            this.saveDataToLocal(); // Still save to local for offline access
                             this.updateClassroomList();
                             this.renderScheduleTable();
                             this.updateSyncStatus('online', result.lastModified);
@@ -690,7 +896,8 @@
                         this.showLoading('版本一致，正在保存數據...');
                         const dataToSend = {
                             classrooms: JSON.parse(JSON.stringify(this.classrooms || [])),
-                            scheduleData: JSON.parse(JSON.stringify(this.scheduleData || {}))
+                            scheduleData: JSON.parse(JSON.stringify(this.scheduleData || {})),
+                            filterPresets: JSON.parse(JSON.stringify(this.filterPresets || {}))
                         };
                         google.script.run
                             .withSuccessHandler(saveResult => {
@@ -775,6 +982,46 @@
             });
         },
 
+        showPrompt: function(message, defaultValue = '') {
+            return new Promise((resolve) => {
+                const els = this.elements;
+                els.promptText.textContent = message;
+                els.promptInput.value = defaultValue;
+                els.promptModal.style.display = 'flex';
+                els.promptInput.focus();
+                els.promptInput.select();
+
+                const okHandler = () => {
+                    cleanup();
+                    resolve(els.promptInput.value);
+                };
+
+                const cancelHandler = () => {
+                    cleanup();
+                    resolve(null); // Resolve with null on cancel
+                };
+
+                const keydownHandler = (e) => {
+                    if (e.key === 'Enter') {
+                        okHandler();
+                    } else if (e.key === 'Escape') {
+                        cancelHandler();
+                    }
+                };
+
+                const cleanup = () => {
+                    els.promptOk.removeEventListener('click', okHandler);
+                    els.promptCancel.removeEventListener('click', cancelHandler);
+                    els.promptInput.removeEventListener('keydown', keydownHandler);
+                    els.promptModal.style.display = 'none';
+                };
+
+                els.promptOk.addEventListener('click', okHandler, { once: true });
+                els.promptCancel.addEventListener('click', cancelHandler, { once: true });
+                els.promptInput.addEventListener('keydown', keydownHandler);
+            });
+        },
+
         showHelpModal: function() {
             this.elements.helpModal.style.display = 'flex';
         },
@@ -842,21 +1089,16 @@
             }
         },
 
-        createClassElement: function(classItem, classroom, day) {
+        createClassElement: function(classItem, classroom, day, overrideColor = null) {
             const hasConflict = this.checkTimeConflict(classroom, day, classItem);
             const conflictIcon = hasConflict 
                 ? `<div class="conflict-icon" title="時間衝突"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.752a3 3 0 01-2.598 4.5H4.644a3 3 0 01-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg></div>`
                 : '';
             
-            const bgColor = this.courseColorMap[classItem.name] || '#E2E8F0';
-            const hsl = this.hexToHsl(bgColor);
-            const isDark = hsl.l < 60;
+            const bgColor = overrideColor || this.courseColorMap[classItem.name] || '#E2E8F0';
 
             const classDiv = document.createElement('div');
             let classString = `class-item ${hasConflict ? 'conflict' : ''}`;
-            if (isDark) {
-                classString += ' dark-background';
-            }
             classDiv.setAttribute('class', classString);
             classDiv.style.backgroundColor = bgColor;
             classDiv.dataset.id = classItem.id;
@@ -899,8 +1141,23 @@
 
         renderScheduleTable: function() {
             try {
+                let dataToRender = this.scheduleData;
+                if (this.activeFilters && this.activeFilters.length > 0) {
+                    dataToRender = {};
+                    const filteredSet = new Set(this.activeFilters);
+                    for (const classroom in this.scheduleData) {
+                        dataToRender[classroom] = {};
+                        for (const day in this.scheduleData[classroom]) {
+                            const filteredDay = this.scheduleData[classroom][day].filter(course => filteredSet.has(course.name));
+                            if (filteredDay.length > 0) {
+                                dataToRender[classroom][day] = filteredDay;
+                            }
+                        }
+                    }
+                }
+
                 this.elements.scheduleBody.innerHTML = '';
-                const classroomsWithSchedule = new Set([...this.classrooms, ...Object.keys(this.scheduleData)]);
+                const classroomsWithSchedule = new Set([...this.classrooms, ...Object.keys(dataToRender)]);
                 const sortedClassrooms = this.sortClassrooms(Array.from(classroomsWithSchedule));
                 sortedClassrooms.forEach(classroom => {
                     const tr = document.createElement('tr');
@@ -910,10 +1167,19 @@
                         td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
                         td.dataset.classroom = classroom;
                         td.dataset.day = day;
-                        const classes = (this.scheduleData[classroom]?.[day] || []);
+                        const classes = (dataToRender[classroom]?.[day] || []);
+                        let lastColor = null;
                         classes.forEach((classItem) => {
-                            const classDiv = this.createClassElement(classItem, classroom, day);
+                            let currentColor = this.courseColorMap[classItem.name] || '#E2E8F0';
+                            let finalColor = currentColor;
+                            if (currentColor === lastColor) {
+                                const currentIndex = this.COURSE_COLORS.indexOf(currentColor);
+                                const nextIndex = (currentIndex + 1) % this.COURSE_COLORS.length;
+                                finalColor = this.COURSE_COLORS[nextIndex];
+                            }
+                            const classDiv = this.createClassElement(classItem, classroom, day, finalColor);
                             td.appendChild(classDiv);
+                            lastColor = finalColor;
                         });
                         tr.appendChild(td);
                     }
@@ -1009,17 +1275,22 @@
 
         handleClearAll: async function() {
             if (await this.showConfirm('確定要清除所有本地暫存資料嗎？<br>此操作不可恢復！')) {
-                this.classrooms = []; this.scheduleData = {}; this.lastSyncTime = null;
+                this.classrooms = [];
+                this.scheduleData = {};
+                this.filterPresets = {}; // Clear filter presets from memory
+                this.activeFilters = []; // Clear active filters
+                this.lastSyncTime = null;
                 this.courseColorMap = {};
                 this.updateLastModifiedTime(null);
                 this.updateClassroomList();
                 this.renderScheduleTable();
+                this.updateActiveFilterDisplay(); // Update filter display text
                 this.updateSyncStatus('offline');
                 localStorage.removeItem('classrooms');
                 localStorage.removeItem('scheduleData');
                 localStorage.removeItem('lastSyncTime');
                 this.showNotification('已清除本地暫存資料');
-                this.resetHistory();
+                this.resetHistory(); // This will create a new clean state with empty presets
             }
         },
 
@@ -1028,7 +1299,9 @@
             this.history = this.history.slice(0, this.historyIndex + 1);
             const currentState = {
                 classrooms: JSON.parse(JSON.stringify(this.classrooms)),
-                scheduleData: JSON.parse(JSON.stringify(this.scheduleData))
+                scheduleData: JSON.parse(JSON.stringify(this.scheduleData)),
+                filterPresets: JSON.parse(JSON.stringify(this.filterPresets)),
+                activeFilters: JSON.parse(JSON.stringify(this.activeFilters))
             };
             this.history.push(currentState);
             this.historyIndex = this.history.length - 1;
@@ -1040,7 +1313,9 @@
         resetHistory: function() {
             const initialState = {
                 classrooms: JSON.parse(JSON.stringify(this.classrooms)),
-                scheduleData: JSON.parse(JSON.stringify(this.scheduleData))
+                scheduleData: JSON.parse(JSON.stringify(this.scheduleData)),
+                filterPresets: JSON.parse(JSON.stringify(this.filterPresets)),
+                activeFilters: JSON.parse(JSON.stringify(this.activeFilters))
             };
             this.history = [initialState];
             this.historyIndex = 0;
@@ -1066,9 +1341,12 @@
         loadState: function(state) {
             this.classrooms = JSON.parse(JSON.stringify(state.classrooms));
             this.scheduleData = JSON.parse(JSON.stringify(state.scheduleData));
+            this.filterPresets = JSON.parse(JSON.stringify(state.filterPresets));
+            this.activeFilters = JSON.parse(JSON.stringify(state.activeFilters));
             this.buildCourseColorMap();
             this.updateClassroomList();
             this.renderScheduleTable();
+            this.updateActiveFilterDisplay();
             this.saveDataToLocal();
             this.updateUndoRedoButtons();
             this.checkDirty();
@@ -1082,14 +1360,16 @@
         updateCleanSnapshot: function() {
             this.cleanStateSnapshot = JSON.stringify({
                 classrooms: this.classrooms,
-                scheduleData: this.scheduleData
+                scheduleData: this.scheduleData,
+                filterPresets: this.filterPresets
             });
         },
 
         checkDirty: function() {
             const currentStateSnapshot = JSON.stringify({
                 classrooms: this.classrooms,
-                scheduleData: this.scheduleData
+                scheduleData: this.scheduleData,
+                filterPresets: this.filterPresets
             });
             this.setDirty(currentStateSnapshot !== this.cleanStateSnapshot);
         },
@@ -1136,52 +1416,6 @@
             return hash;
         },
 
-        hexToHsl: function(hex) {
-            let r = 0, g = 0, b = 0;
-            if (hex.length == 4) {
-                r = "0x" + hex[1] + hex[1];
-                g = "0x" + hex[2] + hex[2];
-                b = "0x" + hex[3] + hex[3];
-            } else if (hex.length == 7) {
-                r = "0x" + hex[1] + hex[2];
-                g = "0x" + hex[3] + hex[4];
-                b = "0x" + hex[5] + hex[6];
-            }
-            r /= 255; g /= 255; b /= 255;
-            let cmin = Math.min(r,g,b), cmax = Math.max(r,g,b), delta = cmax - cmin, h = 0, s = 0, l = 0;
-            if (delta == 0) h = 0;
-            else if (cmax == r) h = ((g - b) / delta) % 6;
-            else if (cmax == g) h = (b - r) / delta + 2;
-            else h = (r - g) / delta + 4;
-            h = Math.round(h * 60);
-            if (h < 0) h += 360;
-            l = (cmax + cmin) / 2;
-            s = delta == 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
-            s = +(s * 100).toFixed(1);
-            l = +(l * 100).toFixed(1);
-            return { h, s, l };
-        },
-
-        hslToHex: function(h, s, l) {
-            s /= 100;
-            l /= 100;
-            const c = (1 - Math.abs(2 * l - 1)) * s;
-            const x = c * (1 - Math.abs((h / 60) % 2 - 1));
-            const m = l - c / 2;
-            let r = 0, g = 0, b = 0;
-            if (0 <= h && h < 60) { r = c; g = x; b = 0; }
-            else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
-            else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
-            else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
-            else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
-            else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
-            r = Math.round((r + m) * 255);
-            g = Math.round((g + m) * 255);
-            b = Math.round((b + m) * 255);
-            const toHex = val => val.toString(16).padStart(2, '0');
-            return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
-        },
-
         buildCourseColorMap: function() {
             this.courseColorMap = {};
             const allNames = new Set();
@@ -1197,46 +1431,10 @@
             });
 
             const sortedNames = Array.from(allNames).sort();
-            const availablePreferredColors = new Set(this.COURSE_COLORS);
-            const usedColors = new Set();
-
             sortedNames.forEach(name => {
-                if (availablePreferredColors.size > 0) {
-                    const hash = this.stringToHashCode(name);
-                    let preferredIndex = Math.abs(hash) % this.COURSE_COLORS.length;
-                    let colorCandidate = this.COURSE_COLORS[preferredIndex];
-                    
-                    let attempts = 0;
-                    while (!availablePreferredColors.has(colorCandidate) && attempts < this.COURSE_COLORS.length) {
-                        preferredIndex = (preferredIndex + 1) % this.COURSE_COLORS.length;
-                        colorCandidate = this.COURSE_COLORS[preferredIndex];
-                        attempts++;
-                    }
-
-                    if (availablePreferredColors.has(colorCandidate)) {
-                        this.courseColorMap[name] = colorCandidate;
-                        usedColors.add(colorCandidate);
-                        availablePreferredColors.delete(colorCandidate);
-                        return;
-                    }
-                }
-
                 const hash = this.stringToHashCode(name);
-                const h = Math.abs(hash) % 360;
-                const s = 65 + (Math.abs(hash % 15));
-                let l = 50 + (Math.abs(hash % 20));
-                
-                let newColorHex;
-                let generationAttempts = 0;
-                
-                do {
-                    const adjustedL = (l + generationAttempts * 5) % 100;
-                    newColorHex = this.hslToHex(h, s, adjustedL);
-                    generationAttempts++;
-                } while (usedColors.has(newColorHex) && generationAttempts < 20);
-
-                this.courseColorMap[name] = newColorHex;
-                usedColors.add(newColorHex);
+                const colorIndex = Math.abs(hash) % this.COURSE_COLORS.length;
+                this.courseColorMap[name] = this.COURSE_COLORS[colorIndex];
             });
         },
 

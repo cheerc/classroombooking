@@ -80,6 +80,16 @@
             </div>
         </div>
 
+        <div class="flex justify-center items-center gap-4 mb-4">
+            <button id="show-filter-btn" class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 transition flex items-center shadow">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
+                </svg>
+                篩選課程
+            </button>
+            <div id="active-filter-display" class="text-sm text-gray-600 font-medium"></div>
+        </div>
+
         <div class="overflow-y-auto flex-grow min-h-0">
             <table id="schedule-table" class="schedule-table w-full">
                 <thead class="sticky top-0 z-20">
@@ -103,7 +113,7 @@
 
     </div>
 
-    <div class="version-badge">版本 5.36</div>
+    <div class="version-badge">版本 6.1</div>
 
     <div id="confirm-modal" class="loading-overlay" style="display: none;">
         <div class="bg-white p-6 rounded-lg shadow-lg text-center max-w-sm w-full">
@@ -176,6 +186,54 @@
                 <button id="refresh-versions" class="bg-yellow-600 text-white px-4 rounded-r-md hover:bg-yellow-700 transition">刷新</button>
             </div>
             <button id="load-version" class="w-full bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 transition">讀取選定版本 (僅在本地預覽)</button>
+        </div>
+    </div>
+
+    <div id="prompt-modal" class="loading-overlay" style="display: none;">
+        <div class="bg-white p-6 rounded-lg shadow-lg text-center max-w-sm w-full">
+            <p id="prompt-text" class="text-lg mb-4"></p>
+            <input type="text" id="prompt-input" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4">
+            <div class="flex justify-center gap-4">
+                <button id="prompt-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded-md">取消</button>
+                <button id="prompt-ok" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-md">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="filter-modal" class="loading-overlay" style="display: none;">
+        <div class="bg-white p-8 rounded-lg shadow-lg text-left max-w-2xl w-full relative flex flex-col max-h-[80vh]">
+            <h2 class="text-2xl font-bold mb-6 text-center text-indigo-700">課程篩選器</h2>
+            <button id="filter-modal-close" class="absolute top-3 right-4 text-gray-400 hover:text-gray-700 text-3xl font-light">&times;</button>
+            
+            <div class="flex-grow overflow-y-auto border p-4 rounded-md mb-4">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-semibold text-lg">選擇要顯示的課程</h3>
+                    <div>
+                        <button id="filter-select-all" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">全部選取</button>
+                        <span class="mx-1">|</span>
+                        <button id="filter-deselect-all" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">全部取消</button>
+                    </div>
+                </div>
+                <div id="filter-course-list" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <!-- Course checkboxes will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <div class="flex-shrink-0">
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-lg mb-3">管理篩選組合</h3>
+                    <div class="flex items-center gap-2 mb-4">
+                        <select id="filter-preset-select" class="flex-grow px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                        <button id="load-filter-preset" data-tooltip="讀取選取的組合" class="bg-yellow-600 text-white p-2 rounded-md hover:bg-yellow-700"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm10 6a2 2 0 11-4 0 2 2 0 014 0zM4 12a1 1 0 001 1h10a1 1 0 001-1v-1a1 1 0 00-1-1H5a1 1 0 00-1 1v1z" /></svg></button>
+                        <button id="delete-filter-preset" data-tooltip="刪除選取的組合" class="bg-red-600 text-white p-2 rounded-md hover:bg-red-700"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" /></svg></button>
+                    </div>
+                    <button id="save-filter-preset-as" class="w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 text-sm mb-4">將目前勾選的課程另存為新組合...</button>
+                </div>
+                <div class="flex justify-end gap-4 border-t pt-4">
+                    <button id="filter-clear" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded-md">清除篩選</button>
+                    <button id="filter-apply" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-md">套用篩選</button>
+                </div>
+            </div>
         </div>
     </div>
 
