@@ -1,4 +1,4 @@
-// Version 6.1
+// Version 6.1.1
 const SHEET_DATA = "Data";
 const SHEET_HISTORY = "History";
 
@@ -29,8 +29,9 @@ function getSheet_(name) {
  * @returns {GoogleAppsScript.HTML.HtmlOutput} The HTML output for the web app.
  */
 function doGet() {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
+  const template = HtmlService.createTemplateFromFile('Index');
+  template.userEmail = Session.getActiveUser().getEmail();
+  return template.evaluate()
     .setTitle('教室使用登記表')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
@@ -137,6 +138,11 @@ function saveData(data) {
   }
 }
 
+function getShortUserName_(email) {
+  if (!email || email.indexOf('@') === -1) return email;
+  return email.split('@')[0];
+}
+
 /**
  * Retrieves a list of saved versions from the history sheet.
  * @returns {Array<object>|object} An array of version objects or an error object.
@@ -149,7 +155,7 @@ function getVersions() {
     const data = historySheet.getRange("A2:B" + lastRow).getValues();
     const versions = data
       .filter(row => row[0]) // 確保時間戳存在
-      .map(row => ({ id: row[0], user: row[1] || '未知使用者' }));
+      .map(row => ({ id: row[0], user: getShortUserName_(row[1]) || '未知使用者' }));
     return versions;
   } catch (e) {
     Logger.log(`獲取版本列表失敗: ${e}`);

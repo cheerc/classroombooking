@@ -6,6 +6,10 @@
     <title>教室使用登記表 (Google試算表版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
+    <script>
+        // Pass server-side data to a global JS variable to be picked up by the main script.
+        var SCRIPT_USER_EMAIL = "<?= userEmail ?>";
+    </script>
     <?!= HtmlService.createHtmlOutputFromFile('Stylesheet').getContent(); ?>
 </head>
 <body class="bg-blue-50 h-screen p-4 flex flex-col">
@@ -113,7 +117,7 @@
 
     </div>
 
-    <div class="version-badge">版本 6.1</div>
+    <div class="version-badge">版本 6.1.1</div>
 
     <div id="confirm-modal" class="loading-overlay" style="display: none;">
         <div class="bg-white p-6 rounded-lg shadow-lg text-center max-w-sm w-full">
