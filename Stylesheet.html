@@ -26,12 +26,43 @@
     .class-item {
         border-radius: 4px;
         margin-bottom: 4px;
-        padding: 4px;
+        padding: 4px 24px 4px 4px; /* Add padding to the right for departments */
         font-size: 0.85rem;
         position: relative;
         cursor: move;
         color: #1f2937; /* Darker text for better contrast */
         transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        display: flex; /* Use flexbox for layout */
+        align-items: flex-start; /* Align items to the top */
+    }
+
+    .class-item-content {
+        flex-grow: 1; /* Allow content to take up available space */
+    }
+
+    .department-tags-vertical-container {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        bottom: 4px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        white-space: nowrap;
+        gap: 6px; /* Space between tags */
+    }
+
+    .department-tag-vertical {
+        display: inline-block;
+        background-color: rgba(0,0,0,0.1);
+        color: #2d3748; /* gray-800 */
+        border-radius: 4px;
+        padding: 6px 3px;
+        font-size: 0.7rem;
+        line-height: 1;
     }
 
     .class-item.selected {

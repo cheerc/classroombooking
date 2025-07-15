@@ -1189,7 +1189,7 @@
             
             const bgColor = overrideColor || this.courseColorMap[classItem.name] || '#E2E8F0';
 
-            const departmentTags = (classItem.departments || []).map(dept => `<span class="department-tag">${dept}</span>`).join('');
+            const departmentTags = (classItem.departments || []).map(dept => `<span class="department-tag-vertical">${dept}</span>`).join('');
 
             const classDiv = document.createElement('div');
             classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''}`);
@@ -1197,10 +1197,12 @@
             classDiv.dataset.id = classItem.id;
             classDiv.dataset.name = classItem.name;
             classDiv.innerHTML = `
-                <div class="font-medium editable" data-field="name">${classItem.name}</div>
-                <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
-                <div class="editable" data-field="teacher">${classItem.teacher}</div>
-                <div class="department-tags-container editable" data-field="departments">${departmentTags}</div>
+                <div class="class-item-content">
+                    <div class="font-medium editable" data-field="name">${classItem.name}</div>
+                    <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
+                    <div class="editable" data-field="teacher">${classItem.teacher}</div>
+                </div>
+                <div class="department-tags-vertical-container editable" data-field="departments">${departmentTags}</div>
                 <span class="delete-btn" data-classroom="${classroom}" data-day="${day}">×</span>
                 ${conflictIcon}
             `;
