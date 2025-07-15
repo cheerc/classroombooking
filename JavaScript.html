@@ -787,7 +787,7 @@
                         versions.forEach(v => {
                             const option = document.createElement('option');
                             option.value = v.id;
-                            option.textContent = `${new Date(v.id).toLocaleString()} by ${v.user}`;
+                            option.textContent = `${new Date(v.id).toLocaleString()} by ${this.getShortUserName(v.user)}`;
                             select.appendChild(option);
                         });
                     } else {

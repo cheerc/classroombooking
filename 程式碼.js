@@ -138,11 +138,6 @@ function saveData(data) {
   }
 }
 
-function getShortUserName_(email) {
-  if (!email || email.indexOf('@') === -1) return email;
-  return email.split('@')[0];
-}
-
 /**
  * Retrieves a list of saved versions from the history sheet.
  * @returns {Array<object>|object} An array of version objects or an error object.
@@ -155,7 +150,7 @@ function getVersions() {
     const data = historySheet.getRange("A2:B" + lastRow).getValues();
     const versions = data
       .filter(row => row[0]) // 確保時間戳存在
-      .map(row => ({ id: row[0], user: getShortUserName_(row[1]) || '未知使用者' }));
+      .map(row => ({ id: row[0], user: row[1] || '未知使用者' }));
     return versions;
   } catch (e) {
     Logger.log(`獲取版本列表失敗: ${e}`);
