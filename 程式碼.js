@@ -14,8 +14,8 @@ function getSheet_(name) {
     sheet = ss.insertSheet(name);
     Logger.log(`已創建新的工作表: ${name}`);
     if (name === SHEET_DATA) {
-      sheet.getRange("A1:A5").setValues([["Latest Data"], ["{}"], ["[]"], ["Last Modified"], ["{}"]]);
-      sheet.getRange("B1:B5").setValues([["scheduleData"], ["classrooms"], [""], ["filterPresets"]]);
+      sheet.getRange("A1:A4").setValues([["Latest Data"], ["{}"], ["[]"], ["Last Modified"]]);
+      sheet.getRange("B1:B4").setValues([["scheduleData"], ["classrooms"], [""]]);
     } else if (name === SHEET_HISTORY) {
       sheet.getRange("A1:E1").setValues([["Timestamp", "SavedBy", "ScheduleData", "Classrooms", "FilterPresets"]]);
       sheet.setFrozenRows(1);
@@ -45,30 +45,25 @@ function getData() {
     Logger.log("開始獲取數據");
     const dataSheet = getSheet_(SHEET_DATA);
     
-    const range = dataSheet.getRange("A2:A5").getValues();
+    const range = dataSheet.getRange("A2:A4").getValues();
     const scheduleDataJson = range[0][0];
     const classroomsJson = range[1][0];
     const lastModified = range[2][0];
-    const filterPresetsJson = range[3][0];
     
-    Logger.log(`從試算表獲取的原始數據: scheduleData=${scheduleDataJson}, classrooms=${classroomsJson}, filterPresets=${filterPresetsJson}, lastModified=${lastModified}`);
+    Logger.log(`從試算表獲取的原始數據: scheduleData=${scheduleDataJson}, classrooms=${classroomsJson}, lastModified=${lastModified}`);
     
     let scheduleData = {};
     let classrooms = [];
-    let filterPresets = {};
     
     try { if (scheduleDataJson) scheduleData = JSON.parse(scheduleDataJson); } catch (e) { Logger.log(`解析 scheduleData 失敗: ${e}`); }
     try { if (classroomsJson) classrooms = JSON.parse(classroomsJson); } catch (e) { Logger.log(`解析 classrooms 失敗: ${e}`); }
-    try { if (filterPresetsJson) filterPresets = JSON.parse(filterPresetsJson); } catch (e) { Logger.log(`解析 filterPresets 失敗: ${e}`); }
     
     if (!Array.isArray(classrooms)) classrooms = [];
     if (typeof scheduleData !== 'object' || scheduleData === null) scheduleData = {};
-    if (typeof filterPresets !== 'object' || filterPresets === null) filterPresets = {};
     
     const result = {
       scheduleData: scheduleData,
       classrooms: classrooms,
-      filterPresets: filterPresets,
       lastModified: lastModified ? new Date(lastModified).toISOString() : null
     };
     
@@ -97,7 +92,7 @@ function saveData(data) {
 
   try {
     Logger.log("開始保存數據");
-    if (!data || typeof data.scheduleData !== 'object' || !Array.isArray(data.classrooms) || typeof data.filterPresets !== 'object') {
+    if (!data || typeof data.scheduleData !== 'object' || !Array.isArray(data.classrooms)) {
       throw new Error("無效的數據格式。");
     }
 
@@ -108,16 +103,15 @@ function saveData(data) {
     const timestampISO = timestamp.toISOString();
     const scheduleDataJson = JSON.stringify(data.scheduleData);
     const classroomsJson = JSON.stringify(data.classrooms);
-    const filterPresetsJson = JSON.stringify(data.filterPresets);
 
     // 1. 更新 "Data" 工作表
     const dataSheet = getSheet_(SHEET_DATA);
-    dataSheet.getRange("A2:A5").setValues([[scheduleDataJson], [classroomsJson], [timestampISO], [filterPresetsJson]]);
+    dataSheet.getRange("A2:A4").setValues([[scheduleDataJson], [classroomsJson], [timestampISO]]);
 
     // 2. 更新 "History" 工作表
     const historySheet = getSheet_(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
-    historySheet.getRange("A2:E2").setValues([[timestampISO, userName, scheduleDataJson, classroomsJson, filterPresetsJson]]);
+    historySheet.getRange("A2:D2").setValues([[timestampISO, userName, scheduleDataJson, classroomsJson]]);
 
     // 3. 維護歷史紀錄，只保留最新的10筆
     const maxHistoryRecords = 10;
@@ -169,7 +163,7 @@ function getVersionData(versionId) {
       throw new Error("未提供版本ID");
     }
     const historySheet = getSheet_(SHEET_HISTORY);
-    const data = historySheet.getRange("A:E").getValues();
+    const data = historySheet.getRange("A:D").getValues();
     
     // Find the row matching the versionId. Comparing by string representation is safer.
     const versionRow = data.slice(1).find(row => row[0] && new Date(row[0]).toISOString() === versionId);
@@ -179,7 +173,6 @@ function getVersionData(versionId) {
         success: true,
         scheduleData: JSON.parse(versionRow[2]),
         classrooms: JSON.parse(versionRow[3]),
-        filterPresets: versionRow[4] ? JSON.parse(versionRow[4]) : {},
         versionId: versionId
       };
     }

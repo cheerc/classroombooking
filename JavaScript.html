@@ -82,10 +82,6 @@
             filterDeselectAll: document.getElementById('filter-deselect-all'),
             filterApply: document.getElementById('filter-apply'),
             filterClear: document.getElementById('filter-clear'),
-            filterPresetSelect: document.getElementById('filter-preset-select'),
-            saveFilterPresetAsBtn: document.getElementById('save-filter-preset-as'),
-            loadFilterPresetBtn: document.getElementById('load-filter-preset'),
-            deleteFilterPresetBtn: document.getElementById('delete-filter-preset'),
             activeFilterDisplay: document.getElementById('active-filter-display'),
         },
 
@@ -189,15 +185,11 @@
             els.filterDeselectAll.addEventListener('click', () => this.toggleAllFilterCheckboxes(false));
             els.filterApply.addEventListener('click', () => this.applyFilters());
             els.filterClear.addEventListener('click', () => this.clearFilters());
-            els.saveFilterPresetAsBtn.addEventListener('click', () => this.saveFilterPresetAs());
-            els.loadFilterPresetBtn.addEventListener('click', () => this.loadFilterPreset());
-            els.deleteFilterPresetBtn.addEventListener('click', () => this.deleteFilterPreset());
         },
 
         // --- Filter Logic ---
         showFilterModal: function() {
             this.populateFilterModal();
-            this.updateFilterPresetDropdown();
             this.elements.filterModal.style.display = 'flex';
         },
 
@@ -261,117 +253,7 @@
             }
         },
 
-        updateFilterPresetDropdown: function() {
-            const presets = this.filterPresets;
-            const select = this.elements.filterPresetSelect;
-            select.innerHTML = '';
-            const presetNames = Object.keys(presets);
-            if (presetNames.length === 0) {
-                select.innerHTML = '<option value="">沒有已儲存的組合</option>';
-                select.disabled = true;
-            } else {
-                presetNames.sort().forEach(name => {
-                    const preset = presets[name];
-                    let displayText = name;
-                    if (preset && typeof preset === 'object') {
-                        const savedBy = preset.savedBy ? `由 ${this.getShortUserName(preset.savedBy)}` : '';
-                        const modifiedAt = preset.modifiedAt ? ` 於 ${new Date(preset.modifiedAt).toLocaleString()}` : '';
-                        if (savedBy || modifiedAt) {
-                            displayText += ` (${savedBy}${modifiedAt} 儲存)`;
-                        }
-                    }
-                    const option = document.createElement('option');
-                    option.value = name;
-                    option.textContent = displayText;
-                    select.appendChild(option);
-                });
-                select.disabled = false;
-            }
-        },
-
-        saveFilterPresetAs: async function() {
-            const selectedCourses = Array.from(this.elements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-
-            if (selectedCourses.length === 0) {
-                this.showNotification('沒有選擇任何課程，無法儲存空篩選。', 'info');
-                return;
-            }
-
-            const presetName = await this.showPrompt('請為這個篩選組合命名：');
-            if (!presetName || presetName.trim() === '') {
-                this.showNotification('已取消儲存，名稱不能為空。', 'info');
-                return;
-            }
-
-            if (this.filterPresets[presetName] && !await this.showConfirm(`"${presetName}" 已存在，確定要覆蓋嗎？`)) {
-                return;
-            }
-
-            this.filterPresets[presetName] = {
-                courses: selectedCourses,
-                savedBy: this.currentUserEmail,
-                modifiedAt: new Date().toISOString()
-            };
-            this.showNotification(`已成功儲存篩選組合 "${presetName}"！`, 'success');
-            this.updateFilterPresetDropdown();
-            this.saveState(); // This will trigger dirty check
-        },
-
-        loadFilterPreset: function() {
-            const presetName = this.elements.filterPresetSelect.value;
-            if (!presetName) {
-                this.showNotification('請先從下拉選單中選擇一個組合。', 'info');
-                return;
-            }
-            const preset = this.filterPresets[presetName];
-
-            if (preset) {
-                // Handle both old and new data structures for backward compatibility
-                const presetCourses = Array.isArray(preset) ? preset : preset.courses;
-                this.activeFilters = presetCourses || [];
-                this.populateFilterModal(); // Refresh checkboxes in modal
-                this.applyFilters();
-                this.showNotification(`已成功讀取並套用 "${presetName}"！`, 'success');
-            } else {
-                this.showNotification('找不到指定的篩選組合。', 'error');
-            }
-        },
-
-        deleteFilterPreset: async function() {
-            const presetName = this.elements.filterPresetSelect.value;
-            if (!presetName) {
-                this.showNotification('請先從下拉選單中選擇一個要刪除的組合。', 'info');
-                return;
-            }
-
-            if (await this.showConfirm(`確定要刪除篩選組合 "${presetName}" 嗎？`)) {
-                delete this.filterPresets[presetName];
-                this.showNotification(`已刪除組合 "${presetName}"`, 'success');
-                this.updateFilterPresetDropdown();
-                this.saveState(); // This will trigger dirty check
-            }
-        },
-
-        syncFilterPresetsOnRename: function(oldName, newName) {
-            let isChanged = false;
-            for (const presetName in this.filterPresets) {
-                const preset = this.filterPresets[presetName];
-                // Handle both old and new data structures
-                const courseList = Array.isArray(preset) ? preset : preset.courses;
-                
-                if (courseList) {
-                    const index = courseList.indexOf(oldName);
-                    if (index > -1) {
-                        courseList[index] = newName;
-                        isChanged = true;
-                    }
-                }
-            }
-            if (isChanged) {
-                this.showNotification('已自動同步更新儲存的篩選組合。', 'info', 4000);
-                // No need to call saveState() here as it will be called by the parent function
-            }
-        },
+        
 
         handleGlobalKeydown: function(e) {
             if (e.key === 'Escape') {
@@ -730,7 +612,6 @@
                         const confirmAll = await this.showConfirm(`找到 ${otherOccurrences} 個其他名為 "${originalName}" 的課程。<br>要全部一起改名為 "${newValue}" 嗎？`);
                         if (confirmAll) {
                             this.updateAllNameOccurrences(originalName, newValue);
-                            this.syncFilterPresetsOnRename(originalName, newValue);
 
                             // Also update the currently active filter to reflect the change
                             const activeFilterIndex = this.activeFilters.indexOf(originalName);
