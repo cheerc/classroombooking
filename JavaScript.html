@@ -263,11 +263,8 @@
                     return;
                 }
                 if (this.activeInlineForm) {
-                    this.activeInlineForm.close();
-                    return;
-                }
-                if (this.elements.helpModal.style.display !== 'none') {
-                    this.hideHelpModal();
+                    // Force close and discard changes on Escape
+                    this.activeInlineForm.close(true, true); 
                     return;
                 }
                 if (this.elements.classroomManagerModal.style.display !== 'none') {
@@ -290,14 +287,18 @@
         },
 
         handleDocumentClick: function(e) {
-            if (e.target.closest('.class-item')) {
+            // If the click is on the department editor pop-up, let it handle itself.
+            if (e.target.closest('.department-editor')) {
                 return;
             }
-            if (!e.target.closest('.inline-add-form')) {
+
+            // If an inline form is active and the click is outside of it, trigger its close/blur behavior.
+            if (this.activeInlineForm && !e.target.closest('.inline-add-form')) {
+                this.activeInlineForm.close();
+            } 
+            // If there's no active form and the click is outside any class item, clear selections.
+            else if (!this.activeInlineForm && !e.target.closest('.class-item')) {
                 this.clearAllSelections();
-            }
-            if (this.activeInlineForm && !e.target.closest('.inline-add-form') && !this.activeInlineForm.isDirty()) {
-                this.activeInlineForm.close(true);
             }
         },
 
@@ -360,7 +361,7 @@
                        formDiv.querySelector('input[name="teacher"]').value.trim() !== '';
             };
 
-            const closeHandler = async (force = false) => {
+            const closeHandler = async (force = false, escape = false) => {
                 if (!force && isDirty()) {
                     if (!await this.showConfirm('您有未儲存的變更，確定要捨棄嗎？')) {
                         return false;
@@ -435,14 +436,23 @@
         },
 
         handleScheduleBodyClick: function(event) {
+            // If a form is already active, ignore all clicks on the schedule body.
+            // The document-level click handler will manage closing the form.
+            if (this.activeInlineForm) {
+                return;
+            }
+
             const classElement = event.target.closest('.class-item');
             const deleteBtn = event.target.closest('.delete-btn');
+
             if (deleteBtn) {
                 this.handleDeleteClassClick(event, deleteBtn);
                 return;
             }
+
             const cell = event.target.closest('.schedule-cell');
             if (!classElement && cell && !cell.querySelector('.inline-add-form')) {
+                // Double-click logic for empty cells
                 if (this.clickTimer && this.lastClickedId === 'empty-' + cell.dataset.classroom + '-' + cell.dataset.day) {
                     clearTimeout(this.clickTimer);
                     this.clickTimer = null;
@@ -459,17 +469,22 @@
                 }
                 return;
             }
+
             if (classElement) {
+                // Double-click logic for existing class items
                 const classId = classElement.dataset.id;
                 if (this.clickTimer && this.lastClickedId === classId) {
                     clearTimeout(this.clickTimer);
                     this.clickTimer = null;
                     this.lastClickedId = null;
-                    this.handleEditFieldClick(event, event.target.closest('.editable') || classElement.querySelector('.editable'));
+                    // The second click is the double-click, trigger edit.
+                    this.handleEditFieldClick(event, event.target.closest('.editable') || classElement);
                 } else {
+                    // This is the first click. Set a timer.
                     clearTimeout(this.clickTimer);
                     this.lastClickedId = classId;
                     this.clickTimer = setTimeout(() => {
+                        // If the timer completes, it's a single click. Toggle selection.
                         this.toggleSelection(classElement);
                         this.clickTimer = null;
                         this.lastClickedId = null;
@@ -519,184 +534,201 @@
             }
         },
 
-        handleEditFieldClick: function(e, element) {
+        handleEditFieldClick: async function(e, element) {
+            if (this.activeInlineForm) {
+                const isClosed = await this.activeInlineForm.close();
+                if (!isClosed) return;
+            }
+            
             this.clearAllSelections();
-            if (element.querySelector('input')) return;
             e.stopPropagation();
 
-            const field = element.dataset.field;
             const classElement = element.closest('.class-item');
+            if (!document.body.contains(classElement)) return;
+
             const classId = classElement.dataset.id;
-            const classroom = element.closest('td').dataset.classroom;
-            const day = parseInt(element.closest('td').dataset.day);
+            const classroom = classElement.closest('td').dataset.classroom;
+            const day = parseInt(classElement.closest('td').dataset.day);
             
             const classItem = this.scheduleData[classroom]?.[day]?.find(c => c.id === classId);
             if (!classItem) return;
 
-            if (field === 'departments') {
-                this.showDepartmentEditor(element, classItem);
-                return;
-            }
+            const originalData = { ...classItem }; // Keep a copy of original data
 
-            const originalName = classItem.name;
-            const originalTeacher = classItem.teacher;
-            let currentValue = classItem[field];
-            if (field === 'time') {
-                currentValue = `${classItem.timeStart}-${classItem.timeEnd}`;
-            }
+            const formDiv = document.createElement('div');
+            formDiv.setAttribute('class', 'inline-add-form');
             
-            if (field === 'time') {
-                const timeStartInput = document.createElement('input');
-                timeStartInput.type = 'time';
-                timeStartInput.value = classItem.timeStart;
-                let timeInputStyle = 'inline-input';
-                timeStartInput.setAttribute('class', timeInputStyle);
-                
-                const timeEndInput = document.createElement('input');
-                timeEndInput.type = 'time';
-                timeEndInput.value = classItem.timeEnd;
-                timeEndInput.setAttribute('class', timeInputStyle);
+            let departmentSelectorHtml = '';
+            if (this.departments.length > 0) {
+                const departmentCheckboxes = this.departments.map(dept => {
+                    const isChecked = (classItem.departments || []).includes(dept);
+                    return `<label><input type="checkbox" class="inline-department-checkbox" value="${dept}" ${isChecked ? 'checked' : ''}> ${dept}</label>`;
+                }).join('');
+                departmentSelectorHtml = `<div class="inline-department-selector"><div class="inline-selector-title">部門:</div>${departmentCheckboxes}</div>`;
+            }
 
-                const timeContainer = document.createElement('div');
-                timeContainer.setAttribute('class', 'inline-time-inputs');
-                timeContainer.appendChild(timeStartInput);
-                timeContainer.appendChild(document.createTextNode(' - '));
-                timeContainer.appendChild(timeEndInput);
-                
-                element.innerHTML = '';
-                element.appendChild(timeContainer);
-                timeStartInput.focus();
+            formDiv.innerHTML = `
+                <button title="取消" class="inline-add-cancel-btn">×</button>
+                <input type="text" placeholder="課程名稱" class="inline-input" name="name" value="${classItem.name}" required>
+                <div class="inline-time-inputs">
+                    <input type="time" class="inline-input" name="timeStart" value="${classItem.timeStart}" required>
+                    <span>-</span>
+                    <input type="time" class="inline-input" name="timeEnd" value="${classItem.timeEnd}" required>
+                </div>
+                <input type="text" placeholder="使用人" class="inline-input" name="teacher" value="${classItem.teacher}">
+                ${departmentSelectorHtml}
+                <div class="inline-form-actions">
+                    <button title="儲存" class="save-inline">✓</button>
+                </div>
+            `;
 
-                const cleanup = (isSuccess) => {
-                    timeStartInput.removeEventListener('blur', blurHandler);
-                    timeEndInput.removeEventListener('blur', blurHandler);
-                    timeContainer.removeEventListener('keydown', handleKeydown);
-                    if (!isSuccess) {
-                       this.renderScheduleTable();
+            classElement.innerHTML = '';
+            classElement.appendChild(formDiv);
+            formDiv.querySelector('input[name="name"]').focus();
+
+            const isDirty = () => {
+                const name = formDiv.querySelector('input[name="name"]').value.trim();
+                const timeStart = formDiv.querySelector('input[name="timeStart"]').value;
+                const timeEnd = formDiv.querySelector('input[name="timeEnd"]').value;
+                const teacher = formDiv.querySelector('input[name="teacher"]').value.trim();
+                const selectedDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
+                
+                return name !== originalData.name ||
+                       timeStart !== originalData.timeStart ||
+                       timeEnd !== originalData.timeEnd ||
+                       teacher !== originalData.teacher ||
+                       JSON.stringify(selectedDepartments.sort()) !== JSON.stringify((originalData.departments || []).sort());
+            };
+
+            const handleSave = async () => {
+                const newName = formDiv.querySelector('input[name="name"]').value.trim();
+                const newTimeStart = formDiv.querySelector('input[name="timeStart"]').value;
+                const newTimeEnd = formDiv.querySelector('input[name="timeEnd"]').value;
+                const newTeacher = formDiv.querySelector('input[name="teacher"]').value.trim();
+                const newDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
+
+                if (!newName) { this.showNotification('課程名稱不能為空！', 'error'); return false; }
+                if (!newTimeStart || !newTimeEnd) { this.showNotification('請輸入完整的開始與結束時間！', 'error'); return false; }
+
+                const formattedTimeStart = this.formatTime(newTimeStart);
+                const formattedTimeEnd = this.formatTime(newTimeEnd);
+                if (this.timeToMinutes(formattedTimeStart) >= this.timeToMinutes(formattedTimeEnd)) {
+                    this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
+                    return false;
+                }
+
+                // Batch update for name
+                if (newName !== originalData.name) {
+                    const otherNameOccurrences = this.countNameOccurrences(originalData.name, classId);
+                    if (otherNameOccurrences > 0) {
+                        const confirmAll = await this.showConfirm(`找到 ${otherNameOccurrences} 個其他名為 "${originalData.name}" 的課程。<br>要全部一起改名為 "${newName}" 嗎？`);
+                        if (confirmAll) {
+                            this.updateAllNameOccurrences(originalData.name, newName);
+                            const activeFilterIndex = this.activeFilters.indexOf(originalData.name);
+                            if (activeFilterIndex > -1) this.activeFilters[activeFilterIndex] = newName;
+                        } else {
+                            classItem.name = newName; // Update only current if user cancels
+                        }
+                    } else {
+                        classItem.name = newName;
                     }
-                };
+                    this.buildCourseColorMap();
+                }
 
-                const handleUpdate = () => {
-                    const newStart = this.formatTime(timeStartInput.value);
-                    const newEnd = this.formatTime(timeEndInput.value);
+                // Batch update for teacher
+                if (newTeacher !== originalData.teacher) {
+                    const otherTeacherOccurrences = this.countTeacherOccurrences(originalData.name, originalData.teacher, classId);
+                    if (otherTeacherOccurrences > 0) {
+                        const confirmAll = await this.showConfirm(`找到 ${otherTeacherOccurrences} 堂其他由 "${originalData.teacher}" 上的 "${originalData.name}" 課程。<br>要將使用人一起變更為 "${newTeacher}" 嗎？`);
+                        if (confirmAll) {
+                            this.updateAllTeacherOccurrences(originalData.name, originalData.teacher, newTeacher);
+                        } else {
+                            classItem.teacher = newTeacher; // Update only current if user cancels
+                        }
+                    } else {
+                        classItem.teacher = newTeacher;
+                    }
+                }
 
-                    if (newStart === classItem.timeStart && newEnd === classItem.timeEnd) {
-                        cleanup(true);
+                // Update remaining fields for the current class item
+                classItem.timeStart = formattedTimeStart;
+                classItem.timeEnd = formattedTimeEnd;
+                classItem.departments = newDepartments;
+                // If name/teacher weren't changed, ensure they are set on the current item
+                if (newName === originalData.name) classItem.name = newName;
+                if (newTeacher === originalData.teacher) classItem.teacher = newTeacher;
+
+                return true;
+            };
+
+            let isClosing = false;
+            const closeHandler = async (forceSave = false, forceCancel = false) => {
+                if (isClosing) return true;
+
+                if (forceCancel) {
+                    isClosing = true;
+                    this.activeInlineForm = null;
+                    this.renderScheduleTable();
+                    return true;
+                }
+
+                if (!isDirty()) {
+                    isClosing = true;
+                    this.activeInlineForm = null;
+                    this.renderScheduleTable();
+                    return true;
+                }
+
+                if (!forceSave) { // Clicked outside
+                    const discard = await this.showConfirm('您有未儲存的變更，確定要捨棄嗎？');
+                    if (discard) {
+                        isClosing = true;
+                        this.activeInlineForm = null;
                         this.renderScheduleTable();
-                        return;
+                        return true;
+                    } else {
+                        return false; // Abort closing, keep form open
                     }
+                }
 
-                    if (this.timeToMinutes(newStart) >= this.timeToMinutes(newEnd)) {
-                        this.showNotification('開始時間不能晚於或等於結束時間！', 'error');
-                        cleanup(false);
-                        return;
-                    }
-                    
-                    classItem.timeStart = newStart;
-                    classItem.timeEnd = newEnd;
-                    
+                // Force save (Enter or Save button)
+                isClosing = true;
+                const saved = await handleSave(); // handleSave is now async
+                if (saved) {
+                    this.activeInlineForm = null;
                     this.renderScheduleTable();
                     this.showNotification('已更新課程資訊');
                     this.saveDataToLocal();
                     this.saveState();
-                };
-
-                const handleKeydown = (e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); timeEndInput.blur(); } 
-                    else if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
-                };
-
-                const blurHandler = (e) => {
-                    if (e.relatedTarget === timeStartInput || e.relatedTarget === timeEndInput) {
-                        return;
-                    }
-                    handleUpdate();
-                };
-
-                timeStartInput.addEventListener('blur', blurHandler);
-                timeEndInput.addEventListener('blur', blurHandler);
-                timeContainer.addEventListener('keydown', handleKeydown);
-                return;
-            }
-
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.value = currentValue;
-            let inputStyle = 'w-full p-1 border border-blue-500 rounded';
-            input.setAttribute('class', inputStyle);
-            element.innerHTML = '';
-            element.appendChild(input);
-            input.focus();
-            input.select();
-
-            const cleanup = (isSuccess) => {
-                input.removeEventListener('blur', handleUpdate);
-                input.removeEventListener('keydown', handleKeydown);
-                if (!isSuccess) {
-                   this.renderScheduleTable();
+                } else {
+                    isClosing = false; // Validation failed, allow user to try again
+                    // Re-render to show the form again, as it might have been cleared
+                    this.renderScheduleTable(); 
+                    // We need to re-trigger the edit mode on the same element
+                    const elementToReEdit = document.querySelector(`[data-id="${classId}"]`);
+                    if(elementToReEdit) this.handleEditFieldClick(new MouseEvent('dblclick'), elementToReEdit);
+                    return false;
                 }
+                return true;
             };
 
-            const handleUpdate = async () => {
-                let newValue = input.value.trim();
-                
-                if (newValue === currentValue) {
-                    cleanup(true);
-                    this.renderScheduleTable();
-                    return;
+            this.activeInlineForm = { close: closeHandler, isDirty: isDirty };
+
+            formDiv.querySelector('.save-inline').addEventListener('click', (e) => {
+                e.preventDefault();
+                closeHandler(true, false); // forceSave = true
+            });
+            formDiv.querySelector('.inline-add-cancel-btn').addEventListener('click', () => closeHandler(false, true)); // forceCancel = true
+            formDiv.addEventListener('keydown', (evt) => {
+                if (evt.key === 'Enter') { 
+                    evt.preventDefault(); 
+                    closeHandler(true, false); // forceSave = true
+                } 
+                else if (evt.key === 'Escape') { 
+                    evt.preventDefault(); 
+                    closeHandler(false, true); // forceCancel = true
                 }
-
-                if (field === 'name' && !newValue) {
-                    this.showNotification('課程名稱不能為空！', 'error');
-                    cleanup(false);
-                    return;
-                }
-
-                if (field === 'name') {
-                    const otherOccurrences = this.countNameOccurrences(originalName, classId);
-                    if (otherOccurrences > 0) {
-                        const confirmAll = await this.showConfirm(`找到 ${otherOccurrences} 個其他名為 "${originalName}" 的課程。<br>要全部一起改名為 "${newValue}" 嗎？`);
-                        if (confirmAll) {
-                            this.updateAllNameOccurrences(originalName, newValue);
-
-                            // Also update the currently active filter to reflect the change
-                            const activeFilterIndex = this.activeFilters.indexOf(originalName);
-                            if (activeFilterIndex > -1) {
-                                this.activeFilters[activeFilterIndex] = newValue;
-                            }
-                        } else {
-                            classItem.name = newValue;
-                        }
-                    } else {
-                        classItem.name = newValue;
-                    }
-                    this.buildCourseColorMap();
-                } else if (field === 'teacher') {
-                    const otherOccurrences = this.countTeacherOccurrences(originalName, originalTeacher, classId);
-                    if (otherOccurrences > 0) {
-                        const confirmAll = await this.showConfirm(`找到 ${otherOccurrences} 堂其他由 "${originalTeacher}" 上的 "${originalName}" 課程。<br>要將使用人一起變更為 "${newValue}" 嗎？`);
-                        if (confirmAll) {
-                            this.updateAllTeacherOccurrences(originalName, originalTeacher, newValue);
-                        } else {
-                            classItem.teacher = newValue; // If user cancels, update only the current item
-                        }
-                    } else {
-                        classItem.teacher = newValue;
-                    }
-                }
-
-                this.renderScheduleTable();
-                this.showNotification('已更新課程資訊');
-                this.saveDataToLocal();
-                this.saveState();
-            };
-
-            const handleKeydown = (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); input.blur(); } 
-                else if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
-            };
-            input.addEventListener('blur', handleUpdate);
-            input.addEventListener('keydown', handleKeydown);
+            });
         },
 
         showDepartmentEditor: function(element, classItem) {
