@@ -420,6 +420,8 @@
                 const selectedDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
 
                 if (!name) { this.showNotification('課程名稱不能為空！', 'error'); return; }
+                if (!teacher) { this.showNotification('使用人不能為空！', 'error'); return; }
+                if (selectedDepartments.length === 0) { this.showNotification('請至少選擇一個部門！', 'error'); return; }
                 if (selectedDays.length === 0) { this.showNotification('請至少選擇一個星期！', 'error'); return; }
                 if (!timeStart || !timeEnd) { this.showNotification('請輸入完整的開始與結束時間！', 'error'); return; }
 
@@ -645,6 +647,8 @@
                 const newDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
 
                 if (!newName) { this.showNotification('課程名稱不能為空！', 'error'); return false; }
+                if (!newTeacher) { this.showNotification('使用人不能為空！', 'error'); return false; }
+                if (newDepartments.length === 0) { this.showNotification('請至少選擇一個部門！', 'error'); return false; }
                 if (!newTimeStart || !newTimeEnd) { this.showNotification('請輸入完整的開始與結束時間！', 'error'); return false; }
 
                 const formattedTimeStart = this.formatTime(newTimeStart);
