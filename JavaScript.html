@@ -96,6 +96,19 @@
         init: function() {
             const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
             this.currentUserEmail = this.getShortUserName(fullEmail);
+
+            // --- 權限控管 ---
+            if (fullEmail.toLowerCase() !== 'cheerc@talented.com.tw') {
+                const adminButtons = [
+                    this.elements.showClassroomManagerBtn,
+                    this.elements.showDepartmentManagerBtn,
+                    this.elements.showVersionHistoryBtn
+                ];
+                adminButtons.forEach(btn => {
+                    if (btn) btn.style.display = 'none';
+                });
+            }
+
             try {
                 this.loadDataFromLocal();
             } catch (e) {
