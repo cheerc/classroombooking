@@ -117,6 +117,28 @@
             }, 500);
         },
 
+        setupModalListeners: function(triggerBtn, modal, closeBtn, onOpen) {
+            if (!modal || !closeBtn) return;
+            
+            const openModal = () => {
+                if (onOpen) onOpen();
+                modal.style.display = 'flex';
+            }
+            const closeModal = () => modal.style.display = 'none';
+
+            if (triggerBtn) {
+                triggerBtn.addEventListener('click', openModal);
+            }
+            
+            closeBtn.addEventListener('click', closeModal);
+            
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+        },
+
         addEventListeners: function() {
             const els = this.elements;
             els.loadingCancel.addEventListener('click', () => {
@@ -145,43 +167,17 @@
             els.redoBtn.addEventListener('click', () => this.redo());
             
             // Modal Listeners
-            els.showClassroomManagerBtn.addEventListener('click', () => els.classroomManagerModal.style.display = 'flex');
-            els.classroomManagerModalClose.addEventListener('click', () => els.classroomManagerModal.style.display = 'none');
-            els.classroomManagerModal.addEventListener('click', (e) => {
-                if (e.target === els.classroomManagerModal) {
-                    els.classroomManagerModal.style.display = 'none';
-                }
-            });
-
-            els.showDepartmentManagerBtn.addEventListener('click', () => els.departmentManagerModal.style.display = 'flex');
-            els.departmentManagerModalClose.addEventListener('click', () => els.departmentManagerModal.style.display = 'none');
-            els.departmentManagerModal.addEventListener('click', (e) => {
-                if (e.target === els.departmentManagerModal) {
-                    els.departmentManagerModal.style.display = 'none';
-                }
-            });
-
-            els.showVersionHistoryBtn.addEventListener('click', () => els.versionHistoryModal.style.display = 'flex');
-            els.versionHistoryModalClose.addEventListener('click', () => els.versionHistoryModal.style.display = 'none');
-            els.versionHistoryModal.addEventListener('click', (e) => {
-                if (e.target === els.versionHistoryModal) {
-                    els.versionHistoryModal.style.display = 'none';
-                }
-            });
+            this.setupModalListeners(els.showClassroomManagerBtn, els.classroomManagerModal, els.classroomManagerModalClose);
+            this.setupModalListeners(els.showDepartmentManagerBtn, els.departmentManagerModal, els.departmentManagerModalClose);
+            this.setupModalListeners(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose);
+            this.setupModalListeners(els.showHelpBtn, els.helpModal, els.helpModalClose);
+            this.setupModalListeners(els.showFilterBtn, els.filterModal, els.filterModalClose, () => this.populateFilterModal());
 
             els.classroomList.addEventListener('click', this.handleDeleteClassroomClick.bind(this));
             els.departmentList.addEventListener('click', this.handleDeleteDepartmentClick.bind(this));
             els.scheduleBody.addEventListener('click', this.handleScheduleBodyClick.bind(this));
             document.addEventListener('click', this.handleDocumentClick.bind(this), true);
             document.addEventListener('keydown', this.handleGlobalKeydown.bind(this));
-
-            els.showHelpBtn.addEventListener('click', () => this.showHelpModal());
-            els.helpModalClose.addEventListener('click', () => this.hideHelpModal());
-            els.helpModal.addEventListener('click', (e) => {
-                if (e.target === els.helpModal) {
-                    this.hideHelpModal();
-                }
-            });
 
             // Add beforeunload listener to prevent accidental closing
             window.addEventListener('beforeunload', (e) => {
@@ -191,14 +187,7 @@
                 }
             });
 
-            // Filter Listeners
-            els.showFilterBtn.addEventListener('click', () => this.showFilterModal());
-            els.filterModalClose.addEventListener('click', () => els.filterModal.style.display = 'none');
-            els.filterModal.addEventListener('click', (e) => {
-                if (e.target === els.filterModal) {
-                    els.filterModal.style.display = 'none';
-                }
-            });
+            // Filter actions
             els.filterSelectAll.addEventListener('click', () => this.toggleAllFilterCheckboxes(true));
             els.filterDeselectAll.addEventListener('click', () => this.toggleAllFilterCheckboxes(false));
             els.filterApply.addEventListener('click', () => this.applyFilters());
@@ -206,11 +195,6 @@
         },
 
         // --- Filter Logic ---
-        showFilterModal: function() {
-            this.populateFilterModal();
-            this.elements.filterModal.style.display = 'flex';
-        },
-
         populateFilterModal: function() {
             const courseNames = new Set();
             Object.values(this.scheduleData).forEach(classroom => {
@@ -771,40 +755,22 @@
             setTimeout(() => document.addEventListener('click', outsideClickHandler, true), 0);
         },
 
+        renderList: function(listElement, items, renderItemFn) {
+            listElement.innerHTML = '';
+            items.forEach(item => {
+                const li = renderItemFn(item);
+                if (li) listElement.appendChild(li);
+            });
+        },
+
         updateDepartmentList: function() {
             try {
-                const els = this.elements;
-                els.departmentList.innerHTML = '';
                 const sortedDepartments = this.departments.slice().sort();
-
-                sortedDepartments.forEach(department => {
+                this.renderList(this.elements.departmentList, sortedDepartments, (department) => {
                     const li = document.createElement('li');
                     li.setAttribute('class', 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded');
-
-                    const span = document.createElement('span');
-                    span.textContent = department;
-
-                    const button = document.createElement('button');
-                    button.setAttribute('class', 'delete-department text-red-600 hover:text-red-800');
-                    button.setAttribute('data-department', department);
-
-                    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                    svg.setAttribute('class', 'h-4 w-4');
-                    svg.setAttribute('fill', 'none');
-                    svg.setAttribute('viewBox', '0 0 24 24');
-                    svg.setAttribute('stroke', 'currentColor');
-
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('stroke-linecap', 'round');
-                    path.setAttribute('stroke-linejoin', 'round');
-                    path.setAttribute('stroke-width', '2');
-                    path.setAttribute('d', 'M6 18L18 6M6 6l12 12');
-
-                    svg.appendChild(path);
-                    button.appendChild(svg);
-                    li.appendChild(span);
-                    li.appendChild(button);
-                    els.departmentList.appendChild(li);
+                    li.innerHTML = `<span>${department}</span><button class="delete-department text-red-600 hover:text-red-800" data-department="${department}"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>`;
+                    return li;
                 });
             } catch (e) {
                 console.error('更新部門列表失敗:', e);
@@ -1088,14 +1054,6 @@
             });
         },
 
-        showHelpModal: function() {
-            this.elements.helpModal.style.display = 'flex';
-        },
-
-        hideHelpModal: function() {
-            this.elements.helpModal.style.display = 'none';
-        },
-
         updateSyncStatus: function(status, time) {
             const els = this.elements;
             let statusText = '', timeText = '', statusClass = '';
@@ -1140,14 +1098,12 @@
 
         updateClassroomList: function() {
             try {
-                const els = this.elements;
-                els.classroomList.innerHTML = '';
                 const sortedClassrooms = this.sortClassrooms(this.classrooms);
-                sortedClassrooms.forEach(classroom => {
+                this.renderList(this.elements.classroomList, sortedClassrooms, (classroom) => {
                     const li = document.createElement('li');
                     li.setAttribute('class', 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded');
                     li.innerHTML = `<span>${classroom}</span><button class="delete-classroom text-red-600 hover:text-red-800" data-classroom="${classroom}"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>`;
-                    els.classroomList.appendChild(li);
+                    return li;
                 });
             } catch (e) {
                 console.error('更新教室列表失敗:', e);
