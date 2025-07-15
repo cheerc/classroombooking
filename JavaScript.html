@@ -263,8 +263,8 @@
                     return;
                 }
                 if (this.activeInlineForm) {
-                    // Force close and discard changes on Escape
-                    this.activeInlineForm.close(true, true); 
+                    // Ask to close and discard changes on Escape
+                    this.activeInlineForm.close();
                     return;
                 }
                 if (this.elements.classroomManagerModal.style.display !== 'none') {
@@ -361,10 +361,10 @@
                        formDiv.querySelector('input[name="teacher"]').value.trim() !== '';
             };
 
-            const closeHandler = async (force = false, escape = false) => {
-                if (!force && isDirty()) {
+            const closeHandler = async () => {
+                if (isDirty()) {
                     if (!await this.showConfirm('您有未儲存的變更，確定要捨棄嗎？')) {
-                        return false;
+                        return false; // Abort closing
                     }
                 }
                 formDiv.remove();
@@ -662,36 +662,25 @@
             };
 
             let isClosing = false;
-            const closeHandler = async (forceSave = false, forceCancel = false) => {
+            const closeHandler = async (forceSave = false) => {
                 if (isClosing) return true;
 
-                if (forceCancel) {
-                    isClosing = true;
-                    this.activeInlineForm = null;
-                    this.renderScheduleTable();
-                    return true;
-                }
-
-                if (!isDirty()) {
-                    isClosing = true;
-                    this.activeInlineForm = null;
-                    this.renderScheduleTable();
-                    return true;
-                }
-
-                if (!forceSave) { // Clicked outside
-                    const discard = await this.showConfirm('您有未儲存的變更，確定要捨棄嗎？');
-                    if (discard) {
-                        isClosing = true;
-                        this.activeInlineForm = null;
-                        this.renderScheduleTable();
-                        return true;
-                    } else {
-                        return false; // Abort closing, keep form open
+                // This logic block handles any non-save attempt to close the form
+                if (!forceSave) {
+                    if (isDirty()) {
+                        const discard = await this.showConfirm('您有未儲存的變更，確定要捨棄嗎？');
+                        if (!discard) {
+                            return false; // Abort closing, keep form open
+                        }
                     }
+                    // If not dirty, or if user chose to discard:
+                    isClosing = true;
+                    this.activeInlineForm = null;
+                    this.renderScheduleTable(); // Re-render to show original state
+                    return true;
                 }
 
-                // Force save (Enter or Save button)
+                // This block handles saving
                 isClosing = true;
                 const saved = await handleSave(); // handleSave is now async
                 if (saved) {
@@ -716,17 +705,17 @@
 
             formDiv.querySelector('.save-inline').addEventListener('click', (e) => {
                 e.preventDefault();
-                closeHandler(true, false); // forceSave = true
+                closeHandler(true); // forceSave = true
             });
-            formDiv.querySelector('.inline-add-cancel-btn').addEventListener('click', () => closeHandler(false, true)); // forceCancel = true
+            formDiv.querySelector('.inline-add-cancel-btn').addEventListener('click', () => closeHandler()); // No params, will ask to discard
             formDiv.addEventListener('keydown', (evt) => {
                 if (evt.key === 'Enter') { 
                     evt.preventDefault(); 
-                    closeHandler(true, false); // forceSave = true
+                    closeHandler(true); // forceSave = true
                 } 
                 else if (evt.key === 'Escape') { 
                     evt.preventDefault(); 
-                    closeHandler(false, true); // forceCancel = true
+                    closeHandler(); // No params, will ask to discard
                 }
             });
         },
