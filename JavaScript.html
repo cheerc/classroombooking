@@ -20,6 +20,7 @@
         ],
         classrooms: [],
         scheduleData: {},
+        departments: [],
         courseColorMap: {},
         lastSyncTime: null,
         lastCloudModifiedTime: null,
@@ -32,7 +33,6 @@
         isDirty: false, // Flag to track unsaved changes
         cleanStateSnapshot: '', // Snapshot of the last clean state
         activeFilters: [], // Array to hold active course name filters
-        filterPresets: {}, // Object to hold all filter presets, loaded from server
         currentUserEmail: '', // To store the email of the current user
 
         elements: {
@@ -58,6 +58,12 @@
             showClassroomManagerBtn: document.getElementById('show-classroom-manager-btn'),
             classroomManagerModal: document.getElementById('classroom-manager-modal'),
             classroomManagerModalClose: document.getElementById('classroom-manager-modal-close'),
+            showDepartmentManagerBtn: document.getElementById('show-department-manager-btn'),
+            departmentManagerModal: document.getElementById('department-manager-modal'),
+            departmentManagerModalClose: document.getElementById('department-manager-modal-close'),
+            departmentNameInput: document.getElementById('department-name'),
+            addDepartmentBtn: document.getElementById('add-department'),
+            departmentList: document.getElementById('department-list'),
             showVersionHistoryBtn: document.getElementById('show-version-history-btn'),
             versionHistoryModal: document.getElementById('version-history-modal'),
             versionHistoryModalClose: document.getElementById('version-history-modal-close'),
@@ -94,8 +100,10 @@
                 console.error('從本地載入數據失敗:', e);
                 this.classrooms = [];
                 this.scheduleData = {};
+                this.departments = [];
             }
             this.updateClassroomList();
+            this.updateDepartmentList();
             this.renderScheduleTable();
             this.updateSyncStatus('offline');
             this.addEventListeners();
@@ -118,6 +126,7 @@
                 this.isConnecting = false;
             });
             els.addClassroomBtn.addEventListener('click', () => this.handleAddClassroom());
+            els.addDepartmentBtn.addEventListener('click', () => this.handleAddDepartment());
             els.saveToCloudBtn.addEventListener('click', async () => {
                 if (await this.showConfirm('確定要將本地資料儲存到雲端嗎？<br>這將會建立一個新的版本紀錄。')) {
                     this.saveDataToServer();
@@ -144,6 +153,14 @@
                 }
             });
 
+            els.showDepartmentManagerBtn.addEventListener('click', () => els.departmentManagerModal.style.display = 'flex');
+            els.departmentManagerModalClose.addEventListener('click', () => els.departmentManagerModal.style.display = 'none');
+            els.departmentManagerModal.addEventListener('click', (e) => {
+                if (e.target === els.departmentManagerModal) {
+                    els.departmentManagerModal.style.display = 'none';
+                }
+            });
+
             els.showVersionHistoryBtn.addEventListener('click', () => els.versionHistoryModal.style.display = 'flex');
             els.versionHistoryModalClose.addEventListener('click', () => els.versionHistoryModal.style.display = 'none');
             els.versionHistoryModal.addEventListener('click', (e) => {
@@ -153,6 +170,7 @@
             });
 
             els.classroomList.addEventListener('click', this.handleDeleteClassroomClick.bind(this));
+            els.departmentList.addEventListener('click', this.handleDeleteDepartmentClick.bind(this));
             els.scheduleBody.addEventListener('click', this.handleScheduleBodyClick.bind(this));
             document.addEventListener('click', this.handleDocumentClick.bind(this), true);
             document.addEventListener('keydown', this.handleGlobalKeydown.bind(this));
@@ -208,7 +226,7 @@
             sortedNames.forEach(name => {
                 const isChecked = this.activeFilters.includes(name);
                 const div = document.createElement('div');
-                div.className = 'flex items-center';
+                div.setAttribute('class', 'flex items-center');
                 div.innerHTML = `
                     <input type="checkbox" id="filter-${name}" value="${name}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
                     <label for="filter-${name}" class="ml-2 block text-sm text-gray-900 truncate">${name}</label>
@@ -252,8 +270,6 @@
                 display.textContent = `已篩選 ${this.activeFilters.length} 門課程`;
             }
         },
-
-        
 
         handleGlobalKeydown: function(e) {
             if (e.key === 'Escape') {
@@ -309,12 +325,30 @@
             const classroom = cell.dataset.classroom;
             const day = parseInt(cell.dataset.day);
             if (!classroom || isNaN(day)) return;
+
             const daySelectorHtml = this.WEEKDAYS.map((dayName, index) => `
                 <label>
                     <input type="checkbox" class="inline-day-checkbox" value="${index}" ${index === day ? 'checked' : ''}>
                     ${dayName.replace('星期', '')}
                 </label>
             `).join('');
+
+            let departmentSelectorHtml = '';
+            if (this.departments.length > 0) {
+                const departmentCheckboxes = this.departments.map(dept => `
+                    <label>
+                        <input type="checkbox" class="inline-department-checkbox" value="${dept}">
+                        ${dept}
+                    </label>
+                `).join('');
+                departmentSelectorHtml = `
+                    <div class="inline-department-selector">
+                        <div class="inline-selector-title">部門:</div>
+                        ${departmentCheckboxes}
+                    </div>
+                `;
+            }
+
             const formDiv = document.createElement('div');
             formDiv.setAttribute('class', 'inline-add-form');
             formDiv.innerHTML = `
@@ -327,18 +361,21 @@
                     <input type="time" class="inline-input" name="timeEnd" required>
                 </div>
                 <input type="text" placeholder="使用人" class="inline-input" name="teacher">
+                ${departmentSelectorHtml}
                 <div class="inline-form-actions">
                     <button title="儲存" class="save-inline">✓</button>
                 </div>
             `;
             cell.appendChild(formDiv);
             formDiv.querySelector('input[name="name"]').focus();
+
             const isDirty = () => {
                 return formDiv.querySelector('input[name="name"]').value.trim() !== '' ||
                        formDiv.querySelector('input[name="timeStart"]').value.trim() !== '' ||
                        formDiv.querySelector('input[name="timeEnd"]').value.trim() !== '' ||
                        formDiv.querySelector('input[name="teacher"]').value.trim() !== '';
             };
+
             const closeHandler = async (force = false) => {
                 if (!force && isDirty()) {
                     if (!await this.showConfirm('您有未儲存的變更，確定要捨棄嗎？')) {
@@ -349,42 +386,62 @@
                 this.activeInlineForm = null;
                 return true;
             };
+
             this.activeInlineForm = { close: closeHandler, isDirty: isDirty };
+
             const handleSave = () => {
                 const name = formDiv.querySelector('input[name="name"]').value.trim();
                 const timeStart = formDiv.querySelector('input[name="timeStart"]').value.trim();
                 const timeEnd = formDiv.querySelector('input[name="timeEnd"]').value.trim();
                 const teacher = formDiv.querySelector('input[name="teacher"]').value.trim();
                 const selectedDays = Array.from(formDiv.querySelectorAll('.inline-day-checkbox:checked')).map(cb => parseInt(cb.value));
+                const selectedDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
+
                 if (!name) { this.showNotification('課程名稱不能為空！', 'error'); return; }
                 if (selectedDays.length === 0) { this.showNotification('請至少選擇一個星期！', 'error'); return; }
                 if (!timeStart || !timeEnd) { this.showNotification('請輸入完整的開始與結束時間！', 'error'); return; }
+
                 const formattedTimeStart = this.formatTime(timeStart);
                 const formattedTimeEnd = this.formatTime(timeEnd);
                 if (this.timeToMinutes(formattedTimeStart) >= this.timeToMinutes(formattedTimeEnd)) { this.showNotification('開始時間不能晚於或等於結束時間！', 'error'); return; }
+
                 let hasConflictOccurred = false;
                 if (!this.courseColorMap[name]) this.buildCourseColorMap();
+
                 selectedDays.forEach(selectedDay => {
-                    const classItem = { id: this.generateUniqueId(), name, timeStart: formattedTimeStart, timeEnd: formattedTimeEnd, teacher };
+                    const classItem = { 
+                        id: this.generateUniqueId(), 
+                        name, 
+                        timeStart: formattedTimeStart, 
+                        timeEnd: formattedTimeEnd, 
+                        teacher,
+                        departments: selectedDepartments // Add departments to the class item
+                    };
+
                     if (this.checkTimeConflict(classroom, selectedDay, classItem)) {
                         this.showNotification(`在 ${classroom} ${this.WEEKDAYS[selectedDay]} 有時間衝突！`, 'info', 5000);
                         hasConflictOccurred = true;
                     }
+
                     if (!this.scheduleData[classroom]) this.scheduleData[classroom] = {};
                     if (!this.scheduleData[classroom][selectedDay]) this.scheduleData[classroom][selectedDay] = [];
+
                     const daySchedule = this.scheduleData[classroom][selectedDay];
                     const insertIndex = daySchedule.findIndex(item => this.timeToMinutes(item.timeStart) > this.timeToMinutes(classItem.timeStart));
                     daySchedule.splice(insertIndex === -1 ? daySchedule.length : insertIndex, 0, classItem);
                 });
+
                 if (selectedDays.length > 0) {
                     if (!hasConflictOccurred) this.showNotification('已新增課程');
                     this.renderScheduleTable();
                     this.saveDataToLocal();
                     this.saveState();
                 }
+
                 formDiv.remove();
                 this.activeInlineForm = null;
             };
+
             formDiv.querySelector('.save-inline').addEventListener('click', handleSave);
             formDiv.querySelector('.inline-add-cancel-btn').addEventListener('click', () => closeHandler());
             formDiv.addEventListener('keydown', (evt) => {
@@ -492,6 +549,11 @@
             const classItem = this.scheduleData[classroom]?.[day]?.find(c => c.id === classId);
             if (!classItem) return;
 
+            if (field === 'departments') {
+                this.showDepartmentEditor(element, classItem);
+                return;
+            }
+
             const originalName = classItem.name;
             const originalTeacher = classItem.teacher;
             let currentValue = classItem[field];
@@ -503,13 +565,13 @@
                 const timeStartInput = document.createElement('input');
                 timeStartInput.type = 'time';
                 timeStartInput.value = classItem.timeStart;
-                let timeInputClass = 'inline-input';
-                timeStartInput.setAttribute('class', timeInputClass);
+                let timeInputStyle = 'inline-input';
+                timeStartInput.setAttribute('class', timeInputStyle);
                 
                 const timeEndInput = document.createElement('input');
                 timeEndInput.type = 'time';
                 timeEndInput.value = classItem.timeEnd;
-                timeEndInput.setAttribute('class', timeInputClass);
+                timeEndInput.setAttribute('class', timeInputStyle);
 
                 const timeContainer = document.createElement('div');
                 timeContainer.setAttribute('class', 'inline-time-inputs');
@@ -576,8 +638,8 @@
             const input = document.createElement('input');
             input.type = 'text';
             input.value = currentValue;
-            let inputClasses = 'w-full p-1 border border-blue-500 rounded';
-            input.setAttribute('class', inputClasses);
+            let inputStyle = 'w-full p-1 border border-blue-500 rounded';
+            input.setAttribute('class', inputStyle);
             element.innerHTML = '';
             element.appendChild(input);
             input.focus();
@@ -653,6 +715,103 @@
             input.addEventListener('keydown', handleKeydown);
         },
 
+        showDepartmentEditor: function(element, classItem) {
+            if (document.getElementById('department-editor')) return; // Editor is already open
+
+            const editor = document.createElement('div');
+            editor.id = 'department-editor';
+            editor.setAttribute('class', 'department-editor');
+
+            const departmentCheckboxes = this.departments.map(dept => {
+                const isChecked = (classItem.departments || []).includes(dept);
+                return `
+                    <label>
+                        <input type="checkbox" value="${dept}" ${isChecked ? 'checked' : ''}>
+                        ${dept}
+                    </label>
+                `;
+            }).join('');
+
+            editor.innerHTML = `
+                <div class="department-editor-header">編輯部門</div>
+                <div class="department-editor-list">${departmentCheckboxes}</div>
+                <div class="department-editor-actions">
+                    <button id="department-editor-save">儲存</button>
+                    <button id="department-editor-cancel">取消</button>
+                </div>
+            `;
+
+            document.body.appendChild(editor);
+            const rect = element.getBoundingClientRect();
+            editor.style.top = `${rect.bottom + window.scrollY}px`;
+            editor.style.left = `${rect.left + window.scrollX}px`;
+
+            const closeEditor = () => {
+                editor.remove();
+                document.removeEventListener('click', outsideClickHandler, true);
+            };
+
+            const handleSave = () => {
+                const selectedDepartments = Array.from(editor.querySelectorAll('input:checked')).map(cb => cb.value);
+                classItem.departments = selectedDepartments;
+                this.renderScheduleTable();
+                this.saveDataToLocal();
+                this.saveState();
+                closeEditor();
+            };
+
+            const outsideClickHandler = (e) => {
+                if (!editor.contains(e.target) && e.target !== element) {
+                    closeEditor();
+                }
+            };
+
+            document.getElementById('department-editor-save').addEventListener('click', handleSave);
+            document.getElementById('department-editor-cancel').addEventListener('click', closeEditor);
+            setTimeout(() => document.addEventListener('click', outsideClickHandler, true), 0);
+        },
+
+        updateDepartmentList: function() {
+            try {
+                const els = this.elements;
+                els.departmentList.innerHTML = '';
+                const sortedDepartments = this.departments.slice().sort();
+
+                sortedDepartments.forEach(department => {
+                    const li = document.createElement('li');
+                    li.setAttribute('class', 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded');
+
+                    const span = document.createElement('span');
+                    span.textContent = department;
+
+                    const button = document.createElement('button');
+                    button.setAttribute('class', 'delete-department text-red-600 hover:text-red-800');
+                    button.setAttribute('data-department', department);
+
+                    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                    svg.setAttribute('class', 'h-4 w-4');
+                    svg.setAttribute('fill', 'none');
+                    svg.setAttribute('viewBox', '0 0 24 24');
+                    svg.setAttribute('stroke', 'currentColor');
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('stroke-linecap', 'round');
+                    path.setAttribute('stroke-linejoin', 'round');
+                    path.setAttribute('stroke-width', '2');
+                    path.setAttribute('d', 'M6 18L18 6M6 6l12 12');
+
+                    svg.appendChild(path);
+                    button.appendChild(svg);
+                    li.appendChild(span);
+                    li.appendChild(button);
+                    els.departmentList.appendChild(li);
+                });
+            } catch (e) {
+                console.error('更新部門列表失敗:', e);
+                this.showNotification('更新部門列表失敗', 'error');
+            }
+        },
+
         // --- Data & API ---
         loadVersions: function() {
             this.showNotification('正在獲取版本列表...', 'info');
@@ -698,10 +857,11 @@
                     if (data && data.success) {
                         this.classrooms = data.classrooms || [];
                         this.scheduleData = this.ensureDataIds(data.scheduleData || {});
-                        this.filterPresets = data.filterPresets || {}; // Load from server
+                        this.departments = data.departments || [];
                         this.buildCourseColorMap();
                         this.saveDataToLocal(); // Still save to local for offline access
                         this.updateClassroomList();
+                        this.updateDepartmentList();
                         this.renderScheduleTable();
                         this.updateSyncStatus('offline', this.lastCloudModifiedTime);
                         this.showNotification('已在本地載入版本: ' + new Date(data.versionId).toLocaleString(), 'info');
@@ -721,12 +881,12 @@
             try {
                 this.classrooms = JSON.parse(localStorage.getItem('classrooms')) || [];
                 this.scheduleData = this.ensureDataIds(JSON.parse(localStorage.getItem('scheduleData')) || {});
-                // filterPresets are now loaded from server, not localStorage
+                this.departments = JSON.parse(localStorage.getItem('departments')) || [];
                 this.buildCourseColorMap();
                 this.lastSyncTime = localStorage.getItem('lastSyncTime') ? new Date(localStorage.getItem('lastSyncTime')) : null;
             } catch (e) {
                 console.error('從本地載入數據失敗:', e);
-                this.classrooms = []; this.scheduleData = {}; this.lastSyncTime = null;
+                this.classrooms = []; this.scheduleData = {}; this.departments = []; this.lastSyncTime = null;
                 this.showNotification("從本地載入數據失敗，數據可能已損壞", "error");
             }
         },
@@ -735,6 +895,7 @@
             try {
                 localStorage.setItem('classrooms', JSON.stringify(this.classrooms || []));
                 localStorage.setItem('scheduleData', JSON.stringify(this.scheduleData || {}));
+                localStorage.setItem('departments', JSON.stringify(this.departments || []));
                 localStorage.setItem('app_version', this.APP_VERSION);
                 if (this.lastSyncTime) localStorage.setItem('lastSyncTime', this.lastSyncTime.toISOString());
             } catch (e) {
@@ -761,12 +922,13 @@
                             if (!result || result.error) throw new Error(result ? result.error : '從服務器獲取的數據為空');
                             this.classrooms = result.classrooms || [];
                             this.scheduleData = this.ensureDataIds(result.scheduleData || {});
-                            this.filterPresets = result.filterPresets || {}; // Load from server
+                            this.departments = result.departments || [];
                             this.buildCourseColorMap();
                             this.updateLastModifiedTime(result.lastModified);
                             this.lastSyncTime = new Date();
                             this.saveDataToLocal(); // Still save to local for offline access
                             this.updateClassroomList();
+                            this.updateDepartmentList();
                             this.renderScheduleTable();
                             this.updateSyncStatus('online', result.lastModified);
                             this.showNotification('從雲端讀取數據成功！');
@@ -801,7 +963,7 @@
                         const dataToSend = {
                             classrooms: JSON.parse(JSON.stringify(this.classrooms || [])),
                             scheduleData: JSON.parse(JSON.stringify(this.scheduleData || {})),
-                            filterPresets: JSON.parse(JSON.stringify(this.filterPresets || {}))
+                            departments: JSON.parse(JSON.stringify(this.departments || []))
                         };
                         google.script.run
                             .withSuccessHandler(saveResult => {
@@ -993,6 +1155,47 @@
             }
         },
 
+        updateDepartmentList: function() {
+            try {
+                const els = this.elements;
+                els.departmentList.innerHTML = '';
+                const sortedDepartments = this.departments.slice().sort();
+
+                sortedDepartments.forEach(department => {
+                    const li = document.createElement('li');
+                    li.setAttribute('class', 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded');
+
+                    const span = document.createElement('span');
+                    span.textContent = department;
+
+                    const button = document.createElement('button');
+                    button.setAttribute('class', 'delete-department text-red-600 hover:text-red-800');
+                    button.setAttribute('data-department', department);
+
+                    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                    svg.setAttribute('class', 'h-4 w-4');
+                    svg.setAttribute('fill', 'none');
+                    svg.setAttribute('viewBox', '0 0 24 24');
+                    svg.setAttribute('stroke', 'currentColor');
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('stroke-linecap', 'round');
+                    path.setAttribute('stroke-linejoin', 'round');
+                    path.setAttribute('stroke-width', '2');
+                    path.setAttribute('d', 'M6 18L18 6M6 6l12 12');
+
+                    svg.appendChild(path);
+                    button.appendChild(svg);
+                    li.appendChild(span);
+                    li.appendChild(button);
+                    els.departmentList.appendChild(li);
+                });
+            } catch (e) {
+                console.error('更新部門列表失敗:', e);
+                this.showNotification('更新部門列表失敗', 'error');
+            }
+        },
+
         createClassElement: function(classItem, classroom, day, overrideColor = null) {
             const hasConflict = this.checkTimeConflict(classroom, day, classItem);
             const conflictIcon = hasConflict 
@@ -1001,9 +1204,10 @@
             
             const bgColor = overrideColor || this.courseColorMap[classItem.name] || '#E2E8F0';
 
+            const departmentTags = (classItem.departments || []).map(dept => `<span class="department-tag">${dept}</span>`).join('');
+
             const classDiv = document.createElement('div');
-            let classString = `class-item ${hasConflict ? 'conflict' : ''}`;
-            classDiv.setAttribute('class', classString);
+            classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''}`);
             classDiv.style.backgroundColor = bgColor;
             classDiv.dataset.id = classItem.id;
             classDiv.dataset.name = classItem.name;
@@ -1011,6 +1215,7 @@
                 <div class="font-medium editable" data-field="name">${classItem.name}</div>
                 <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
                 <div class="editable" data-field="teacher">${classItem.teacher}</div>
+                <div class="department-tags-container editable" data-field="departments">${departmentTags}</div>
                 <span class="delete-btn" data-classroom="${classroom}" data-day="${day}">×</span>
                 ${conflictIcon}
             `;
@@ -1177,24 +1382,68 @@
             this.saveState();
         },
 
+        // --- Business Logic & Actions ---
+        handleAddDepartment: function() {
+            const departmentName = this.elements.departmentNameInput.value.trim();
+            if (!departmentName) return;
+            if (this.departments.includes(departmentName)) {
+                this.showNotification('此部門名稱已存在！', 'error');
+                return;
+            }
+            this.departments.push(departmentName);
+            this.elements.departmentNameInput.value = '';
+            this.updateDepartmentList();
+            this.saveDataToLocal();
+            this.showNotification('已新增部門: ' + departmentName);
+            this.saveState();
+        },
+
+        handleDeleteDepartmentClick: async function(event) {
+            const btn = event.target.closest('.delete-department');
+            if (!btn) return;
+            const department = btn.getAttribute('data-department');
+            
+            // Check if any course is using this department
+            const isDepartmentInUse = Object.values(this.scheduleData).some(classroom => 
+                Object.values(classroom).some(day => 
+                    day.some(course => course.departments && course.departments.includes(department))
+                )
+            );
+
+            if (isDepartmentInUse) {
+                this.showNotification('無法刪除部門：請先從所有課程中移除此部門標籤！', 'error', 5000);
+                return;
+            }
+
+            if (await this.showConfirm(`確定要刪除部門 "${department}" 嗎？`)) {
+                this.departments = this.departments.filter(d => d !== department);
+                this.updateDepartmentList();
+                this.saveDataToLocal();
+                this.showNotification('已刪除部門: ' + department);
+                this.saveState();
+            }
+        },
+
         handleClearAll: async function() {
             if (await this.showConfirm('確定要清除所有本地暫存資料嗎？<br>此操作不可恢復！')) {
                 this.classrooms = [];
                 this.scheduleData = {};
-                this.filterPresets = {}; // Clear filter presets from memory
+                this.departments = [];
                 this.activeFilters = []; // Clear active filters
                 this.lastSyncTime = null;
                 this.courseColorMap = {};
                 this.updateLastModifiedTime(null);
                 this.updateClassroomList();
+                this.updateDepartmentList();
                 this.renderScheduleTable();
                 this.updateActiveFilterDisplay(); // Update filter display text
                 this.updateSyncStatus('offline');
                 localStorage.removeItem('classrooms');
                 localStorage.removeItem('scheduleData');
+                localStorage.removeItem('departments');
                 localStorage.removeItem('lastSyncTime');
                 this.showNotification('已清除本地暫存資料');
-                this.resetHistory(); // This will create a new clean state with empty presets
+                this.resetHistory();
             }
         },
 
@@ -1204,7 +1453,7 @@
             const currentState = {
                 classrooms: JSON.parse(JSON.stringify(this.classrooms)),
                 scheduleData: JSON.parse(JSON.stringify(this.scheduleData)),
-                filterPresets: JSON.parse(JSON.stringify(this.filterPresets)),
+                departments: JSON.parse(JSON.stringify(this.departments)),
                 activeFilters: JSON.parse(JSON.stringify(this.activeFilters))
             };
             this.history.push(currentState);
@@ -1218,7 +1467,7 @@
             const initialState = {
                 classrooms: JSON.parse(JSON.stringify(this.classrooms)),
                 scheduleData: JSON.parse(JSON.stringify(this.scheduleData)),
-                filterPresets: JSON.parse(JSON.stringify(this.filterPresets)),
+                departments: JSON.parse(JSON.stringify(this.departments)),
                 activeFilters: JSON.parse(JSON.stringify(this.activeFilters))
             };
             this.history = [initialState];
@@ -1245,10 +1494,11 @@
         loadState: function(state) {
             this.classrooms = JSON.parse(JSON.stringify(state.classrooms));
             this.scheduleData = JSON.parse(JSON.stringify(state.scheduleData));
-            this.filterPresets = JSON.parse(JSON.stringify(state.filterPresets));
+            this.departments = JSON.parse(JSON.stringify(state.departments));
             this.activeFilters = JSON.parse(JSON.stringify(state.activeFilters));
             this.buildCourseColorMap();
             this.updateClassroomList();
+            this.updateDepartmentList();
             this.renderScheduleTable();
             this.updateActiveFilterDisplay();
             this.saveDataToLocal();
@@ -1265,7 +1515,7 @@
             this.cleanStateSnapshot = JSON.stringify({
                 classrooms: this.classrooms,
                 scheduleData: this.scheduleData,
-                filterPresets: this.filterPresets
+                departments: this.departments
             });
         },
 
@@ -1273,7 +1523,7 @@
             const currentStateSnapshot = JSON.stringify({
                 classrooms: this.classrooms,
                 scheduleData: this.scheduleData,
-                filterPresets: this.filterPresets
+                departments: this.departments
             });
             this.setDirty(currentStateSnapshot !== this.cleanStateSnapshot);
         },
