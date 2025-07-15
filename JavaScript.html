@@ -1155,47 +1155,6 @@
             }
         },
 
-        updateDepartmentList: function() {
-            try {
-                const els = this.elements;
-                els.departmentList.innerHTML = '';
-                const sortedDepartments = this.departments.slice().sort();
-
-                sortedDepartments.forEach(department => {
-                    const li = document.createElement('li');
-                    li.setAttribute('class', 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded');
-
-                    const span = document.createElement('span');
-                    span.textContent = department;
-
-                    const button = document.createElement('button');
-                    button.setAttribute('class', 'delete-department text-red-600 hover:text-red-800');
-                    button.setAttribute('data-department', department);
-
-                    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                    svg.setAttribute('class', 'h-4 w-4');
-                    svg.setAttribute('fill', 'none');
-                    svg.setAttribute('viewBox', '0 0 24 24');
-                    svg.setAttribute('stroke', 'currentColor');
-
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('stroke-linecap', 'round');
-                    path.setAttribute('stroke-linejoin', 'round');
-                    path.setAttribute('stroke-width', '2');
-                    path.setAttribute('d', 'M6 18L18 6M6 6l12 12');
-
-                    svg.appendChild(path);
-                    button.appendChild(svg);
-                    li.appendChild(span);
-                    li.appendChild(button);
-                    els.departmentList.appendChild(li);
-                });
-            } catch (e) {
-                console.error('更新部門列表失敗:', e);
-                this.showNotification('更新部門列表失敗', 'error');
-            }
-        },
-
         createClassElement: function(classItem, classroom, day, overrideColor = null) {
             const hasConflict = this.checkTimeConflict(classroom, day, classItem);
             const conflictIcon = hasConflict 
