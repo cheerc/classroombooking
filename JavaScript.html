@@ -83,6 +83,8 @@
             showFilterBtn: document.getElementById('show-filter-btn'),
             filterModal: document.getElementById('filter-modal'),
             filterModalClose: document.getElementById('filter-modal-close'),
+            filterTypeSelector: document.getElementById('filter-type-selector'),
+            filterListTitle: document.getElementById('filter-list-title'),
             filterCourseList: document.getElementById('filter-course-list'),
             filterSelectAll: document.getElementById('filter-select-all'),
             filterDeselectAll: document.getElementById('filter-deselect-all'),
@@ -187,7 +189,7 @@
                 }
             });
 
-            // Filter actions
+            els.filterTypeSelector.addEventListener('change', () => this.populateFilterModal());
             els.filterSelectAll.addEventListener('click', () => this.toggleAllFilterCheckboxes(true));
             els.filterDeselectAll.addEventListener('click', () => this.toggleAllFilterCheckboxes(false));
             els.filterApply.addEventListener('click', () => this.applyFilters());
@@ -196,24 +198,38 @@
 
         // --- Filter Logic ---
         populateFilterModal: function() {
-            const courseNames = new Set();
+            const filterType = this.elements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
+            const items = new Set();
+            let title = '選擇要顯示的課程';
+
             Object.values(this.scheduleData).forEach(classroom => {
                 Object.values(classroom).forEach(day => {
-                    day.forEach(course => courseNames.add(course.name));
+                    day.forEach(course => {
+                        if (filterType === 'name') {
+                            items.add(course.name);
+                        } else if (filterType === 'department') {
+                            title = '選擇要顯示的部門';
+                            (course.departments || []).forEach(dept => items.add(dept));
+                        } else if (filterType === 'teacher') {
+                            title = '選擇要顯示的使用人';
+                            if (course.teacher) items.add(course.teacher);
+                        }
+                    });
                 });
             });
 
-            const sortedNames = Array.from(courseNames).sort();
+            this.elements.filterListTitle.textContent = title;
+            const sortedItems = Array.from(items).sort();
             const listElement = this.elements.filterCourseList;
             listElement.innerHTML = '';
 
-            sortedNames.forEach(name => {
-                const isChecked = this.activeFilters.includes(name);
+            sortedItems.forEach(item => {
+                const isChecked = this.activeFilters.some(f => f.value === item && f.type === filterType);
                 const div = document.createElement('div');
                 div.setAttribute('class', 'flex items-center');
                 div.innerHTML = `
-                    <input type="checkbox" id="filter-${name}" value="${name}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
-                    <label for="filter-${name}" class="ml-2 block text-sm text-gray-900 truncate">${name}</label>
+                    <input type="checkbox" id="filter-${item}" value="${item}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
+                    <label for="filter-${item}" class="ml-2 block text-sm text-gray-900 truncate">${item}</label>
                 `;
                 listElement.appendChild(div);
             });
@@ -226,11 +242,20 @@
         },
 
         applyFilters: function() {
-            const selectedCourses = [];
+            const filterType = this.elements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
+            const selectedItems = [];
             this.elements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-                selectedCourses.push(cb.value);
+                selectedItems.push(cb.value);
             });
-            this.activeFilters = selectedCourses;
+
+            // Remove old filters of the same type before adding new ones
+            this.activeFilters = this.activeFilters.filter(f => f.type !== filterType);
+            
+            // Add new filters
+            selectedItems.forEach(item => {
+                this.activeFilters.push({ type: filterType, value: item });
+            });
+
             this.renderScheduleTable();
             this.updateActiveFilterDisplay();
             this.elements.filterModal.style.display = 'none';
@@ -239,7 +264,7 @@
 
         clearFilters: function() {
             this.activeFilters = [];
-            this.toggleAllFilterCheckboxes(false);
+            this.populateFilterModal(); // Repopulate to uncheck everything
             this.renderScheduleTable();
             this.updateActiveFilterDisplay();
             this.elements.filterModal.style.display = 'none';
@@ -251,7 +276,19 @@
             if (this.activeFilters.length === 0) {
                 display.textContent = '未套用任何篩選';
             } else {
-                display.textContent = `已篩選 ${this.activeFilters.length} 門課程`;
+                const counts = this.activeFilters.reduce((acc, f) => {
+                    if (f.type === 'name') acc.name = (acc.name || 0) + 1;
+                    else if (f.type === 'department') acc.department = (acc.department || 0) + 1;
+                    else if (f.type === 'teacher') acc.teacher = (acc.teacher || 0) + 1;
+                    return acc;
+                }, {});
+                
+                const parts = [];
+                if (counts.name) parts.push(`${counts.name} 門課程`);
+                if (counts.department) parts.push(`${counts.department} 個部門`);
+                if (counts.teacher) parts.push(`${counts.teacher} 位使用人`);
+
+                display.textContent = `已篩選: ${parts.join(', ')}`;
             }
         },
 
@@ -1189,11 +1226,19 @@
                 let dataToRender = this.scheduleData;
                 if (this.activeFilters && this.activeFilters.length > 0) {
                     dataToRender = {};
-                    const filteredSet = new Set(this.activeFilters);
+                    const nameFilters = new Set(this.activeFilters.filter(f => f.type === 'name').map(f => f.value));
+                    const departmentFilters = new Set(this.activeFilters.filter(f => f.type === 'department').map(f => f.value));
+                    const teacherFilters = new Set(this.activeFilters.filter(f => f.type === 'teacher').map(f => f.value));
+
                     for (const classroom in this.scheduleData) {
                         dataToRender[classroom] = {};
                         for (const day in this.scheduleData[classroom]) {
-                            const filteredDay = this.scheduleData[classroom][day].filter(course => filteredSet.has(course.name));
+                            const filteredDay = this.scheduleData[classroom][day].filter(course => {
+                                const nameMatch = nameFilters.size === 0 || nameFilters.has(course.name);
+                                const departmentMatch = departmentFilters.size === 0 || (course.departments && course.departments.some(d => departmentFilters.has(d)));
+                                const teacherMatch = teacherFilters.size === 0 || teacherFilters.has(course.teacher);
+                                return nameMatch && departmentMatch && teacherMatch;
+                            });
                             if (filteredDay.length > 0) {
                                 dataToRender[classroom][day] = filteredDay;
                             }
