@@ -100,13 +100,14 @@
 
             // --- 權限控管 ---
             if (fullEmail.toLowerCase() !== 'cheerc@talented.com.tw') {
-                const adminButtons = [
+                const adminElements = [
                     this.elements.showClassroomManagerBtn,
                     this.elements.showDepartmentManagerBtn,
-                    this.elements.showVersionHistoryBtn
+                    this.elements.showVersionHistoryBtn,
+                    document.getElementById('admin-separator')
                 ];
-                adminButtons.forEach(btn => {
-                    if (btn) btn.style.display = 'none';
+                adminElements.forEach(el => {
+                    if (el) el.style.display = 'none';
                 });
             }
 
