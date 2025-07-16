@@ -263,13 +263,8 @@
                 selectedItems.push(cb.value);
             });
 
-            // Remove old filters of the same type before adding new ones
-            this.activeFilters = this.activeFilters.filter(f => f.type !== filterType);
-            
-            // Add new filters
-            selectedItems.forEach(item => {
-                this.activeFilters.push({ type: filterType, value: item });
-            });
+            // Set the active filters to only the current type and selection
+            this.activeFilters = selectedItems.map(item => ({ type: filterType, value: item }));
 
             this.renderScheduleTable();
             this.updateActiveFilterDisplay();
