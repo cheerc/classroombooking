@@ -81,7 +81,17 @@
                     <div id="last-sync-time" class="last-sync-time"></div>
                 </div>
             </div>
-            <h1 class="text-3xl font-bold text-center text-blue-800 py-2">教室使用登記表</h1>
+            <div id="schedule-manager-container" class="flex items-center gap-4">
+                <select id="schedule-select" class="text-3xl font-bold text-blue-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm py-1 pl-3 pr-10">
+                    <!-- Options will be populated by JS -->
+                </select>
+                <button id="manage-schedules-btn" data-tooltip="課表管理" class="bg-green-500 text-white p-3 rounded-md hover:bg-green-600 transition shadow-lg flex justify-center items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </button>
+            </div>
             <div class="absolute top-1/2 right-0 transform -translate-y-1/2">
                 <button id="show-help-btn" class="bg-sky-500 text-white px-4 py-2 rounded-md hover:bg-sky-600 transition">
                     使用說明
@@ -272,6 +282,24 @@
                     <button id="filter-clear" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded-md">清除篩選</button>
                     <button id="filter-apply" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-md">套用篩選</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="schedule-manager-modal" class="loading-overlay" style="display: none;">
+        <div class="bg-white p-8 rounded-lg shadow-lg text-left max-w-lg w-full relative">
+            <h2 class="text-2xl font-bold mb-6 text-center text-green-800">課表管理</h2>
+            <button id="schedule-manager-modal-close" class="absolute top-3 right-4 text-gray-400 hover:text-gray-700 text-3xl font-light">&times;</button>
+            <div class="flex mb-4">
+                <label for="new-schedule-name" class="sr-only">新課表名稱</label>
+                <input type="text" id="new-schedule-name" placeholder="輸入新課表名稱" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-green-500">
+                <button id="add-schedule" class="bg-green-600 text-white px-4 py-2 rounded-r-md hover:bg-green-700 transition">新增課表</button>
+            </div>
+            <div class="bg-white p-3 rounded-md max-h-64 overflow-y-auto border">
+                <h3 class="font-medium mb-2">現有課表:</h3>
+                <ul id="schedule-list" class="space-y-2">
+                    <!-- Schedule items will be populated by JS -->
+                </ul>
             </div>
         </div>
     </div>

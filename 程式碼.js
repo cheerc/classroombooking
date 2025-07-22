@@ -14,10 +14,15 @@ function getSheet_(name) {
     sheet = ss.insertSheet(name);
     Logger.log(`已創建新的工作表: ${name}`);
     if (name === SHEET_DATA) {
-      sheet.getRange("A1:A5").setValues([["Latest Data"], ["{}"], ["[]"], ["Last Modified"], ["[]"]]);
-      sheet.getRange("B1:B5").setValues([["scheduleData"], ["classrooms"], [""], ["departments"]]);
+      sheet.getRange("A1:B1").setValues([["Value", "Key"]]);
+      sheet.getRange("A2:B5").setValues([
+        ["{}", "schedules"],
+        ["default", "activeScheduleId"],
+        ["", "lastModified"],
+        ["", ""]
+      ]);
     } else if (name === SHEET_HISTORY) {
-      sheet.getRange("A1:E1").setValues([["Timestamp", "SavedBy", "ScheduleData", "Classrooms", "Departments"]]);
+      sheet.getRange("A1:F1").setValues([["Timestamp", "SavedBy", "SchedulesData", "OldScheduleData", "OldClassrooms", "OldDepartments"]]);
       sheet.setFrozenRows(1);
     }
   }
@@ -38,63 +43,144 @@ function doGet() {
 
 /**
  * Retrieves the latest schedule data from the spreadsheet.
- * @returns {object} An object containing scheduleData, classrooms, filterPresets, and lastModified time, or an error object.
+ * Handles migration from old data format to new multi-schedule format.
+ * @returns {object} An object containing schedules, activeScheduleId, and lastModified time, or an error object.
  */
 function getData() {
   try {
     Logger.log("開始獲取數據");
     const dataSheet = getSheet_(SHEET_DATA);
-    
-    const range = dataSheet.getRange("A2:A5").getValues();
-    const scheduleDataJson = range[0][0];
-    const classroomsJson = range[1][0];
-    const lastModified = range[2][0];
-    const departmentsJson = range[3][0] || '[]'; // Handle old data
-    
-    Logger.log(`從試算表獲取的原始數據: scheduleData=${scheduleDataJson}, classrooms=${classroomsJson}, departments=${departmentsJson}, lastModified=${lastModified}`);
-    
-    let scheduleData = {};
-    let classrooms = [];
-    let departments = [];
-    
-    try { if (scheduleDataJson) scheduleData = JSON.parse(scheduleDataJson); } catch (e) { Logger.log(`解析 scheduleData 失敗: ${e}`); }
-    try { if (classroomsJson) classrooms = JSON.parse(classroomsJson); } catch (e) { Logger.log(`解析 classrooms 失敗: ${e}`); }
-    try { if (departmentsJson) departments = JSON.parse(departmentsJson); } catch (e) { Logger.log(`解析 departments 失敗: ${e}`); }
-    
-    if (!Array.isArray(classrooms)) classrooms = [];
-    if (typeof scheduleData !== 'object' || scheduleData === null) scheduleData = {};
-    if (!Array.isArray(departments)) departments = [];
+    const range = dataSheet.getRange("A2:B5").getValues();
+    const rawA2 = range[0][0];
+    let isOldFormat = false;
 
-    // Data migration for scheduleData to include departments array
-    Object.values(scheduleData).forEach(classroom => {
-      Object.values(classroom).forEach(day => {
-        day.forEach(course => {
-          if (!course.departments) {
-            course.departments = [];
-          }
-        });
+    try {
+      if (!rawA2 || rawA2.trim() === '{}') {
+        isOldFormat = false; // Empty or new, treat as new format.
+      } else {
+        const parsedA2 = JSON.parse(rawA2);
+        const firstKey = Object.keys(parsedA2)[0];
+        // The definitive test: new format has a `data` property in its top-level objects.
+        if (firstKey && parsedA2[firstKey] && parsedA2[firstKey].data) {
+          isOldFormat = false;
+        } else {
+          isOldFormat = true;
+        }
+      }
+    } catch (e) {
+      Logger.log('解析 A2 儲存格 JSON 失敗，將其視為舊格式進行移轉。錯誤: ' + e);
+      isOldFormat = true; // If parsing fails, it's likely old, non-standard data.
+    }
+
+    if (isOldFormat) {
+      Logger.log("偵測到舊資料格式，開始進行資料轉移...");
+      
+      let scheduleData = {}, classrooms = [], departments = [];
+
+      try { scheduleData = JSON.parse(range[0][0] || '{}'); } catch (e) { Logger.log('解析 scheduleData 失敗，使用預設值 {}: ' + e); scheduleData = {}; }
+      try { classrooms = JSON.parse(range[1][0] || '[]'); } catch (e) { Logger.log('解析 classrooms 失敗，使用預設值 []: ' + e); classrooms = []; }
+      try { departments = JSON.parse(range[3][0] || '[]'); } catch (e) { Logger.log('解析 departments 失敗，使用預設值 []: ' + e); departments = []; }
+
+      if (typeof scheduleData !== 'object' || scheduleData === null) scheduleData = {};
+      if (!Array.isArray(classrooms)) classrooms = [];
+      if (!Array.isArray(departments)) departments = [];
+
+      Object.values(scheduleData).forEach(classroom => {
+        if(classroom && typeof classroom === 'object') {
+          Object.values(classroom).forEach(day => {
+            if(Array.isArray(day)) {
+              day.forEach(course => {
+                if (course && !course.departments) {
+                  course.departments = [];
+                }
+              });
+            }
+          });
+        }
       });
-    });
-    
-    const result = {
-      scheduleData: scheduleData,
-      classrooms: classrooms,
-      departments: departments,
-      lastModified: lastModified ? new Date(lastModified).toISOString() : null
-    };
-    
-    Logger.log("返回數據: " + JSON.stringify(result));
-    return result;
+
+      const newSchedules = {
+        'default': {
+          name: '預設課表',
+          data: {
+            scheduleData: scheduleData,
+            classrooms: classrooms,
+            departments: departments
+          }
+        }
+      };
+      const newActiveScheduleId = 'default';
+      
+      Logger.log("資料轉移完成，正在將新格式寫回工作表...");
+      
+      const schedulesJson = JSON.stringify(newSchedules);
+      const timestamp = new Date();
+      
+      dataSheet.getRange("A2:B5").setValues([
+        [schedulesJson, "schedules"],
+        [newActiveScheduleId, "activeScheduleId"],
+        [timestamp.toISOString(), "lastModified"],
+        ["", ""] 
+      ]);
+      
+      const historySheet = getSheet_(SHEET_HISTORY);
+      historySheet.insertRowBefore(2);
+      historySheet.getRange("A2:F2").setValues([[
+          timestamp.toISOString(), 
+          "SYSTEM_MIGRATION", 
+          schedulesJson, 
+          "{}", 
+          "[]", 
+          "[]"  
+      ]]);
+
+      Logger.log("新格式寫入成功。");
+
+      return {
+        schedules: newSchedules,
+        activeScheduleId: newActiveScheduleId,
+        lastModified: timestamp.toISOString()
+      };
+
+    } else {
+      Logger.log("偵測到新資料格式。");
+      const schedulesJson = range[0][0] || '{}';
+      const activeScheduleId = range[1][0];
+      const lastModified = range[2][0];
+
+      let schedules = {};
+      try { if (schedulesJson) schedules = JSON.parse(schedulesJson); } catch (e) { Logger.log(`解析 schedules 失敗: ${e}`); }
+
+      if (typeof schedules !== 'object' || schedules === null) schedules = {};
+      
+      if (Object.keys(schedules).length === 0) {
+          schedules = {
+              'default': {
+                  name: '預設課表',
+                  data: { scheduleData: {}, classrooms: [], departments: [] }
+              }
+          };
+      }
+
+      const result = {
+        schedules: schedules,
+        activeScheduleId: activeScheduleId || Object.keys(schedules)[0], 
+        lastModified: lastModified ? new Date(lastModified).toISOString() : null
+      };
+      
+      Logger.log("返回數據: " + JSON.stringify(result).substring(0, 500));
+      return result;
+    }
     
   } catch (e) {
-    Logger.log(`獲取數據時發生錯誤: ${e}`);
+    Logger.log(`獲取數據時發生錯誤: ${e.stack}`);
     return { error: `獲取數據失敗: ${e.toString()}`, success: false };
   }
 }
 
 /**
  * Saves schedule data to the spreadsheet and creates a history entry.
- * @param {object} data The data object to save, containing scheduleData, classrooms, and filterPresets.
+ * @param {object} data The data object to save, containing schedules and activeScheduleId.
  * @returns {object} A success object with the new lastModified time, or an error object.
  */
 function saveData(data) {
@@ -108,8 +194,8 @@ function saveData(data) {
 
   try {
     Logger.log("開始保存數據");
-    if (!data || typeof data.scheduleData !== 'object' || !Array.isArray(data.classrooms) || !Array.isArray(data.departments)) {
-      throw new Error("無效的數據格式。數據必須包含 scheduleData, classrooms, 和 departments。");
+    if (!data || typeof data.schedules !== 'object' || !data.activeScheduleId) {
+      throw new Error("無效的數據格式。數據必須包含 schedules 和 activeScheduleId。");
     }
 
     const userEmail = Session.getActiveUser().getEmail();
@@ -117,18 +203,23 @@ function saveData(data) {
     
     const timestamp = new Date();
     const timestampISO = timestamp.toISOString();
-    const scheduleDataJson = JSON.stringify(data.scheduleData);
-    const classroomsJson = JSON.stringify(data.classrooms);
-    const departmentsJson = JSON.stringify(data.departments);
+    const schedulesJson = JSON.stringify(data.schedules);
+    const activeScheduleId = data.activeScheduleId;
 
     // 1. 更新 "Data" 工作表
     const dataSheet = getSheet_(SHEET_DATA);
-    dataSheet.getRange("A2:A5").setValues([[scheduleDataJson], [classroomsJson], [timestampISO], [departmentsJson]]);
+    dataSheet.getRange("A2:B4").setValues([
+      [schedulesJson, "schedules"],
+      [activeScheduleId, "activeScheduleId"],
+      [timestampISO, "lastModified"]
+    ]);
 
     // 2. 更新 "History" 工作表
     const historySheet = getSheet_(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
-    historySheet.getRange("A2:E2").setValues([[timestampISO, userName, scheduleDataJson, classroomsJson, departmentsJson]]);
+    // For simplicity, we now save the entire schedules object in history.
+    // The old format columns will be empty.
+    historySheet.getRange("A2:F2").setValues([[timestampISO, userName, schedulesJson, "", "", ""]]);
 
     // 3. 維護歷史紀錄，只保留最新的10筆
     const maxHistoryRecords = 10;
@@ -171,6 +262,7 @@ function getVersions() {
 
 /**
  * Retrieves the data for a specific version ID (timestamp).
+ * This function will now return the data for the active schedule of that version.
  * @param {string} versionId The ISO timestamp string of the version to retrieve.
  * @returns {object} A success object with the version data, or an error object.
  */
@@ -180,14 +272,39 @@ function getVersionData(versionId) {
       throw new Error("未提供版本ID");
     }
     const historySheet = getSheet_(SHEET_HISTORY);
-    const data = historySheet.getRange("A:E").getValues();
+    const data = historySheet.getRange("A:C").getValues(); // A: Timestamp, B: User, C: Schedules JSON
     
-    // Find the row matching the versionId. Comparing by string representation is safer.
     const versionRow = data.slice(1).find(row => row[0] && new Date(row[0]).toISOString() === versionId);
 
     if (versionRow) {
-      const scheduleData = JSON.parse(versionRow[2]);
-      // Data migration for old versions
+      const schedulesJson = versionRow[2];
+      // If schedulesJson is empty, it might be a very old record before the multi-schedule feature.
+      // In that case, we can't load it. This check handles future flexibility.
+      if (!schedulesJson) {
+        return { success: false, error: "此歷史紀錄格式過舊，無法讀取。" };
+      }
+
+      const schedules = JSON.parse(schedulesJson);
+      
+      // To determine the active schedule at that point in time, we need to look at the *next* save entry's active ID,
+      // but that is too complex. A simpler approach is to find the active schedule ID from the main Data sheet
+      // at the time of the version. But for simplicity now, we will assume the user wants to see the first schedule
+      // in the list, or we can try to find a schedule named '預設課表' or 'default'.
+      // Let's find the active schedule ID from the *current* data sheet for simplicity.
+      const dataSheet = getSheet_(SHEET_DATA);
+      const currentActiveId = dataSheet.getRange("A3").getValue();
+
+      const scheduleToLoad = schedules[currentActiveId] || schedules[Object.keys(schedules)[0]];
+
+      if (!scheduleToLoad) {
+        return { success: false, error: "在指定的版本中找不到有效的課表資料。" };
+      }
+
+      const scheduleData = scheduleToLoad.data.scheduleData || {};
+      const classrooms = scheduleToLoad.data.classrooms || [];
+      const departments = scheduleToLoad.data.departments || [];
+
+      // Data migration for just in case
       Object.values(scheduleData).forEach(classroom => {
         Object.values(classroom).forEach(day => {
           day.forEach(course => {
@@ -201,8 +318,8 @@ function getVersionData(versionId) {
       return {
         success: true,
         scheduleData: scheduleData,
-        classrooms: JSON.parse(versionRow[3]),
-        departments: versionRow[4] ? JSON.parse(versionRow[4]) : [], // Handle old versions without departments
+        classrooms: classrooms,
+        departments: departments,
         versionId: versionId
       };
     }
