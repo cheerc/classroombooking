@@ -14,7 +14,7 @@ function getSheet_(name) {
     sheet = ss.insertSheet(name);
     Logger.log(`已創建新的工作表: ${name}`);
     if (name === SHEET_DATA) {
-      sheet.getRange("A1:D1").setValues([['Schedule ID', 'Schedule Name', 'Last Modified', 'Active Schedule ID']]);
+      sheet.getRange("A1:E1").setValues([['Schedule ID', 'Schedule Name', 'Last Modified', 'Created By', 'Active Schedule ID']]);
       sheet.setFrozenRows(1);
     } else if (name === SHEET_HISTORY) {
       sheet.getRange("A1:D1").setValues([["Timestamp", "SavedBy", "ScheduleData Snapshot", "Schedule ID"]]);
@@ -46,57 +46,38 @@ function getData() {
     Logger.log("開始獲取數據");
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const dataSheet = getSheet_(SHEET_DATA);
-    const headerRange = dataSheet.getRange("A1:B1").getValues();
+    const headerRange = dataSheet.getRange("A1:D1").getValues();
     
-    // The definitive test for the new format is the header of the Data sheet.
-    const isNewFormat = headerRange[0][0] === 'Schedule ID' && headerRange[0][1] === 'Schedule Name';
-
-    if (!isNewFormat) {
-      Logger.log("偵測到舊的單一儲存格格式，開始進行多工作表移轉...");
-      const range = dataSheet.getRange("A2:B3").getValues();
-      const schedulesJson = range[0][0] || '{}';
-      const activeScheduleId = range[1][0];
-      let schedules = {};
-      try { schedules = JSON.parse(schedulesJson); } catch(e) { /* ignore */ }
-
-      // 1. Clear and re-header the Data sheet to be an index
-      dataSheet.clear();
-      dataSheet.getRange("A1:C1").setValues([['Schedule ID', 'Schedule Name', 'Last Modified']]);
-      dataSheet.setFrozenRows(1);
-
-      // 2. Iterate through schedules, create a sheet for each, and write data
-      for (const scheduleId in schedules) {
-        const schedule = schedules[scheduleId];
-        const newSheet = ss.insertSheet(scheduleId);
-        
-        const scheduleDataJson = JSON.stringify(schedule.data.scheduleData || {});
-        const classroomsJson = JSON.stringify(schedule.data.classrooms || []);
-        const departmentsJson = JSON.stringify(schedule.data.departments || []);
-        
-        newSheet.getRange("A1:B4").setValues([
-          ["Key", "Value"],
-          ["scheduleData", scheduleDataJson],
-          ["classrooms", classroomsJson],
-          ["departments", departmentsJson]
-        ]);
-
-        // 3. Add an entry to the new index in the Data sheet
-        const timestamp = new Date().toISOString();
-        dataSheet.appendRow([scheduleId, schedule.name, timestamp]);
-      }
-
-      Logger.log("資料庫移轉至多工作表格式成功。");
-      // After migration, fall through to read the data in the new format.
+    if (headerRange[0][3] !== 'Created By') {
+        // This part is for migrating from a version that doesn't have the Created By column.
+        // It should have already run, but we keep it for safety.
+        dataSheet.getRange("D1").setValue('Created By');
+        const adminEmail = 'cheerc@talented.com.tw';
+        const lastRow = dataSheet.getLastRow();
+        if (lastRow > 1) {
+            const createdByColumn = dataSheet.getRange("D2:D" + lastRow);
+            const values = [];
+            for (let i = 0; i < lastRow - 1; i++) {
+                values.push([adminEmail]);
+            }
+            createdByColumn.setValues(values);
+        }
     }
 
-    // --- Read data in the new, multi-sheet format ---
+    // Metadata timestamp migration
+    let metadataTimestamp = dataSheet.getRange("F1").getValue();
+    if (!metadataTimestamp) {
+        metadataTimestamp = new Date().toISOString();
+        dataSheet.getRange("F1").setValue(metadataTimestamp);
+        dataSheet.getRange("F1").setNote('Timestamp for metadata changes (add, rename, delete schedules)');
+    }
+
     Logger.log("以多工作表格式讀取資料。");
     const lastRow = dataSheet.getLastRow();
-    if (lastRow < 2) { // No schedules exist
-      Logger.log("在 Data 索引中找不到任何課表。");
-      return { schedules: {}, activeScheduleId: null, lastModified: null };
+    if (lastRow < 2) {
+      return { schedules: {}, activeScheduleId: null, lastModified: null, metadataTimestamp: metadataTimestamp };
     }
-    const indexData = dataSheet.getRange("A2:C" + lastRow).getValues();
+    const indexData = dataSheet.getRange("A2:D" + lastRow).getValues();
     const schedules = {};
     let latestModTime = null;
 
@@ -104,6 +85,7 @@ function getData() {
       const scheduleId = row[0];
       const scheduleName = row[1];
       const lastModified = new Date(row[2]);
+      const createdBy = row[3];
 
       if (scheduleId && scheduleName) {
         const scheduleSheet = ss.getSheetByName(scheduleId);
@@ -116,6 +98,7 @@ function getData() {
 
           schedules[scheduleId] = {
             name: scheduleName,
+            createdBy: createdBy,
             data: { scheduleData, classrooms, departments }
           };
 
@@ -126,13 +109,14 @@ function getData() {
       }
     });
     
-    const activeScheduleId = dataSheet.getRange("D2").getValue() || (indexData.length > 0 ? indexData[0][0] : null);
-    dataSheet.getRange("D1").setValue("Active Schedule ID");
+    const activeScheduleId = dataSheet.getRange("E2").getValue() || (indexData.length > 0 ? indexData[0][0] : null);
+    dataSheet.getRange("E1").setValue("Active Schedule ID");
 
     const result = {
       schedules: schedules,
       activeScheduleId: activeScheduleId,
-      lastModified: latestModTime ? latestModTime.toISOString() : null
+      lastModified: latestModTime ? latestModTime.toISOString() : null,
+      metadataTimestamp: metadataTimestamp
     };
 
     Logger.log("返回數據: " + JSON.stringify(result).substring(0, 500));
@@ -232,24 +216,42 @@ function checkAdmin_() {
 }
 
 /**
+ * A helper function to check for metadata conflicts and update the timestamp.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} dataSheet The Data sheet object.
+ * @param {string} clientTimestamp The timestamp provided by the client.
+ * @returns {string} The new timestamp for the client to store.
+ */
+function checkMetadata_(dataSheet, clientTimestamp) {
+  const currentTimestamp = dataSheet.getRange("F1").getValue();
+  if (clientTimestamp && currentTimestamp && clientTimestamp !== currentTimestamp) {
+    throw new Error('操作失敗！課表列表已被他人修改，請關閉視窗後重新打開以刷新。');
+  }
+  const newTimestamp = new Date().toISOString();
+  dataSheet.getRange("F1").setValue(newTimestamp);
+  return newTimestamp;
+}
+
+/**
  * Adds a new schedule by creating a new sheet and adding it to the index.
- * @param {object} scheduleInfo Object containing the new schedule's id and name.
+ * Any user can create a schedule.
+ * @param {object} scheduleInfo Object containing id, name, and metadataTimestamp.
  * @returns {object} A success object or an error object.
  */
 function addSchedule(scheduleInfo) {
   const lock = LockService.getScriptLock();
   try {
-    checkAdmin_(); // Permission check
     lock.waitLock(30000);
-    const { id, name } = scheduleInfo;
+    const { id, name, metadataTimestamp } = scheduleInfo;
     if (!id || !name) throw new Error("必須提供課表 ID 和名稱。");
+
+    const dataSheet = getSheet_(SHEET_DATA);
+    const newMetaTimestamp = checkMetadata_(dataSheet, metadataTimestamp);
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     if (ss.getSheetByName(id)) {
       throw new Error(`ID 為 "${id}" 的工作表已存在。`);
     }
 
-    // 1. Create the new sheet for the schedule
     const newSheet = ss.insertSheet(id);
     newSheet.getRange("A1:B4").setValues([
       ["Key", "Value"],
@@ -258,12 +260,11 @@ function addSchedule(scheduleInfo) {
       ["departments", "[]"]
     ]);
 
-    // 2. Add the new schedule to the index in the Data sheet
-    const dataSheet = getSheet_(SHEET_DATA);
-    dataSheet.appendRow([id, name, new Date().toISOString()]);
+    const creatorEmail = Session.getActiveUser().getEmail();
+    dataSheet.appendRow([id, name, new Date().toISOString(), creatorEmail]);
 
-    Logger.log(`成功新增課表: ${name} (ID: ${id})`);
-    return { success: true };
+    Logger.log(`成功新增課表: ${name} (ID: ${id}) by ${creatorEmail}`);
+    return { success: true, createdBy: creatorEmail, newMetadataTimestamp: newMetaTimestamp };
 
   } catch (e) {
     Logger.log(`新增課表失敗: ${e.stack}`);
@@ -274,32 +275,40 @@ function addSchedule(scheduleInfo) {
 }
 
 /**
- * Renames a schedule in the Data index sheet.
- * @param {object} scheduleInfo Object containing the schedule's id and new name.
+ * Renames a schedule. Only admin or the creator can rename.
+ * @param {object} scheduleInfo Object containing id, newName, and metadataTimestamp.
  * @returns {object} A success object or an error object.
  */
 function renameSchedule(scheduleInfo) {
   const lock = LockService.getScriptLock();
   try {
-    checkAdmin_(); // Permission check
     lock.waitLock(30000);
-    const { id, newName } = scheduleInfo;
+    const { id, newName, metadataTimestamp } = scheduleInfo;
     if (!id || !newName) throw new Error("必須提供課表 ID 和新名稱。");
 
     const dataSheet = getSheet_(SHEET_DATA);
-    const scheduleIds = dataSheet.getRange("A2:A" + dataSheet.getLastRow()).getValues().flat();
-    const rowIndex = scheduleIds.indexOf(id);
+    const newMetaTimestamp = checkMetadata_(dataSheet, metadataTimestamp);
+
+    const indexData = dataSheet.getRange("A2:D" + dataSheet.getLastRow()).getValues();
+    const rowIndex = indexData.findIndex(row => row[0] === id);
 
     if (rowIndex === -1) {
       throw new Error(`在索引中找不到 ID 為 "${id}" 的課表。`);
     }
 
-    // Update the name in the Data sheet (column B)
-    dataSheet.getRange(rowIndex + 2, 2).setValue(newName);
-    dataSheet.getRange(rowIndex + 2, 3).setValue(new Date().toISOString()); // Also update modified time
+    const createdBy = indexData[rowIndex][3];
+    const currentUser = Session.getActiveUser().getEmail();
+    const isAdmin = currentUser.toLowerCase() === 'cheerc@talented.com.tw';
 
-    Logger.log(`成功將課表 ${id} 重新命名為: ${newName}`);
-    return { success: true };
+    if (!isAdmin && currentUser !== createdBy) {
+      throw new Error("權限不足。只有管理員或建立者才能重新命名此課表。");
+    }
+
+    dataSheet.getRange(rowIndex + 2, 2).setValue(newName);
+    dataSheet.getRange(rowIndex + 2, 3).setValue(new Date().toISOString());
+
+    Logger.log(`成功將課表 ${id} 重新命名為: ${newName} by ${currentUser}`);
+    return { success: true, newMetadataTimestamp: newMetaTimestamp };
 
   } catch (e) {
     Logger.log(`重新命名課表失敗: ${e.stack}`);
@@ -310,42 +319,89 @@ function renameSchedule(scheduleInfo) {
 }
 
 /**
- * Deletes a schedule's sheet and removes it from the index.
- * @param {object} scheduleInfo Object containing the ID of the schedule to delete.
+ * Deletes a schedule. Only admin or the creator can delete.
+ * @param {object} scheduleInfo Object containing id and metadataTimestamp.
  * @returns {object} A success object or an error object.
  */
 function deleteSchedule(scheduleInfo) {
   const lock = LockService.getScriptLock();
   try {
-    checkAdmin_(); // Permission check
     lock.waitLock(30000);
-    const { id } = scheduleInfo;
+    const { id, metadataTimestamp } = scheduleInfo;
     if (!id) throw new Error("必須提供課表 ID。");
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const dataSheet = getSheet_(SHEET_DATA);
+    const newMetaTimestamp = checkMetadata_(dataSheet, metadataTimestamp);
 
-    // 1. Delete the actual schedule sheet
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const indexData = dataSheet.getRange("A2:D" + dataSheet.getLastRow()).getValues();
+    const rowIndex = indexData.findIndex(row => row[0] === id);
+
+    if (rowIndex === -1) {
+      // If it's not in the index, maybe it was already deleted. This is not an error.
+      Logger.log(`嘗試刪除一個在索引中不存在的課表: ${id}`);
+      return { success: true, newMetadataTimestamp: newMetaTimestamp };
+    }
+
+    const createdBy = indexData[rowIndex][3];
+    const currentUser = Session.getActiveUser().getEmail();
+    const isAdmin = currentUser.toLowerCase() === 'cheerc@talented.com.tw';
+
+    if (!isAdmin && currentUser !== createdBy) {
+      throw new Error("權限不足。只有管理員或建立者才能刪除此課表。");
+    }
+
     const scheduleSheet = ss.getSheetByName(id);
     if (scheduleSheet) {
       ss.deleteSheet(scheduleSheet);
-    } else {
-      Logger.log(`嘗試刪除一個不存在的工作表: ${id}`);
     }
 
-    // 2. Remove the schedule from the index in the Data sheet
-    const scheduleIds = dataSheet.getRange("A2:A" + dataSheet.getLastRow()).getValues().flat();
-    const rowIndex = scheduleIds.indexOf(id);
+    dataSheet.deleteRow(rowIndex + 2);
 
-    if (rowIndex !== -1) {
-      dataSheet.deleteRow(rowIndex + 2);
-    }
-
-    Logger.log(`成功刪除課表: ${id}`);
-    return { success: true };
+    Logger.log(`成功刪除課表: ${id} by ${currentUser}`);
+    return { success: true, newMetadataTimestamp: newMetaTimestamp };
 
   } catch (e) {
     Logger.log(`刪除課表失敗: ${e.stack}`);
+    return { error: e.toString(), success: false };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Copies a schedule, assigning the current user as the new owner.
+ * @param {object} copyInfo Object containing sourceId, newName, and metadataTimestamp.
+ * @returns {object} A success object with the new schedule's ID and owner.
+ */
+function copySchedule(copyInfo) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    const { sourceId, newName, metadataTimestamp } = copyInfo;
+    if (!sourceId || !newName) throw new Error("必須提供來源課表 ID 和新名稱。");
+
+    const dataSheet = getSheet_(SHEET_DATA);
+    const newMetaTimestamp = checkMetadata_(dataSheet, metadataTimestamp);
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sourceSheet = ss.getSheetByName(sourceId);
+    if (!sourceSheet) {
+      throw new Error(`找不到來源課表 (ID: ${sourceId})。`);
+    }
+
+    const newId = 'schedule_' + Date.now();
+    const newSheet = sourceSheet.copyTo(ss);
+    newSheet.setName(newId);
+
+    const creatorEmail = Session.getActiveUser().getEmail();
+    dataSheet.appendRow([newId, newName, new Date().toISOString(), creatorEmail]);
+
+    Logger.log(`成功複製課表 ${sourceId} 到 ${newName} (ID: ${newId}) by ${creatorEmail}`);
+    return { success: true, newId: newId, createdBy: creatorEmail, newMetadataTimestamp: newMetaTimestamp };
+
+  } catch (e) {
+    Logger.log(`複製課表失敗: ${e.stack}`);
     return { error: e.toString(), success: false };
   } finally {
     lock.releaseLock();
