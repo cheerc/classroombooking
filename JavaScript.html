@@ -3,7 +3,7 @@
     // 將全局變數放入一個命名空間或對象，減少污染
     const App = {
         // --- STATE ---
-        APP_VERSION: '6.2.1',
+        APP_VERSION: '6.2.3',
         schedules: {}, // Object to hold all schedule tables
         activeScheduleId: null, // ID of the currently active schedule
         activeMetadataTimestamp: null, // Timestamp for the list of schedules
@@ -447,52 +447,55 @@
         },
 
         initializeTooltips: function() {
-            let tooltipElement;
+            let activeTooltip = {
+                element: null,
+                hideTimeout: null
+            };
 
             document.querySelectorAll('[data-tooltip]:not([data-tooltip-initialized])').forEach(el => {
                 el.setAttribute('data-tooltip-initialized', 'true');
 
                 const showTooltip = () => {
-                    if (tooltipElement) return; // Prevent multiple tooltips
-                    tooltipElement = document.createElement('div');
-                    tooltipElement.className = 'fixed bg-gray-800 text-white text-xs rounded py-1 px-2 shadow-lg';
-                    tooltipElement.style.zIndex = '1050'; // Ensure it's on top of everything
-                    tooltipElement.textContent = el.getAttribute('data-tooltip');
-                    document.body.appendChild(tooltipElement);
+                    // Immediately remove any existing tooltip to prevent overlap/stuck tooltips
+                    if (activeTooltip.element) {
+                        activeTooltip.element.remove();
+                    }
+                    clearTimeout(activeTooltip.hideTimeout);
 
+                    // Create and show the new tooltip
+                    const tooltipDiv = document.createElement('div');
+                    tooltipDiv.className = 'fixed bg-gray-800 text-white text-xs rounded py-1 px-2 shadow-lg';
+                    tooltipDiv.style.zIndex = '1050';
+                    tooltipDiv.textContent = el.getAttribute('data-tooltip');
+                    document.body.appendChild(tooltipDiv);
+                    activeTooltip.element = tooltipDiv;
+
+                    // Positioning logic
                     const rect = el.getBoundingClientRect();
-                    const tooltipRect = tooltipElement.getBoundingClientRect();
+                    const tooltipRect = tooltipDiv.getBoundingClientRect();
                     const viewportWidth = window.innerWidth;
-
                     let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
-                    let top = rect.top - tooltipRect.height - 5; // 5px gap
-
-                    // Adjust for left/right viewport collision
-                    if (left < 5) {
-                        left = 5; // 5px padding from left edge
-                    } else if (left + tooltipRect.width > viewportWidth - 5) {
-                        left = viewportWidth - tooltipRect.width - 5; // 5px padding from right edge
-                    }
-
-                    // Adjust for top viewport collision
-                    if (top < 5) {
-                        top = rect.bottom + 5; // Show below if not enough space on top
-                    }
-
-                    tooltipElement.style.left = `${left}px`;
-                    tooltipElement.style.top = `${top}px`;
+                    let top = rect.top - tooltipRect.height - 5;
+                    if (left < 5) left = 5;
+                    if (left + tooltipRect.width > viewportWidth - 5) left = viewportWidth - tooltipRect.width - 5;
+                    if (top < 5) top = rect.bottom + 5;
+                    tooltipDiv.style.left = `${left}px`;
+                    tooltipDiv.style.top = `${top}px`;
                 };
 
-                const hideTooltip = () => {
-                    if (tooltipElement) {
-                        tooltipElement.remove();
-                        tooltipElement = null;
-                    }
+                const hideTooltip = (immediately = false) => {
+                    clearTimeout(activeTooltip.hideTimeout);
+                    activeTooltip.hideTimeout = setTimeout(() => {
+                        if (activeTooltip.element) {
+                            activeTooltip.element.remove();
+                            activeTooltip.element = null;
+                        }
+                    }, immediately ? 0 : 50);
                 };
 
                 el.addEventListener('mouseenter', showTooltip);
                 el.addEventListener('mouseleave', hideTooltip);
-                el.addEventListener('click', hideTooltip); // Hide on click as well
+                el.addEventListener('click', () => hideTooltip(true));
             });
         },
 
@@ -1507,6 +1510,7 @@
             const bgColor = overrideColor || this.courseColorMap[classItem.name] || '#E2E8F0';
 
             const departmentTags = (classItem.departments || []).map(dept => `<span class="department-tag-vertical">${dept}</span>`).join('');
+            const allDepartmentsTooltip = (classItem.departments || []).join(', ');
 
             const classDiv = document.createElement('div');
             classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''}`);
@@ -1519,7 +1523,7 @@
                     <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
                     <div class="editable" data-field="teacher">${classItem.teacher}</div>
                 </div>
-                <div class="department-tags-vertical-container editable" data-field="departments">${departmentTags}</div>
+                <div class="department-tags-vertical-container editable" data-field="departments" data-tooltip="部門: ${allDepartmentsTooltip}">${departmentTags}</div>
                 <span class="delete-btn" data-classroom="${classroom}" data-day="${day}">×</span>
                 ${conflictIcon}
             `;
@@ -1628,6 +1632,7 @@
                     this.elements.scheduleBody.appendChild(tr);
                 });
                 this.setupDragAndDrop();
+                this.initializeTooltips(); // Initialize tooltips for new class items
             } catch (e) {
                 console.error('渲染課程表失敗:', e);
                 this.showNotification('渲染課程表失敗', 'error');
