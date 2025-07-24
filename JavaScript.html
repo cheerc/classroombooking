@@ -957,13 +957,13 @@
 
                 // Batch update for name
                 if (newName !== originalData.name) {
-                    const otherNameOccurrences = this.countNameOccurrences(originalData.name, classId);
+                    const otherNameOccurrences = this._countOccurrences(item => item.name === originalData.name && item.id !== classId);
                     if (otherNameOccurrences > 0) {
                         const confirmAll = await this.showConfirm(`找到 ${otherNameOccurrences} 個其他名為 "${originalData.name}" 的課程。<br>要全部一起改名為 "${newName}" 嗎？`);
                         if (confirmAll) {
-                            this.updateAllNameOccurrences(originalData.name, newName);
-                            const activeFilterIndex = this.activeFilters.indexOf(originalData.name);
-                            if (activeFilterIndex > -1) this.activeFilters[activeFilterIndex] = newName;
+                            this._updateAllOccurrences(item => item.name === originalData.name, item => item.name = newName);
+                            const activeFilterIndex = this.activeFilters.findIndex(f => f.type === 'name' && f.value === originalData.name);
+                            if (activeFilterIndex > -1) this.activeFilters[activeFilterIndex].value = newName;
                         } else {
                             classItem.name = newName; // Update only current if user cancels
                         }
@@ -975,11 +975,14 @@
 
                 // Batch update for teacher
                 if (newTeacher !== originalData.teacher) {
-                    const otherTeacherOccurrences = this.countTeacherOccurrences(originalData.name, originalData.teacher, classId);
+                    const otherTeacherOccurrences = this._countOccurrences(item => item.name === originalData.name && item.teacher === originalData.teacher && item.id !== classId);
                     if (otherTeacherOccurrences > 0) {
                         const confirmAll = await this.showConfirm(`找到 ${otherTeacherOccurrences} 堂其他由 "${originalData.teacher}" 上的 "${originalData.name}" 課程。<br>要將使用人一起變更為 "${newTeacher}" 嗎？`);
                         if (confirmAll) {
-                            this.updateAllTeacherOccurrences(originalData.name, originalData.teacher, newTeacher);
+                            this._updateAllOccurrences(
+                                item => item.name === originalData.name && item.teacher === originalData.teacher,
+                                item => item.teacher = newTeacher
+                            );
                         } else {
                             classItem.teacher = newTeacher; // Update only current if user cancels
                         }
@@ -1993,12 +1996,12 @@
             return '00:00';
         },
 
-        countNameOccurrences: function(name, excludeId) {
+        _countOccurrences: function(predicate) {
             let count = 0;
             for (const classroom in this.scheduleData) {
                 for (const day in this.scheduleData[classroom]) {
                     this.scheduleData[classroom][day].forEach(item => {
-                        if (item.name === name && item.id !== excludeId) {
+                        if (predicate(item)) {
                             count++;
                         }
                     });
@@ -2007,47 +2010,21 @@
             return count;
         },
 
-        updateAllNameOccurrences: function(oldName, newName) {
+        _updateAllOccurrences: function(predicate, updateAction) {
             for (const classroom in this.scheduleData) {
                 for (const day in this.scheduleData[classroom]) {
                     this.scheduleData[classroom][day].forEach(item => {
-                        if (item.name === oldName) {
-                            item.name = newName;
+                        if (predicate(item)) {
+                            updateAction(item);
                         }
                     });
                 }
             }
         },
 
-        countTeacherOccurrences: function(courseName, teacherName, excludeId) {
-            let count = 0;
-            for (const classroom in this.scheduleData) {
-                for (const day in this.scheduleData[classroom]) {
-                    this.scheduleData[classroom][day].forEach(item => {
-                        if (item.name === courseName && item.teacher === teacherName && item.id !== excludeId) {
-                            count++;
-                        }
-                    });
-                }
-            }
-            return count;
-        },
-
-        updateAllTeacherOccurrences: function(courseName, oldTeacher, newTeacher) {
-            for (const classroom in this.scheduleData) {
-                for (const day in this.scheduleData[classroom]) {
-                    this.scheduleData[classroom][day].forEach(item => {
-                        if (item.name === courseName && item.teacher === oldTeacher) {
-                            item.teacher = newTeacher;
-                        }
-                    });
-                }
-            }
-        }
     };
-    document.addEventListener('DOMContentLoaded', function() {
-        App.init();
-        window.App = App;
-    });
+
+    // --- INITIALIZATION ---
+    document.addEventListener('DOMContentLoaded', () => App.init());
 })();
 </script>

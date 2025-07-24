@@ -46,24 +46,6 @@ function getData() {
     Logger.log("開始獲取數據");
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const dataSheet = getSheet_(SHEET_DATA);
-    const headerRange = dataSheet.getRange("A1:D1").getValues();
-    
-    if (headerRange[0][3] !== 'Created By') {
-        // This part is for migrating from a version that doesn't have the Created By column.
-        // It should have already run, but we keep it for safety.
-        dataSheet.getRange("D1").setValue('Created By');
-        const adminEmail = 'cheerc@talented.com.tw';
-        const lastRow = dataSheet.getLastRow();
-        if (lastRow > 1) {
-            const createdByColumn = dataSheet.getRange("D2:D" + lastRow);
-            const values = [];
-            for (let i = 0; i < lastRow - 1; i++) {
-                values.push([adminEmail]);
-            }
-            createdByColumn.setValues(values);
-        }
-    }
-
     // Metadata timestamp migration
     let metadataTimestamp = dataSheet.getRange("F1").getValue();
     if (!metadataTimestamp) {
