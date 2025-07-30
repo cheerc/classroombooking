@@ -1623,26 +1623,23 @@
             const els = this.elements;
             let icon = '', text = '', subtext = '', cssClass = '';
 
-            const lastSyncString = this.lastSyncTime 
-                ? '上次同步: ' + new Date(this.lastSyncTime).toLocaleString()
-                : '(本地資料)';
+            const lastModifiedString = this.lastCloudModifiedTime 
+                ? '雲端版本: ' + new Date(this.lastCloudModifiedTime).toLocaleString()
+                : '未曾同步';
 
             switch (status) {
                 case 'syncing':
-                    icon = '🔄'; text = '正在同步...'; cssClass = 'syncing';
+                    icon = '🔄'; text = '正在同步...'; subtext = '請稍候...'; cssClass = 'syncing';
                     break;
                 case 'error':
                     icon = '❌'; text = '同步失敗'; subtext = '請檢查網路或稍後再試'; cssClass = 'error';
                     break;
                 case 'dirty':
-                    icon = '⚠️'; text = '有未儲存的變更'; subtext = lastSyncString; cssClass = 'dirty';
+                    icon = '⚠️'; text = '有未儲存的變更'; subtext = lastModifiedString; cssClass = 'dirty';
                     break;
                 case 'synced':
-                    icon = '✅'; text = '資料已是最新'; subtext = lastSyncString; cssClass = 'synced';
-                    break;
-                case 'offline':
-                default:
-                    icon = '☁️'; text = '離線模式'; subtext = lastSyncString; cssClass = 'offline';
+                default: // 'synced' is now the default state
+                    icon = '✅'; text = '資料已同步'; subtext = lastModifiedString; cssClass = 'synced';
                     break;
             }
             els.syncStatus.className = 'sync-status ' + cssClass;
