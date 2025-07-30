@@ -107,6 +107,30 @@
             departmentQuickFilter: document.getElementById('department-quick-filter'),
         },
 
+        // --- API Communication ---
+        ServerApi: {
+            /**
+             * Generic wrapper for google.script.run that returns a Promise.
+             * @param {string} functionName The name of the Apps Script function to call.
+             * @param {...any} args The arguments to pass to the function.
+             * @returns {Promise<any>} A promise that resolves with the result or rejects with an error.
+             */
+            call: function(functionName, ...args) {
+                return new Promise((resolve, reject) => {
+                    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+                        // This helps in local development/testing where the API isn't present.
+                        console.error("google.script.run is not available.");
+                        return reject(new Error('Cannot connect to the server.'));
+                    }
+
+                    google.script.run
+                        .withSuccessHandler(resolve)
+                        .withFailureHandler(reject)
+                        [functionName](...args);
+                });
+            }
+        },
+
         init: function() {
             const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
             this.currentUserEmail = this.getShortUserName(fullEmail);
@@ -325,26 +349,26 @@
             }
             this.showLoading('正在新增課表...');
             const newId = 'schedule_' + Date.now();
-            google.script.run
-                .withSuccessHandler((result) => {
-                    this.hideLoading();
-                    if (result.error) { this.showNotification(`新增失敗: ${result.error}`, 'error'); return; }
-                    this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
-                    this.schedules[newId] = { 
-                        name: newName, 
-                        createdBy: result.createdBy, 
-                        data: { classrooms: [], scheduleData: {}, departments: [] } 
-                    };
-                    this.elements.newScheduleNameInput.value = '';
-                    this.renderScheduleList();
-                    this.updateScheduleSelect();
-                    this.showNotification(`已新增課表: ${newName}`);
-                })
-                .withFailureHandler(err => {
-                    this.hideLoading();
-                    this.showNotification(`新增課表失敗: ${err.message}`, 'error');
-                })
-                .addSchedule({ id: newId, name: newName, metadataTimestamp: this.activeMetadataTimestamp });
+            try {
+                const result = await this.ServerApi.call('addSchedule', { id: newId, name: newName, metadataTimestamp: this.activeMetadataTimestamp });
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
+                this.schedules[newId] = { 
+                    name: newName, 
+                    createdBy: result.createdBy, 
+                    data: { classrooms: [], scheduleData: {}, departments: [] } 
+                };
+                this.elements.newScheduleNameInput.value = '';
+                this.renderScheduleList();
+                this.updateScheduleSelect();
+                this.showNotification(`已新增課表: ${newName}`);
+            } catch (err) {
+                this.showNotification(`新增課表失敗: ${err.message}`, 'error');
+            } finally {
+                this.hideLoading();
+            }
         },
 
         handleScheduleListClick: async function(e) {
@@ -358,21 +382,19 @@
                 const newName = await this.showPrompt('請輸入新的課表名稱：', oldName);
                 if (newName && newName.trim() !== oldName) {
                     this.showLoading('正在重新命名...');
-                    google.script.run
-                        .withSuccessHandler((result) => {
-                            this.hideLoading();
-                            if (result.error) { this.showNotification(`重新命名失敗: ${result.error}`, 'error'); return; }
-                            this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
-                            this.schedules[id].name = newName.trim();
-                            this.renderScheduleList();
-                            this.updateScheduleSelect();
-                            this.showNotification('課表已重新命名');
-                        })
-                        .withFailureHandler(err => {
-                            this.hideLoading();
-                            this.showNotification(`重新命名失敗: ${err.message}`, 'error');
-                        })
-                        .renameSchedule({ id: id, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
+                    try {
+                        const result = await this.ServerApi.call('renameSchedule', { id: id, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
+                        if (result.error) { throw new Error(result.error); }
+                        this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
+                        this.schedules[id].name = newName.trim();
+                        this.renderScheduleList();
+                        this.updateScheduleSelect();
+                        this.showNotification('課表已重新命名');
+                    } catch (err) {
+                        this.showNotification(`重新命名失敗: ${err.message}`, 'error');
+                    } finally {
+                        this.hideLoading();
+                    }
                 }
             }
 
@@ -380,25 +402,23 @@
                 const id = deleteBtn.dataset.id;
                 if (await this.showConfirm(`確定要刪除課表 "${this.schedules[id].name}" 嗎？此操作無法復原。`)) {
                     this.showLoading('正在刪除課表...');
-                    google.script.run
-                        .withSuccessHandler((result) => {
-                            this.hideLoading();
-                            if (result.error) { this.showNotification(`刪除失敗: ${result.error}`, 'error'); return; }
-                            this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
-                            delete this.schedules[id];
-                            if (id === this.activeScheduleId) {
-                                this.activeScheduleId = Object.keys(this.schedules)[0];
-                                this.loadSchedule(this.activeScheduleId);
-                            }
-                            this.renderScheduleList();
-                            this.updateScheduleSelect();
-                            this.showNotification('課表已刪除');
-                        })
-                        .withFailureHandler(err => {
-                            this.hideLoading();
-                            this.showNotification(`刪除失敗: ${err.message}`, 'error');
-                        })
-                        .deleteSchedule({ id: id, metadataTimestamp: this.activeMetadataTimestamp });
+                    try {
+                        const result = await this.ServerApi.call('deleteSchedule', { id: id, metadataTimestamp: this.activeMetadataTimestamp });
+                        if (result.error) { throw new Error(result.error); }
+                        this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
+                        delete this.schedules[id];
+                        if (id === this.activeScheduleId) {
+                            this.activeScheduleId = Object.keys(this.schedules)[0];
+                            this.loadSchedule(this.activeScheduleId);
+                        }
+                        this.renderScheduleList();
+                        this.updateScheduleSelect();
+                        this.showNotification('課表已刪除');
+                    } catch (err) {
+                        this.showNotification(`刪除失敗: ${err.message}`, 'error');
+                    } finally {
+                        this.hideLoading();
+                    }
                 }
             }
 
@@ -408,26 +428,24 @@
                 const newName = await this.showPrompt('請為複製的課表命名：', `${sourceName} (複製)`);
                 if (newName && newName.trim()) {
                     this.showLoading('正在複製課表，請稍候...');
-                    google.script.run
-                        .withSuccessHandler(result => {
-                            this.hideLoading();
-                            if (result.error) { this.showNotification(`複製失敗: ${result.error}`, 'error'); return; }
-                            this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
-                            const newId = result.newId;
-                            this.schedules[newId] = {
-                                name: newName.trim(),
-                                createdBy: result.createdBy,
-                                data: JSON.parse(JSON.stringify(this.schedules[sourceId].data))
-                            };
-                            this.renderScheduleList();
-                            this.updateScheduleSelect();
-                            this.showNotification('課表複製成功！');
-                        })
-                        .withFailureHandler(err => {
-                            this.hideLoading();
-                            this.showNotification(`複製失敗: ${err.message}`, 'error');
-                        })
-                        .copySchedule({ sourceId: sourceId, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
+                    try {
+                        const result = await this.ServerApi.call('copySchedule', { sourceId: sourceId, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
+                        if (result.error) { throw new Error(result.error); }
+                        this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
+                        const newId = result.newId;
+                        this.schedules[newId] = {
+                            name: newName.trim(),
+                            createdBy: result.createdBy,
+                            data: JSON.parse(JSON.stringify(this.schedules[sourceId].data))
+                        };
+                        this.renderScheduleList();
+                        this.updateScheduleSelect();
+                        this.showNotification('課表複製成功！');
+                    } catch (err) {
+                        this.showNotification(`複製失敗: ${err.message}`, 'error');
+                    } finally {
+                        this.hideLoading();
+                    }
                 }
             }
         },
@@ -1089,36 +1107,33 @@
         },
 
         // --- Data & API ---
-        loadVersions: function() {
+        loadVersions: async function() {
             const select = this.elements.versionHistorySelect;
-            select.innerHTML = '<option>正在載入中...</option>'; // Clear previous list and show loading text
+            select.innerHTML = '<option>正在載入中...</option>';
             this.showNotification('正在獲取版本列表...', 'info');
             
-            google.script.run
-                .withSuccessHandler((versions) => {
-                    if (!versions || versions.error) {
-                        this.showNotification('獲取版本列表失敗: ' + (versions ? versions.error : '未知錯誤'), 'error');
-                        select.innerHTML = '<option>獲取失敗</option>'; // Show error in select
-                        return;
-                    }
-                    select.innerHTML = ''; // Clear loading text
-                    if (versions.length > 0) {
-                        versions.forEach(v => {
-                            const option = document.createElement('option');
-                            option.value = v.id;
-                            option.textContent = `${new Date(v.id).toLocaleString()} by ${this.getShortUserName(v.user)}`;
-                            select.appendChild(option);
-                        });
-                    } else {
-                        select.innerHTML = '<option>此課表沒有歷史紀錄</option>';
-                    }
+            try {
+                const versions = await this.ServerApi.call('getVersions', this.activeScheduleId);
+                if (!versions || versions.error) {
+                    throw new Error(versions ? versions.error : '未知錯誤');
+                }
+                
+                select.innerHTML = '';
+                if (versions.length > 0) {
+                    versions.forEach(v => {
+                        const option = document.createElement('option');
+                        option.value = v.id;
+                        option.textContent = `${new Date(v.id).toLocaleString()} by ${this.getShortUserName(v.user)}`;
+                        select.appendChild(option);
+                    });
                     this.showNotification('版本列表已更新', 'success');
-                })
-                .withFailureHandler((error) => {
-                    this.showNotification('獲取版本列表失敗: ' + error.message, 'error');
-                    select.innerHTML = '<option>獲取失敗</option>'; // Show error in select
-                })
-                .getVersions(this.activeScheduleId); // Pass the active schedule ID
+                } else {
+                    select.innerHTML = '<option>此課表沒有歷史紀錄</option>';
+                }
+            } catch (error) {
+                this.showNotification('獲取版本列表失敗: ' + error.message, 'error');
+                select.innerHTML = '<option>獲取失敗</option>';
+            }
         },
 
         handleLoadVersion: async function() {
@@ -1133,31 +1148,28 @@
             }
             this.elements.versionHistoryModal.style.display = 'none';
             this.showLoading('正在讀取歷史版本...');
-            google.script.run
-                .withSuccessHandler((data) => {
-                    this.hideLoading();
-                    if (data && data.success) {
-                        // Update the data for the *current* schedule
-                        const currentSchedule = this.schedules[this.activeScheduleId];
-                        currentSchedule.data.classrooms = data.classrooms || [];
-                        currentSchedule.data.scheduleData = this.ensureDataIds(data.scheduleData || {});
-                        currentSchedule.data.departments = data.departments || [];
-                        
-                        this.saveSchedulesToLocal();
-                        this.loadSchedule(this.activeScheduleId); // Reload the UI with the new data
 
-                        this.updateSyncStatus('offline', this.lastCloudModifiedTime);
-                        this.showNotification('已在本地載入版本: ' + new Date(data.versionId).toLocaleString(), 'info');
-                        // History is reset inside loadSchedule
-                    } else {
-                        this.showNotification('讀取版本失敗: ' + (data ? data.error : '未知錯誤'), 'error');
-                    }
-                })
-                .withFailureHandler((error) => {
-                    this.hideLoading();
-                    this.showNotification('讀取版本失敗: ' + error.message, 'error');
-                })
-                .getVersionData(versionId);
+            try {
+                const data = await this.ServerApi.call('getVersionData', versionId);
+                if (data && data.success) {
+                    const currentSchedule = this.schedules[this.activeScheduleId];
+                    currentSchedule.data.classrooms = data.classrooms || [];
+                    currentSchedule.data.scheduleData = this.ensureDataIds(data.scheduleData || {});
+                    currentSchedule.data.departments = data.departments || [];
+                    
+                    this.saveSchedulesToLocal();
+                    this.loadSchedule(this.activeScheduleId);
+
+                    this.updateSyncStatus('offline', this.lastCloudModifiedTime);
+                    this.showNotification('已在本地載入版本: ' + new Date(data.versionId).toLocaleString(), 'info');
+                } else {
+                    throw new Error(data ? data.error : '未知錯誤');
+                }
+            } catch (error) {
+                this.showNotification('讀取版本失敗: ' + error.message, 'error');
+            } finally {
+                this.hideLoading();
+            }
         },
 
         saveDataToLocal: function() {
@@ -1174,123 +1186,97 @@
             }
         },
 
-        loadDataFromServer: function() {
-            return new Promise((resolve, reject) => {
-                if (this.isConnecting) return reject(new Error("A sync operation is already in progress."));
-                this.isConnecting = true;
-                this.updateSyncStatus('syncing');
-                [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
-
-                if (typeof google === 'undefined' || !google.script || !google.script.run) {
-                    return setTimeout(() => this.handleApiError(reject, new Error('google.script.run is not available.')), 1000);
-                }
-
-                google.script.run
-                    .withSuccessHandler((result) => {
-                        this.handleApiSuccess(() => {
-                            if (!result || result.error) throw new Error(result ? result.error : '從服務器獲取的數據為空');
-                            
-                            this.schedules = result.schedules || {};
-                            this.activeScheduleId = result.activeScheduleId || Object.keys(this.schedules)[0];
-                            this.activeMetadataTimestamp = result.metadataTimestamp; // Store the metadata timestamp
-
-                            if (!this.activeScheduleId) { // Handle case of totally empty data
-                                this.loadInitialSchedules(); // Creates a new default one
-                            } else {
-                                this.loadSchedule(this.activeScheduleId);
-                            }
-
-                            this.updateScheduleSelect();
-                            this.updateLastModifiedTime(result.lastModified);
-                            this.lastSyncTime = new Date();
-                            this.saveSchedulesToLocal();
-                            this.updateSyncStatus('synced');
-                            this.showNotification('從雲端讀取數據成功！');
-                            // History is reset in loadSchedule
-                            resolve(result);
-                        }, reject);
-                    })
-                    .withFailureHandler((error) => this.handleApiError(reject, error, '從雲端讀取數據失敗'))
-                    .getData();
-            });
-        },
-
-        saveDataToServer: function() {
-            if (this.isConnecting) return;
+        loadDataFromServer: async function() {
+            if (this.isConnecting) {
+                this.showNotification("A sync operation is already in progress.", "info");
+                return;
+            }
             this.isConnecting = true;
             this.updateSyncStatus('syncing');
             [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
 
-            if (typeof google === 'undefined' || !google.script || !google.script.run) {
-                return setTimeout(() => this.handleApiError(() => {}, new Error('google.script.run is not available.')), 1000);
-            }
-
-            google.script.run
-                .withSuccessHandler(latestData => {
-                    if (latestData.error) throw new Error(latestData.error);
-                    const serverLastModified = latestData.lastModified ? new Date(latestData.lastModified).getTime() : null;
-                    const localLastModified = this.lastCloudModifiedTime ? this.lastCloudModifiedTime.getTime() : null;
-
-                    if (serverLastModified === localLastModified || !localLastModified) {
-                        this.showLoading('版本一致，正在保存數據...');
-                        
-                        const dataToSend = {
-                            scheduleId: this.activeScheduleId,
-                            activeScheduleId: this.activeScheduleId, // Also pass the active ID for the server to know
-                            scheduleData: {
-                                classrooms: this.classrooms,
-                                scheduleData: this.scheduleData,
-                                departments: this.departments
-                            }
-                        };
-
-                        google.script.run
-                            .withSuccessHandler(saveResult => {
-                                this.handleApiSuccess(() => {
-                                    if (!saveResult || !saveResult.success) throw new Error(saveResult?.error || '儲存時發生未知錯誤');
-                                    this.lastSyncTime = new Date();
-                                    this.updateLastModifiedTime(saveResult.lastModified);
-                                    this.updateSyncStatus('synced');
-                                    this.showNotification('數據已成功儲存到雲端！');
-                                    this.updateCleanSnapshot();
-                                    this.checkDirty();
-                                });
-                            })
-                            .withFailureHandler(error => this.handleApiError(() => {}, error, '數據儲存失敗'))
-                            .saveData(dataToSend);
-                    } else {
-                        this.handleApiSuccess(() => {
-                            this.updateSyncStatus('error');
-                            const conflictMessage = '儲存失敗！雲端資料已被其他人修改。<br><br>為避免覆蓋他人工作，請先「從雲端讀取資料」同步後，再重新進行您的變更。';
-                            this.showConfirm(conflictMessage, true);
-                        });
-                    }
-                })
-                .withFailureHandler(error => this.handleApiError(() => {}, error, '檢查雲端版本失敗'))
-                .getData();
-        },
-
-        handleApiSuccess: function(logic, reject) {
             try {
-                logic();
+                const result = await this.ServerApi.call('getData');
+                if (!result || result.error) {
+                    throw new Error(result ? result.error : '從服務器獲取的數據為空');
+                }
+                
+                this.schedules = result.schedules || {};
+                this.activeScheduleId = result.activeScheduleId || Object.keys(this.schedules)[0];
+                this.activeMetadataTimestamp = result.metadataTimestamp;
+
+                if (!this.activeScheduleId) {
+                    this.loadInitialSchedules();
+                } else {
+                    this.loadSchedule(this.activeScheduleId);
+                }
+
+                this.updateScheduleSelect();
+                this.updateLastModifiedTime(result.lastModified);
+                this.lastSyncTime = new Date();
+                this.saveSchedulesToLocal();
+                this.updateSyncStatus('synced');
+                this.showNotification('從雲端讀取數據成功！');
+                this.resetHistory();
             } catch (error) {
-                this.showNotification('處理數據失敗: ' + error.message, 'error');
+                this.showNotification('從雲端讀取數據失敗: ' + error.message, 'error');
                 this.updateSyncStatus('error');
-                if (reject) reject(error);
             } finally {
-                this.hideLoading();
                 this.isConnecting = false;
                 [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
             }
         },
 
-        handleApiError: function(reject, error, message = '無法連接到雲端') {
-            this.showNotification(`${message}: ${error.message}`, 'error');
-            this.updateSyncStatus('error');
-            this.hideLoading();
-            this.isConnecting = false;
-            [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
-            if (reject) reject(error);
+        saveDataToServer: async function() {
+            if (this.isConnecting) return;
+            this.isConnecting = true;
+            this.updateSyncStatus('syncing');
+            [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
+
+            try {
+                const latestData = await this.ServerApi.call('getData');
+                if (latestData.error) throw new Error(latestData.error);
+
+                const serverLastModified = latestData.lastModified ? new Date(latestData.lastModified).getTime() : null;
+                const localLastModified = this.lastCloudModifiedTime ? this.lastCloudModifiedTime.getTime() : null;
+
+                if (serverLastModified !== localLastModified && localLastModified) {
+                    this.updateSyncStatus('error');
+                    this.showConfirm('儲存失敗！雲端資料已被其他人修改。<br><br>為避免覆蓋他人工作，請先「從雲端讀取資料」同步後，再重新進行您的變更。', true);
+                    return;
+                }
+
+                this.showLoading('版本一致，正在保存數據...');
+                const dataToSend = {
+                    scheduleId: this.activeScheduleId,
+                    activeScheduleId: this.activeScheduleId,
+                    scheduleData: {
+                        classrooms: this.classrooms,
+                        scheduleData: this.scheduleData,
+                        departments: this.departments
+                    }
+                };
+
+                const saveResult = await this.ServerApi.call('saveData', dataToSend);
+                if (!saveResult || !saveResult.success) {
+                    throw new Error(saveResult?.error || '儲存時發生未知錯誤');
+                }
+
+                this.lastSyncTime = new Date();
+                this.updateLastModifiedTime(saveResult.lastModified);
+                this.updateSyncStatus('synced');
+                this.showNotification('數據已成功儲存到雲端！');
+                this.updateCleanSnapshot();
+                this.checkDirty();
+
+            } catch (error) {
+                this.showNotification('數據儲存失敗: ' + error.message, 'error');
+                this.updateSyncStatus('error');
+            } finally {
+                this.hideLoading();
+                this.isConnecting = false;
+                [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
+            }
         },
 
         showLoading: function(message = '載入中，請稍候...') {
