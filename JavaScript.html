@@ -37,8 +37,18 @@
         cleanStateSnapshot: '', // Snapshot of the last clean state
         activeFilters: [], // Array to hold active course name filters
         currentUserEmail: '', // To store the email of the current user
+        currentViewMode: 'week', // 'week' or 'day'
+        currentDayIndex: 0, // 0 for Monday, 6 for Sunday
 
         elements: {
+            // View mode elements
+            viewModeWeekBtn: document.getElementById('view-mode-week'),
+            viewModeDayBtn: document.getElementById('view-mode-day'),
+            dayViewControls: document.getElementById('day-view-controls'),
+            prevDayBtn: document.getElementById('prev-day-btn'),
+            nextDayBtn: document.getElementById('next-day-btn'),
+            currentDayDisplay: document.getElementById('current-day-display'),
+
             // Schedule Manager elements
             scheduleSelect: document.getElementById('schedule-select'),
             manageSchedulesBtn: document.getElementById('manage-schedules-btn'),
@@ -151,12 +161,11 @@
 
             this.loadInitialSchedules();
             this.addEventListeners();
-            // History is now managed within loadSchedule
+            this.setViewMode('week'); // Initialize view mode
 
             setTimeout(() => {
                 this.loadDataFromServer().catch(error => {
                     console.warn("Initial data load failed:", error.message);
-                    // No need to reset history again, already done
                 });
             }, 500);
         },
@@ -241,6 +250,13 @@
             els.filterApply.addEventListener('click', () => this.applyFilters());
             els.filterClear.addEventListener('click', () => this.clearFilters());
             els.departmentQuickFilter.addEventListener('change', () => this.renderScheduleTable());
+
+            // View Mode Listeners
+            els.viewModeWeekBtn.addEventListener('click', () => this.setViewMode('week'));
+            els.viewModeDayBtn.addEventListener('click', () => this.setViewMode('day'));
+            els.prevDayBtn.addEventListener('click', () => this.changeDay(-1));
+            els.nextDayBtn.addEventListener('click', () => this.changeDay(1));
+
             this.initializeTooltips();
         },
 
@@ -1480,8 +1496,65 @@
             });
         },
 
+        // --- View Mode Logic ---
+        setViewMode: function(mode) {
+            if (this.currentViewMode === mode) return;
+            this.currentViewMode = mode;
+
+            if (mode === 'day') {
+                // Set to today, Sunday is 0, but our week starts on Monday (0)
+                const today = new Date().getDay();
+                this.currentDayIndex = (today === 0) ? 6 : today - 1;
+            } 
+            this.renderScheduleTable();
+        },
+
+        changeDay: function(direction) {
+            if (this.currentViewMode !== 'day') return;
+            this.currentDayIndex = (this.currentDayIndex + direction + 7) % 7;
+            this.renderScheduleTable();
+        },
+
+        updateViewControls: function() {
+            const tableHead = this.elements.scheduleBody.previousElementSibling; // Get <thead>
+            tableHead.innerHTML = '';
+            const tr = document.createElement('tr');
+            tr.className = 'relative z-10';
+
+            if (this.currentViewMode === 'week') {
+                this.elements.dayViewControls.style.display = 'none';
+                this.elements.viewModeWeekBtn.classList.add('active');
+                this.elements.viewModeDayBtn.classList.remove('active');
+                tr.innerHTML = `
+                    <th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
+                        <span class="diagonal-split-top">星期</span>
+                        <span class="diagonal-split-bottom">教室</span>
+                    </th>
+                    <th class="border border-gray-300 p-2 bg-gray-200">星期一</th>
+                    <th class="border border-gray-300 p-2 bg-gray-200">星期二</th>
+                    <th class="border border-gray-300 p-2 bg-gray-200">星期三</th>
+                    <th class="border border-gray-300 p-2 bg-gray-200">星期四</th>
+                    <th class="border border-gray-300 p-2 bg-gray-200">星期五</th>
+                    <th class="border border-gray-300 p-2 bg-gray-200">星期六</th>
+                    <th class="border border-gray-300 p-2 bg-gray-200">星期日</th>
+                `;
+            } else { // Day view
+                this.elements.dayViewControls.style.display = 'flex';
+                this.elements.viewModeDayBtn.classList.add('active');
+                this.elements.viewModeWeekBtn.classList.remove('active');
+                this.elements.currentDayDisplay.textContent = this.WEEKDAYS[this.currentDayIndex];
+                tr.innerHTML = `
+                    <th class="border border-gray-300 p-2 w-20 bg-gray-200">教室</th>
+                    <th class="border border-gray-300 p-2 bg-gray-200">${this.WEEKDAYS[this.currentDayIndex]}</th>
+                `;
+            }
+            tableHead.appendChild(tr);
+        },
+
         renderScheduleTable: function() {
             try {
+                this.updateViewControls(); // Update buttons and displays based on view mode
+
                 let dataToRender = this.scheduleData;
                 const quickFilterDept = this.elements.departmentQuickFilter.value;
 
@@ -1532,7 +1605,10 @@
                 sortedClassrooms.forEach(classroom => {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${classroom}</td>`;
-                    for (let day = 0; day < 7; day++) {
+                    
+                    const daysToRender = this.currentViewMode === 'week' ? [0, 1, 2, 3, 4, 5, 6] : [this.currentDayIndex];
+
+                    for (const day of daysToRender) {
                         const td = document.createElement('td');
                         td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
                         td.dataset.classroom = classroom;
