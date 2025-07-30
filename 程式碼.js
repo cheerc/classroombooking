@@ -38,7 +38,6 @@ function doGet() {
 
 /**
  * Retrieves all schedule data. It now reads from dedicated sheets for each schedule.
- * Handles migration from the single-cell JSON format to the multi-sheet format.
  * @returns {object} An object containing schedules, activeScheduleId, and lastModified time, or an error object.
  */
 function getData() {
