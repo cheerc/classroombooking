@@ -86,8 +86,8 @@
             promptModal: document.getElementById('prompt-modal'),
             promptText: document.getElementById('prompt-text'),
             promptInput: document.getElementById('prompt-input'),
-            promptOk: document.getElementById('prompt-ok'),
-            promptCancel: document.getElementById('prompt-cancel'),
+                promptOk: document.getElementById('prompt-ok'),
+                promptCancel: document.getElementById('prompt-cancel'),
             showHelpBtn: document.getElementById('show-help-btn'),
             helpModal: document.getElementById('help-modal'),
             helpModalClose: document.getElementById('help-modal-close'),
@@ -98,6 +98,7 @@
             filterTypeSelector: document.getElementById('filter-type-selector'),
             filterListTitle: document.getElementById('filter-list-title'),
             filterCourseList: document.getElementById('filter-course-list'),
+            filterSearchContainer: document.getElementById('filter-search-container'),
             filterSelectAll: document.getElementById('filter-select-all'),
             filterDeselectAll: document.getElementById('filter-deselect-all'),
             filterApply: document.getElementById('filter-apply'),
@@ -505,14 +506,41 @@
             const items = new Set();
             let title = '選擇要顯示的課程';
 
+            // 1. Populate the search input for course names
+            const searchContainer = this.elements.filterSearchContainer;
+            if (filterType === 'name') {
+                searchContainer.style.display = 'block';
+                if (!searchContainer.querySelector('#filter-search-input')) {
+                    searchContainer.innerHTML = `
+                        <input type="text" id="filter-search-input" placeholder="在此搜尋以快速勾選..." class="filter-search-input w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    `;
+                    searchContainer.querySelector('#filter-search-input').addEventListener('input', (e) => {
+                        const searchText = e.target.value.toLowerCase().trim();
+                        this.elements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                            const courseName = cb.value.toLowerCase();
+                            cb.checked = searchText ? courseName.includes(searchText) : false;
+                        });
+                    });
+                }
+            } else {
+                searchContainer.style.display = 'none';
+            }
+
+
+            // 2. Gather all items based on filter type (with added defensive checks)
             Object.values(this.scheduleData).forEach(classroom => {
+                if (typeof classroom !== 'object' || classroom === null) return; // Check if classroom is a valid object
                 Object.values(classroom).forEach(day => {
+                    if (!Array.isArray(day)) return; // Check if day is a valid array
                     day.forEach(course => {
-                        if (filterType === 'name') {
+                        if (!course) return; // Check if course exists
+                        if (filterType === 'name' && course.name) {
                             items.add(course.name);
                         } else if (filterType === 'department') {
                             title = '選擇要顯示的部門';
-                            (course.departments || []).forEach(dept => items.add(dept));
+                            (course.departments || []).forEach(dept => {
+                                if (dept) items.add(dept);
+                            });
                         } else if (filterType === 'teacher') {
                             title = '選擇要顯示的使用人';
                             if (course.teacher) items.add(course.teacher);
@@ -521,6 +549,7 @@
                 });
             });
 
+            // 3. Render the checkbox list
             this.elements.filterListTitle.textContent = title;
             const sortedItems = Array.from(items).sort();
             const listElement = this.elements.filterCourseList;
@@ -536,6 +565,10 @@
                 `;
                 listElement.appendChild(div);
             });
+            
+            // Clear search input when repopulating
+            const searchInput = searchContainer.querySelector('#filter-search-input');
+            if (searchInput) searchInput.value = '';
         },
 
         toggleAllFilterCheckboxes: function(shouldBeChecked) {
@@ -2213,6 +2246,8 @@
     };
 
     // --- INITIALIZATION ---
-    document.addEventListener('DOMContentLoaded', () => App.init());
+    document.addEventListener('DOMContentLoaded', function() {
+        App.init();
+    });
 })();
 </script>
