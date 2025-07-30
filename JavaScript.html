@@ -1723,16 +1723,17 @@
             const courseName = clickedElement.dataset.name;
             const isAlreadyPrimary = clickedElement.classList.contains('primary-selection');
 
-            this.clearAllSelections();
+            this.clearAllSelections(); // This will remove .has-selection from body
 
             if (!isAlreadyPrimary) {
+                document.body.classList.add('has-selection');
                 const allClassElements = document.querySelectorAll('.class-item');
                 allClassElements.forEach(el => {
                     if (el.dataset.name === courseName) {
                         if (el === clickedElement) {
                             el.classList.add('primary-selection');
                         } else {
-                            el.classList.add('selected');
+                            el.classList.add('secondary-selection');
                         }
                     }
                 });
@@ -1740,8 +1741,9 @@
         },
 
         clearAllSelections: function() {
-            document.querySelectorAll('.class-item.selected, .class-item.primary-selection').forEach(el => {
-                el.classList.remove('selected', 'primary-selection');
+            document.body.classList.remove('has-selection');
+            document.querySelectorAll('.class-item.primary-selection, .class-item.secondary-selection').forEach(el => {
+                el.classList.remove('primary-selection', 'secondary-selection');
             });
         },
 

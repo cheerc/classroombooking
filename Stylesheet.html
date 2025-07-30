@@ -64,14 +64,34 @@
         background-color: rgba(0,0,0,0.2);
         color: #111827; /* gray-900 */
     }
+    /* When a selection is active, fade out and slightly shrink non-selected items */
+    body.has-selection .class-item {
+        opacity: 0.4;
+        transform: scale(0.98);
+        transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    /* Bring selected items back to full view and normal size, overriding the above */
+    body.has-selection .class-item.primary-selection,
+    body.has-selection .class-item.secondary-selection {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    /* Style for the main selected item (makes it pop even more) */
     .class-item.primary-selection {
-        box-shadow: 0 0 0 3px #3b82f6; /* blue-500 */
+        box-shadow: 0 0 0 3px #3b82f6, 0 5px 15px rgba(0,0,0,0.15); /* blue-500 shadow + bigger shadow */
         border-color: #3b82f6;
+        transform: scale(1.03) !important; /* Use important to override the shrink */
+        z-index: 5; /* Bring it to the front */
     }
-    .class-item.selected {
-        opacity: 0.7;
-        border: 1px dashed #6b7280; /* gray-500 */
+
+    /* Style for other items of the same course */
+    .class-item.secondary-selection {
+        box-shadow: 0 0 0 2px #60a5fa; /* lighter blue-400 */
+        border-color: #60a5fa;
     }
+
     .sortable-ghost {
         opacity: 0.4;
         background: #dbeafe; /* blue-200 */
