@@ -38,12 +38,16 @@
         activeFilters: [], // Array to hold active course name filters
         currentUserEmail: '', // To store the email of the current user
         currentViewMode: 'week', // 'week' or 'day'
+        dayViewSortMode: 'classroom', // 'classroom' or 'time'
         currentDayIndex: 0, // 0 for Monday, 6 for Sunday
 
         elements: {
             // View mode elements
             viewModeWeekBtn: document.getElementById('view-mode-week'),
             viewModeDayBtn: document.getElementById('view-mode-day'),
+            dayViewSortSelector: document.getElementById('day-view-sort-selector'),
+            daySortClassroomBtn: document.getElementById('day-sort-classroom'),
+            daySortTimeBtn: document.getElementById('day-sort-time'),
             dayViewControls: document.getElementById('day-view-controls'),
             prevDayBtn: document.getElementById('prev-day-btn'),
             nextDayBtn: document.getElementById('next-day-btn'),
@@ -254,6 +258,10 @@
             // View Mode Listeners
             els.viewModeWeekBtn.addEventListener('click', () => this.setViewMode('week'));
             els.viewModeDayBtn.addEventListener('click', () => this.setViewMode('day'));
+            
+            // Day Sort Listeners
+            els.daySortClassroomBtn.addEventListener('click', () => this.setDayViewSortMode('classroom'));
+            els.daySortTimeBtn.addEventListener('click', () => this.setDayViewSortMode('time'));
 
             // Delegated event listener for header controls
             const tableHead = this.elements.scheduleBody.previousElementSibling;
@@ -1512,10 +1520,18 @@
             this.currentViewMode = mode;
 
             if (mode === 'day') {
-                // Set to today, Sunday is 0, but our week starts on Monday (0)
+                this.elements.dayViewSortSelector.style.display = 'flex';
                 const today = new Date().getDay();
                 this.currentDayIndex = (today === 0) ? 6 : today - 1;
-            } 
+            } else {
+                this.elements.dayViewSortSelector.style.display = 'none';
+            }
+            this.renderScheduleTable();
+        },
+        
+        setDayViewSortMode: function(mode) {
+            if (this.dayViewSortMode === mode) return;
+            this.dayViewSortMode = mode;
             this.renderScheduleTable();
         },
 
@@ -1554,6 +1570,14 @@
                 this.elements.viewModeDayBtn.classList.add('active');
                 this.elements.viewModeWeekBtn.classList.remove('active');
                 
+                if (this.dayViewSortMode === 'classroom') {
+                    this.elements.daySortClassroomBtn.classList.add('active');
+                    this.elements.daySortTimeBtn.classList.remove('active');
+                } else {
+                    this.elements.daySortTimeBtn.classList.add('active');
+                    this.elements.daySortClassroomBtn.classList.remove('active');
+                }
+
                 // Top-left header cell
                 const topLeftTh = document.createElement('th');
                 topLeftTh.className = 'border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split';
@@ -1595,12 +1619,11 @@
 
         renderScheduleTable: function() {
             try {
-                this.updateViewControls(); // Update buttons and displays based on view mode
+                this.updateViewControls();
 
                 let dataToRender = this.scheduleData;
                 const quickFilterDept = this.elements.departmentQuickFilter.value;
 
-                // Apply quick filter first
                 if (quickFilterDept && quickFilterDept !== 'all') {
                     const tempData = {};
                     for (const classroom in this.scheduleData) {
@@ -1617,7 +1640,6 @@
                     dataToRender = tempData;
                 }
 
-                // Then, apply advanced filters if any
                 if (this.activeFilters && this.activeFilters.length > 0) {
                     const nameFilters = new Set(this.activeFilters.filter(f => f.type === 'name').map(f => f.value));
                     const departmentFilters = new Set(this.activeFilters.filter(f => f.type === 'department').map(f => f.value));
@@ -1642,39 +1664,71 @@
                 }
 
                 this.elements.scheduleBody.innerHTML = '';
-                const classroomsWithSchedule = new Set([...this.classrooms, ...Object.keys(dataToRender)]);
-                const sortedClassrooms = this.sortClassrooms(Array.from(classroomsWithSchedule));
-                sortedClassrooms.forEach(classroom => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${classroom}</td>`;
-                    
-                    const daysToRender = this.currentViewMode === 'week' ? [0, 1, 2, 3, 4, 5, 6] : [this.currentDayIndex];
 
-                    for (const day of daysToRender) {
+                if (this.currentViewMode === 'day' && this.dayViewSortMode === 'time') {
+                    // New "Sort by Time" logic for Day View
+                    const day = this.currentDayIndex;
+                    let allCoursesForDay = [];
+                    for (const classroom in dataToRender) {
+                        if (dataToRender[classroom][day]) {
+                            dataToRender[classroom][day].forEach(course => {
+                                allCoursesForDay.push({ ...course, classroom: classroom });
+                            });
+                        }
+                    }
+
+                    allCoursesForDay.sort((a, b) => this.timeToMinutes(a.timeStart) - this.timeToMinutes(b.timeStart));
+
+                    allCoursesForDay.forEach(course => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${course.classroom}</td>`;
                         const td = document.createElement('td');
                         td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
-                        td.dataset.classroom = classroom;
+                        td.dataset.classroom = course.classroom;
                         td.dataset.day = day;
-                        const classes = (dataToRender[classroom]?.[day] || []);
-                        let lastColor = null;
-                        classes.forEach((classItem) => {
-                            let currentColor = this.courseColorMap[classItem.name] || '#E2E8F0';
-                            let finalColor = currentColor;
-                            if (currentColor === lastColor) {
-                                const currentIndex = this.COURSE_COLORS.indexOf(currentColor);
-                                const nextIndex = (currentIndex + 1) % this.COURSE_COLORS.length;
-                                finalColor = this.COURSE_COLORS[nextIndex];
-                            }
-                            const classDiv = this.createClassElement(classItem, classroom, day, finalColor);
-                            td.appendChild(classDiv);
-                            lastColor = finalColor;
-                        });
+                        const classDiv = this.createClassElement(course, course.classroom, day);
+                        td.appendChild(classDiv);
                         tr.appendChild(td);
-                    }
-                    this.elements.scheduleBody.appendChild(tr);
-                });
+                        this.elements.scheduleBody.appendChild(tr);
+                    });
+
+                } else {
+                    // Original "Sort by Classroom" logic for Week and Day View
+                    const classroomsWithSchedule = new Set([...this.classrooms, ...Object.keys(dataToRender)]);
+                    const sortedClassrooms = this.sortClassrooms(Array.from(classroomsWithSchedule));
+                    sortedClassrooms.forEach(classroom => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${classroom}</td>`;
+                        
+                        const daysToRender = this.currentViewMode === 'week' ? [0, 1, 2, 3, 4, 5, 6] : [this.currentDayIndex];
+
+                        for (const day of daysToRender) {
+                            const td = document.createElement('td');
+                            td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
+                            td.dataset.classroom = classroom;
+                            td.dataset.day = day;
+                            const classes = (dataToRender[classroom]?.[day] || []);
+                            let lastColor = null;
+                            classes.forEach((classItem) => {
+                                let currentColor = this.courseColorMap[classItem.name] || '#E2E8F0';
+                                let finalColor = currentColor;
+                                if (currentColor === lastColor) {
+                                    const currentIndex = this.COURSE_COLORS.indexOf(currentColor);
+                                    const nextIndex = (currentIndex + 1) % this.COURSE_COLORS.length;
+                                    finalColor = this.COURSE_COLORS[nextIndex];
+                                }
+                                const classDiv = this.createClassElement(classItem, classroom, day, finalColor);
+                                td.appendChild(classDiv);
+                                lastColor = finalColor;
+                            });
+                            tr.appendChild(td);
+                        }
+                        this.elements.scheduleBody.appendChild(tr);
+                    });
+                }
+
                 this.setupDragAndDrop();
-                this.initializeTooltips(); // Initialize tooltips for new class items
+                this.initializeTooltips();
             } catch (e) {
                 console.error('渲染課程表失敗:', e);
                 this.showNotification('渲染課程表失敗', 'error');
@@ -1692,12 +1746,19 @@
                             this.originalSourceListElement = evt.from;
                         },
                         onMove: (evt) => {
+                            if (this.currentViewMode === 'day' && this.dayViewSortMode === 'time') {
+                                return false; // Disable moving items between cells in time sort mode
+                            }
                             if (evt.to === this.originalSourceListElement) {
                                 return true;
                             }
                             return evt.from !== evt.to;
                         },
                         onEnd: (evt) => {
+                            if (this.currentViewMode === 'day' && this.dayViewSortMode === 'time') {
+                                this.renderScheduleTable(); // Just re-render to snap back
+                                return;
+                            }
                             const { from, to, item, newIndex } = evt;
                             const classId = item.dataset.id;
                             const fromClassroom = from.dataset.classroom, fromDay = parseInt(from.dataset.day);
