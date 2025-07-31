@@ -109,14 +109,13 @@
             <select id="department-quick-filter" class="bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm">
                 <!-- Options will be populated by JS -->
             </select>
-            <div id="active-filter-display" class="text-sm text-gray-600 font-medium"></div>
-        </div>
+            <div id="active-filter-display" class="text-sm text-gray-600 font-medium mr-auto"></div>
 
-        <div class="flex justify-center items-center gap-4 mb-4">
             <div id="view-mode-selector" class="flex items-center p-1 bg-gray-200 rounded-lg">
                 <button id="view-mode-week" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn active">週檢視</button>
                 <button id="view-mode-day" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn">日檢視</button>
             </div>
+            <!-- This is now handled inside the table header -->
             <div id="day-view-controls" class="flex items-center gap-2" style="display: none;">
                 <button id="prev-day-btn" class="p-2 rounded-full hover:bg-gray-200 transition">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
