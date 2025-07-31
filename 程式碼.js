@@ -1,4 +1,4 @@
-// Version 6.2.4
+// Version 6.3.0
 const SHEET_DATA = "Data";
 const SHEET_HISTORY = "History";
 
