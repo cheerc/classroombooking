@@ -184,17 +184,7 @@ function saveData(data) {
   }
 }
 
-/**
- * A helper function to check if the current user is an admin.
- * @returns {void} Throws an error if the user is not an admin.
- */
-function checkAdmin_() {
-  const adminEmail = 'cheerc@talented.com.tw';
-  const currentUserEmail = Session.getActiveUser().getEmail();
-  if (currentUserEmail.toLowerCase() !== adminEmail.toLowerCase()) {
-    throw new Error('權限不足。只有管理員才能執行此操作。');
-  }
-}
+
 
 /**
  * A helper function to check for metadata conflicts and update the timestamp.
