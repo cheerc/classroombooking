@@ -476,7 +476,7 @@
                         this.updateScheduleSelect();
                         this.showNotification('課表複製成功！');
                     } catch (err) {
-                        this.showNotification(`��製失敗: ${err.message}`, 'error');
+                        this.showNotification(`複製失敗: ${err.message}`, 'error');
                     } finally {
                         this.hideLoading();
                     }
@@ -1299,7 +1299,7 @@
                 this.lastSyncTime = new Date();
                 this.updateLastModifiedTime(saveResult.lastModified);
                 this.updateSyncStatus('synced');
-                this.showNotification('數據已成���儲存到雲端！');
+                this.showNotification('數據已成功儲存到雲端！');
                 this.updateCleanSnapshot();
                 this.checkDirty();
 
