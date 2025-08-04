@@ -722,15 +722,7 @@
             }
         },
 
-        _createOrEditCourseForm: async function(container, classItemToEdit, context) {
-            const isEditMode = classItemToEdit !== null;
-            const { classroom, day } = context;
-            const originalData = isEditMode ? { ...classItemToEdit } : {};
-
-            const formDiv = document.createElement('div');
-            formDiv.setAttribute('class', 'inline-add-form');
-
-            // --- Form HTML ---
+        _buildCourseFormHtml: function(isEditMode, classItemToEdit, day) {
             const daySelectorHtml = isEditMode ? '' : this.WEEKDAYS.map((dayName, index) => `
                 <label><input type="checkbox" class="inline-day-checkbox" value="${index}" ${index === day ? 'checked' : ''}> ${dayName.replace('星期', '')}</label>
             `).join('');
@@ -746,7 +738,7 @@
                     ${departmentCheckboxes}
                 </div>` : '';
 
-            formDiv.innerHTML = `
+            return `
                 <button title="取消" class="inline-add-cancel-btn">×</button>
                 ${isEditMode ? '' : `<div class="inline-day-selector">${daySelectorHtml}</div>`}
                 <input type="text" placeholder="課程名稱" class="inline-input" name="name" value="${isEditMode ? classItemToEdit.name : ''}" required>
@@ -761,6 +753,105 @@
                     <button title="儲存" class="save-inline">✓</button>
                 </div>
             `;
+        },
+
+        _handleCourseFormSave: async function(formDiv, isEditMode, originalData, context) {
+            const { classroom, day } = context;
+            const name = formDiv.querySelector('input[name="name"]').value.trim();
+            const timeStart = formDiv.querySelector('input[name="timeStart"]').value.trim();
+            const timeEnd = formDiv.querySelector('input[name="timeEnd"]').value.trim();
+            const teacher = formDiv.querySelector('input[name="teacher"]').value.trim();
+            const selectedDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
+            const selectedDays = isEditMode ? [day] : Array.from(formDiv.querySelectorAll('.inline-day-checkbox:checked')).map(cb => parseInt(cb.value));
+
+            if (!name) { this.showNotification('課程名稱不能為空！', 'error'); return false; }
+            if (!teacher) { this.showNotification('使用人不能為空！', 'error'); return false; }
+            if (selectedDepartments.length === 0) { this.showNotification('請至少選擇一個部門！', 'error'); return false; }
+            if (selectedDays.length === 0) { this.showNotification('請至少選擇一個星期！', 'error'); return false; }
+            if (!timeStart || !timeEnd) { this.showNotification('請輸入完整的開始與結束時間！', 'error'); return false; }
+
+            const formattedTimeStart = this.formatTime(timeStart);
+            const formattedTimeEnd = this.formatTime(timeEnd);
+            if (this.timeToMinutes(formattedTimeStart) >= this.timeToMinutes(formattedTimeEnd)) { this.showNotification('開始時間不能晚於或等於結束時間！', 'error'); return false; }
+
+            if (isEditMode) {
+                const classItem = originalData;
+                if (name !== originalData.name) {
+                    const otherNameOccurrences = this._countOccurrences(item => item.name === originalData.name && item.id !== classItem.id);
+                    if (otherNameOccurrences > 0) {
+                        const confirmAll = await this.showConfirm(`找到 ${otherNameOccurrences} 個其他名為 "${originalData.name}" 的課程。<br>要全部一起改名為 "${name}" 嗎？`);
+                        if (confirmAll) {
+                            this._updateAllOccurrences(item => item.name === originalData.name, item => item.name = name);
+                            const activeFilterIndex = this.activeFilters.findIndex(f => f.type === 'name' && f.value === originalData.name);
+                            if (activeFilterIndex > -1) this.activeFilters[activeFilterIndex].value = name;
+                        } else {
+                            classItem.name = name;
+                        }
+                    } else {
+                        classItem.name = name;
+                    }
+                    this.buildCourseColorMap();
+                }
+
+                if (teacher !== originalData.teacher) {
+                    const otherTeacherOccurrences = this._countOccurrences(item => item.name === originalData.name && item.teacher === originalData.teacher && item.id !== classItem.id);
+                    if (otherTeacherOccurrences > 0) {
+                        const confirmAll = await this.showConfirm(`找到 ${otherTeacherOccurrences} 堂其他由 "${originalData.teacher}" 上的 "${originalData.name}" 課程。<br>要將使用人一起變更為 "${teacher}" 嗎？`);
+                        if (confirmAll) {
+                            this._updateAllOccurrences(
+                                item => item.name === originalData.name && item.teacher === originalData.teacher,
+                                item => item.teacher = teacher
+                            );
+                        } else {
+                            classItem.teacher = teacher;
+                        }
+                    } else {
+                        classItem.teacher = teacher;
+                    }
+                }
+
+                classItem.timeStart = formattedTimeStart;
+                classItem.timeEnd = formattedTimeEnd;
+                classItem.departments = selectedDepartments;
+
+            } else {
+                let hasConflictOccurred = false;
+                if (!this.courseColorMap[name]) this.buildCourseColorMap();
+
+                selectedDays.forEach(selectedDay => {
+                    const classItem = { 
+                        id: this.generateUniqueId(), 
+                        name, 
+                        timeStart: formattedTimeStart, 
+                        timeEnd: formattedTimeEnd, 
+                        teacher,
+                        departments: selectedDepartments
+                    };
+
+                    if (this.checkTimeConflict(classroom, selectedDay, classItem)) {
+                        this.showNotification(`在 ${classroom} ${this.WEEKDAYS[selectedDay]} 有時間衝突！`, 'info', 5000);
+                        hasConflictOccurred = true;
+                    }
+
+                    if (!this.scheduleData[classroom]) this.scheduleData[classroom] = {};
+                    if (!this.scheduleData[classroom][selectedDay]) this.scheduleData[classroom][selectedDay] = [];
+
+                    const daySchedule = this.scheduleData[classroom][selectedDay];
+                    const insertIndex = daySchedule.findIndex(item => this.timeToMinutes(item.timeStart) > this.timeToMinutes(classItem.timeStart));
+                    daySchedule.splice(insertIndex === -1 ? daySchedule.length : insertIndex, 0, classItem);
+                });
+                if (selectedDays.length > 0 && !hasConflictOccurred) this.showNotification('已新增課程');
+            }
+            return true;
+        },
+
+        _createOrEditCourseForm: async function(container, classItemToEdit, context) {
+            const isEditMode = classItemToEdit !== null;
+            const originalData = isEditMode ? { ...classItemToEdit } : {};
+
+            const formDiv = document.createElement('div');
+            formDiv.setAttribute('class', 'inline-add-form');
+            formDiv.innerHTML = this._buildCourseFormHtml(isEditMode, classItemToEdit, context.day);
 
             if (isEditMode) {
                 container.innerHTML = ''; // Clear the class-item div
@@ -768,7 +859,6 @@
             container.appendChild(formDiv);
             formDiv.querySelector('input[name="name"]').focus();
 
-            // --- Form Logic ---
             const isDirty = () => {
                 const name = formDiv.querySelector('input[name="name"]').value.trim();
                 const timeStart = formDiv.querySelector('input[name="timeStart"]').value;
@@ -787,112 +877,23 @@
                        JSON.stringify(selectedDepartments.sort()) !== JSON.stringify((originalData.departments || []).sort());
             };
 
-            const handleSave = async () => {
-                const name = formDiv.querySelector('input[name="name"]').value.trim();
-                const timeStart = formDiv.querySelector('input[name="timeStart"]').value.trim();
-                const timeEnd = formDiv.querySelector('input[name="timeEnd"]').value.trim();
-                const teacher = formDiv.querySelector('input[name="teacher"]').value.trim();
-                const selectedDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
-                const selectedDays = isEditMode ? [day] : Array.from(formDiv.querySelectorAll('.inline-day-checkbox:checked')).map(cb => parseInt(cb.value));
-
-                if (!name) { this.showNotification('課程名稱不能為空！', 'error'); return false; }
-                if (!teacher) { this.showNotification('使用人不能為空！', 'error'); return false; }
-                if (selectedDepartments.length === 0) { this.showNotification('請至少選擇一個部門！', 'error'); return false; }
-                if (selectedDays.length === 0) { this.showNotification('請至少選擇一個星期！', 'error'); return false; }
-                if (!timeStart || !timeEnd) { this.showNotification('請輸入完整的開始與結束時間！', 'error'); return false; }
-
-                const formattedTimeStart = this.formatTime(timeStart);
-                const formattedTimeEnd = this.formatTime(timeEnd);
-                if (this.timeToMinutes(formattedTimeStart) >= this.timeToMinutes(formattedTimeEnd)) { this.showNotification('開始時間不能晚於或等於結束時間！', 'error'); return false; }
-
-                if (isEditMode) {
-                    const classItem = classItemToEdit;
-                    if (name !== originalData.name) {
-                        const otherNameOccurrences = this._countOccurrences(item => item.name === originalData.name && item.id !== classItem.id);
-                        if (otherNameOccurrences > 0) {
-                            const confirmAll = await this.showConfirm(`找到 ${otherNameOccurrences} 個其他名為 "${originalData.name}" 的課程。<br>要全部一起改名為 "${name}" 嗎？`);
-                            if (confirmAll) {
-                                this._updateAllOccurrences(item => item.name === originalData.name, item => item.name = name);
-                                const activeFilterIndex = this.activeFilters.findIndex(f => f.type === 'name' && f.value === originalData.name);
-                                if (activeFilterIndex > -1) this.activeFilters[activeFilterIndex].value = name;
-                            } else {
-                                classItem.name = name;
-                            }
-                        } else {
-                            classItem.name = name;
-                        }
-                        this.buildCourseColorMap();
-                    }
-
-                    if (teacher !== originalData.teacher) {
-                        const otherTeacherOccurrences = this._countOccurrences(item => item.name === originalData.name && item.teacher === originalData.teacher && item.id !== classItem.id);
-                        if (otherTeacherOccurrences > 0) {
-                            const confirmAll = await this.showConfirm(`找到 ${otherTeacherOccurrences} 堂其他由 "${originalData.teacher}" 上的 "${originalData.name}" 課程。<br>要將使用人一起變更為 "${teacher}" 嗎？`);
-                            if (confirmAll) {
-                                this._updateAllOccurrences(
-                                    item => item.name === originalData.name && item.teacher === originalData.teacher,
-                                    item => item.teacher = teacher
-                                );
-                            } else {
-                                classItem.teacher = teacher;
-                            }
-                        } else {
-                            classItem.teacher = teacher;
-                        }
-                    }
-
-                    classItem.timeStart = formattedTimeStart;
-                    classItem.timeEnd = formattedTimeEnd;
-                    classItem.departments = selectedDepartments;
-                    if (name === originalData.name) classItem.name = name;
-                    if (teacher === originalData.teacher) classItem.teacher = teacher;
-
-                } else {
-                    let hasConflictOccurred = false;
-                    if (!this.courseColorMap[name]) this.buildCourseColorMap();
-
-                    selectedDays.forEach(selectedDay => {
-                        const classItem = { 
-                            id: this.generateUniqueId(), 
-                            name, 
-                            timeStart: formattedTimeStart, 
-                            timeEnd: formattedTimeEnd, 
-                            teacher,
-                            departments: selectedDepartments
-                        };
-
-                        if (this.checkTimeConflict(classroom, selectedDay, classItem)) {
-                            this.showNotification(`在 ${classroom} ${this.WEEKDAYS[selectedDay]} 有時間衝突！`, 'info', 5000);
-                            hasConflictOccurred = true;
-                        }
-
-                        if (!this.scheduleData[classroom]) this.scheduleData[classroom] = {};
-                        if (!this.scheduleData[classroom][selectedDay]) this.scheduleData[classroom][selectedDay] = [];
-
-                        const daySchedule = this.scheduleData[classroom][selectedDay];
-                        const insertIndex = daySchedule.findIndex(item => this.timeToMinutes(item.timeStart) > this.timeToMinutes(classItem.timeStart));
-                        daySchedule.splice(insertIndex === -1 ? daySchedule.length : insertIndex, 0, classItem);
-                    });
-                    if (selectedDays.length > 0 && !hasConflictOccurred) this.showNotification('已新增課程');
-                }
-                return true;
-            };
-
-            let isClosing = false;
             const closeHandler = async (forceSave = false) => {
-                if (isClosing) return true;
+                if (this.activeInlineForm && this.activeInlineForm.isClosing) return true;
+                if(this.activeInlineForm) this.activeInlineForm.isClosing = true;
 
                 if (forceSave) {
-                    const saved = await handleSave();
-                    if (!saved) return false; // Validation failed, keep form open
-                    isClosing = true;
+                    const saved = await this._handleCourseFormSave(formDiv, isEditMode, originalData, context);
+                    if (!saved) { 
+                        if(this.activeInlineForm) this.activeInlineForm.isClosing = false;
+                        return false; 
+                    }
                 } else {
                     if (isDirty()) {
                         if (!await this.showConfirm('您有未儲存的變更，確定要捨棄嗎？')) {
+                            if(this.activeInlineForm) this.activeInlineForm.isClosing = false;
                             return false; // Abort closing
                         }
                     }
-                    isClosing = true;
                 }
 
                 this.activeInlineForm = null;
@@ -905,7 +906,7 @@
                 return true;
             };
 
-            this.activeInlineForm = { close: closeHandler, isDirty: isDirty };
+            this.activeInlineForm = { close: closeHandler, isDirty: isDirty, isClosing: false };
 
             formDiv.querySelector('.save-inline').addEventListener('click', (e) => { e.preventDefault(); closeHandler(true); });
             formDiv.querySelector('.inline-add-cancel-btn').addEventListener('click', () => closeHandler());
@@ -1310,60 +1311,73 @@
             if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
         },
 
-        showConfirm: function(message, isAlert = false) {
+        _showModal: function(config) {
             return new Promise((resolve) => {
-                this.elements.confirmText.innerHTML = message;
-                this.elements.confirmCancel.style.display = isAlert ? 'none' : 'inline-block';
-                this.elements.confirmModal.style.display = 'flex';
-                const okHandler = () => { cleanup(); resolve(true); };
-                const cancelHandler = () => { cleanup(); resolve(false); };
-                const cleanup = () => {
-                    this.elements.confirmOk.removeEventListener('click', okHandler);
-                    this.elements.confirmCancel.removeEventListener('click', cancelHandler);
-                    this.elements.confirmModal.style.display = 'none';
-                };
-                this.elements.confirmOk.addEventListener('click', okHandler, { once: true });
-                this.elements.confirmCancel.addEventListener('click', cancelHandler, { once: true });
-            });
-        },
+                const { modal, textElement, inputElement, okButton, cancelButton, message, defaultValue, isAlert } = config;
 
-        showPrompt: function(message, defaultValue = '') {
-            return new Promise((resolve) => {
-                const els = this.elements;
-                els.promptText.textContent = message;
-                els.promptInput.value = defaultValue;
-                els.promptModal.style.display = 'flex';
-                els.promptInput.focus();
-                els.promptInput.select();
+                if (textElement) {
+                    textElement.innerHTML = message;
+                }
+                if (inputElement) {
+                    inputElement.value = defaultValue;
+                    inputElement.focus();
+                    inputElement.select();
+                }
+                if (cancelButton) {
+                    cancelButton.style.display = isAlert ? 'none' : 'inline-block';
+                }
+
+                modal.style.display = 'flex';
+
+                const cleanup = () => {
+                    okButton.removeEventListener('click', okHandler);
+                    if (cancelButton) cancelButton.removeEventListener('click', cancelHandler);
+                    if (inputElement) inputElement.removeEventListener('keydown', keydownHandler);
+                    modal.style.display = 'none';
+                };
 
                 const okHandler = () => {
+                    const a = 1;
                     cleanup();
-                    resolve(els.promptInput.value);
+                    resolve(inputElement ? inputElement.value : true);
                 };
 
                 const cancelHandler = () => {
                     cleanup();
-                    resolve(null); // Resolve with null on cancel
+                    resolve(inputElement ? null : false);
                 };
 
                 const keydownHandler = (e) => {
-                    if (e.key === 'Enter') {
-                        okHandler();
-                    } else if (e.key === 'Escape') {
-                        cancelHandler();
-                    }
+                    if (e.key === 'Enter') okHandler();
+                    else if (e.key === 'Escape') cancelHandler();
                 };
 
-                const cleanup = () => {
-                    els.promptOk.removeEventListener('click', okHandler);
-                    els.promptCancel.removeEventListener('click', cancelHandler);
-                    els.promptInput.removeEventListener('keydown', keydownHandler);
-                    els.promptModal.style.display = 'none';
-                };
+                okButton.addEventListener('click', okHandler, { once: true });
+                if (cancelButton) cancelButton.addEventListener('click', cancelHandler, { once: true });
+                if (inputElement) inputElement.addEventListener('keydown', keydownHandler);
+            });
+        },
 
-                els.promptOk.addEventListener('click', okHandler, { once: true });
-                els.promptCancel.addEventListener('click', cancelHandler, { once: true });
-                els.promptInput.addEventListener('keydown', keydownHandler);
+        showConfirm: function(message, isAlert = false) {
+            return this._showModal({
+                modal: this.elements.confirmModal,
+                textElement: this.elements.confirmText,
+                okButton: this.elements.confirmOk,
+                cancelButton: this.elements.confirmCancel,
+                message: message,
+                isAlert: isAlert
+            });
+        },
+
+        showPrompt: function(message, defaultValue = '') {
+            return this._showModal({
+                modal: this.elements.promptModal,
+                textElement: this.elements.promptText,
+                inputElement: this.elements.promptInput,
+                okButton: this.elements.promptOk,
+                cancelButton: this.elements.promptCancel,
+                message: message,
+                defaultValue: defaultValue
             });
         },
 
