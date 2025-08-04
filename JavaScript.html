@@ -234,8 +234,8 @@
             els.scheduleList.addEventListener('click', this.handleScheduleListClick.bind(this));
             els.scheduleSelect.addEventListener('change', this.handleScheduleSelectChange.bind(this));
 
-            els.classroomList.addEventListener('click', this.handleDeleteClassroomClick.bind(this));
-            els.departmentList.addEventListener('click', this.handleDeleteDepartmentClick.bind(this));
+            els.classroomList.addEventListener('click', (e) => this.handleItemDelete(e, 'classroom'));
+            els.departmentList.addEventListener('click', (e) => this.handleItemDelete(e, 'department'));
             els.scheduleBody.addEventListener('click', this.handleScheduleBodyClick.bind(this));
             document.addEventListener('click', this.handleDocumentClick.bind(this), true);
             document.addEventListener('keydown', this.handleGlobalKeydown.bind(this));
@@ -1001,25 +1001,6 @@
                         this.lastClickedId = null;
                     }, 250);
                 }
-            }
-        },
-
-        handleDeleteClassroomClick: async function(event) {
-            const btn = event.target.closest('.delete-classroom');
-            if (!btn) return;
-            const classroom = btn.getAttribute('data-classroom');
-            if (this.scheduleData[classroom] && Object.values(this.scheduleData[classroom]).some(day => day.length > 0)) {
-                this.showNotification('無法刪除教室：請先移除此教室的所有課程登記！', 'error', 5000);
-                return;
-            }
-            if (await this.showConfirm(`確定要刪除教室 "${classroom}" 嗎？`)) {
-                this.classrooms = this.classrooms.filter(c => c !== classroom);
-                delete this.scheduleData[classroom];
-                this.updateClassroomList();
-                this.renderScheduleTable();
-                this.saveDataToLocal();
-                this.showNotification('已刪除教室: ' + classroom);
-                this.saveState();
             }
         },
 
@@ -1839,28 +1820,62 @@
             this.saveState();
         },
 
-        handleDeleteDepartmentClick: async function(event) {
-            const btn = event.target.closest('.delete-department');
-            if (!btn) return;
-            const department = btn.getAttribute('data-department');
-            
-            // Check if any course is using this department
-            const isDepartmentInUse = Object.values(this.scheduleData).some(classroom => 
-                Object.values(classroom).some(day => 
-                    day.some(course => course.departments && course.departments.includes(department))
-                )
-            );
+        async handleItemDelete(event, itemType) {
+            const config = {
+                classroom: {
+                    btnSelector: '.delete-classroom',
+                    dataAttribute: 'data-classroom',
+                    typeName: '教室',
+                    sourceArray: this.classrooms,
+                    isInUse: (name) => this.scheduleData[name] && Object.values(this.scheduleData[name]).some(day => day.length > 0),
+                    inUseMessage: '無法刪除教室：請先移除此教室的所有課程登記！',
+                    updateList: this.updateClassroomList.bind(this),
+                    postDelete: (name) => {
+                        delete this.scheduleData[name];
+                        this.renderScheduleTable();
+                    }
+                },
+                department: {
+                    btnSelector: '.delete-department',
+                    dataAttribute: 'data-department',
+                    typeName: '部門',
+                    sourceArray: this.departments,
+                    isInUse: (name) => Object.values(this.scheduleData).some(classroom => 
+                        Object.values(classroom).some(day => 
+                            day.some(course => course.departments && course.departments.includes(name))
+                        )
+                    ),
+                    inUseMessage: '無法刪除部門：請先從所有課程中移除此部門標籤！',
+                    updateList: this.updateDepartmentList.bind(this),
+                    postDelete: null
+                }
+            };
 
-            if (isDepartmentInUse) {
-                this.showNotification('無法刪除部門：請先從所有課程中移除此部門標籤！', 'error', 5000);
+            const currentConfig = config[itemType];
+            if (!currentConfig) return;
+
+            const btn = event.target.closest(currentConfig.btnSelector);
+            if (!btn) return;
+
+            const itemName = btn.getAttribute(currentConfig.dataAttribute);
+            if (currentConfig.isInUse(itemName)) {
+                this.showNotification(currentConfig.inUseMessage, 'error', 5000);
                 return;
             }
 
-            if (await this.showConfirm(`確定要刪除部門 "${department}" 嗎？`)) {
-                this.departments = this.departments.filter(d => d !== department);
-                this.updateDepartmentList();
+            if (await this.showConfirm(`確定要刪除${currentConfig.typeName} "${itemName}" 嗎？`)) {
+                const itemIndex = currentConfig.sourceArray.indexOf(itemName);
+                if (itemIndex > -1) {
+                    currentConfig.sourceArray.splice(itemIndex, 1);
+                }
+
+                if (currentConfig.postDelete) {
+                    currentConfig.postDelete(itemName);
+                }
+
+                currentConfig.updateList();
                 this.saveDataToLocal();
-                this.showNotification('已刪除部門: ' + department);
+                this.showNotification(`已刪除${currentConfig.typeName}: ${itemName}`);
                 this.saveState();
             }
         },
