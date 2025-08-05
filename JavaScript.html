@@ -79,7 +79,6 @@
             undoBtn: document.getElementById('undo-btn'),
             redoBtn: document.getElementById('redo-btn'),
             versionHistorySelect: document.getElementById('version-history'),
-            refreshVersionsBtn: document.getElementById('refresh-versions'),
             loadVersionBtn: document.getElementById('load-version'),
             showClassroomManagerBtn: document.getElementById('show-classroom-manager-btn'),
             classroomManagerModal: document.getElementById('classroom-manager-modal'),
@@ -720,6 +719,36 @@
             else if (!this.activeInlineForm && !e.target.closest('.class-item')) {
                 this.clearAllSelections();
             }
+        },
+
+        _countOccurrences: function(predicate) {
+            let count = 0;
+            Object.values(this.scheduleData).forEach(classroom => {
+                if (typeof classroom !== 'object' || classroom === null) return;
+                Object.values(classroom).forEach(day => {
+                    if (!Array.isArray(day)) return;
+                    day.forEach(course => {
+                        if (course && predicate(course)) {
+                            count++;
+                        }
+                    });
+                });
+            });
+            return count;
+        },
+
+        _updateAllOccurrences: function(predicate, updateFn) {
+            Object.values(this.scheduleData).forEach(classroom => {
+                if (typeof classroom !== 'object' || classroom === null) return;
+                Object.values(classroom).forEach(day => {
+                    if (!Array.isArray(day)) return;
+                    day.forEach(course => {
+                        if (course && predicate(course)) {
+                            updateFn(course);
+                        }
+                    });
+                });
+            });
         },
 
         _buildCourseFormHtml: function(isEditMode, classItemToEdit, day) {
@@ -1802,36 +1831,42 @@
         },
 
         // --- Business Logic & Actions ---
-        handleAddClassroom: function() {
-            const classroomName = this.elements.classroomNameInput.value.trim();
-            if (!classroomName) return;
-            if (this.classrooms.includes(classroomName)) {
-                this.showNotification('此教室名稱已存在！', 'error');
+        _handleAddItem: function(config) {
+            const { itemType, name, sourceArray, inputElement, updateListFn, postAddFn } = config;
+            if (!name) return;
+            if (sourceArray.includes(name)) {
+                this.showNotification(`此${itemType}名稱已存在！`, 'error');
                 return;
             }
-            this.classrooms.push(classroomName);
-            this.elements.classroomNameInput.value = '';
-            this.updateClassroomList();
-            this.renderScheduleTable();
+            sourceArray.push(name);
+            inputElement.value = '';
+            updateListFn();
+            if (postAddFn) postAddFn();
+            
             this.saveDataToLocal();
-            this.showNotification('已新增教室: ' + classroomName);
+            this.showNotification(`已新增${itemType}: ${name}`);
             this.saveState();
         },
 
-        // --- Business Logic & Actions ---
+        handleAddClassroom: function() {
+            this._handleAddItem({
+                itemType: '教室',
+                name: this.elements.classroomNameInput.value.trim(),
+                sourceArray: this.classrooms,
+                inputElement: this.elements.classroomNameInput,
+                updateListFn: this.updateClassroomList.bind(this),
+                postAddFn: this.renderScheduleTable.bind(this)
+            });
+        },
+
         handleAddDepartment: function() {
-            const departmentName = this.elements.departmentNameInput.value.trim();
-            if (!departmentName) return;
-            if (this.departments.includes(departmentName)) {
-                this.showNotification('此部門名稱已存在！', 'error');
-                return;
-            }
-            this.departments.push(departmentName);
-            this.elements.departmentNameInput.value = '';
-            this.updateDepartmentList();
-            this.saveDataToLocal();
-            this.showNotification('已新增部門: ' + departmentName);
-            this.saveState();
+            this._handleAddItem({
+                itemType: '部門',
+                name: this.elements.departmentNameInput.value.trim(),
+                sourceArray: this.departments,
+                inputElement: this.elements.departmentNameInput,
+                updateListFn: this.updateDepartmentList.bind(this)
+            });
         },
 
         async handleItemDelete(event, itemType) {

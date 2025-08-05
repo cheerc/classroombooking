@@ -114,7 +114,7 @@ function getData() {
  * @param {object} data The data object to save, containing scheduleId and the schedule's data.
  * @returns {object} A success object with the new lastModified time, or an error object.
  */
-function saveData(data) {
+function saveData(payload) { // Renamed to payload for clarity
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(30000);
@@ -124,56 +124,63 @@ function saveData(data) {
   }
 
   try {
-    Logger.log("開始保存數據: " + JSON.stringify(data).substring(0, 500));
-    if (!data || !data.scheduleId || !data.scheduleData) {
+    // --- 1. 解構並驗證從客戶端傳來的資料 ---
+    Logger.log("開始保存數據: " + JSON.stringify(payload).substring(0, 500));
+    const { scheduleId, activeScheduleId, scheduleData } = payload;
+    if (!scheduleId || !scheduleData) {
       throw new Error("無效的數據格式。數據必須包含 scheduleId 和 scheduleData。");
     }
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const scheduleSheet = ss.getSheetByName(data.scheduleId);
+    const scheduleSheet = ss.getSheetByName(scheduleId);
     if (!scheduleSheet) {
-      throw new Error(`找不到 ID 為 "${data.scheduleId}" 的工作表。`);
+      throw new Error(`找不到 ID 為 "${scheduleId}" 的工作表。`);
     }
 
     const userEmail = Session.getActiveUser().getEmail();
     const timestamp = new Date();
     const timestampISO = timestamp.toISOString();
 
-    const scheduleDataJson = JSON.stringify(data.scheduleData.scheduleData || {});
-    const classroomsJson = JSON.stringify(data.scheduleData.classrooms || []);
-    const departmentsJson = JSON.stringify(data.scheduleData.departments || []);
-
-    // 1. 更新專屬課表工作表的內容
+    // --- 2. 更新指定課表ID的工作表內容 ---
+    const scheduleDataJson = JSON.stringify(scheduleData.scheduleData || {});
+    const classroomsJson = JSON.stringify(scheduleData.classrooms || []);
+    const departmentsJson = JSON.stringify(scheduleData.departments || []);
     scheduleSheet.getRange("B2:B4").setValues([
       [scheduleDataJson],
       [classroomsJson],
       [departmentsJson]
     ]);
 
-    // 2. 更新 Data 索引工作表的修改時間
+    // --- 3. 更新 'Data' 索引工作表 ---
     const dataSheet = getSheet_(SHEET_DATA);
+    
+    // 3a. 更新 'Last Modified' 時間 (Column C)
     const scheduleIds = dataSheet.getRange("A2:A" + dataSheet.getLastRow()).getValues().flat();
-    const rowIndex = scheduleIds.indexOf(data.scheduleId);
+    const rowIndex = scheduleIds.indexOf(scheduleId);
     if (rowIndex !== -1) {
       dataSheet.getRange(rowIndex + 2, 3).setValue(timestampISO);
     }
     
-    // 3. 更新活動中的課表 ID
-    dataSheet.getRange("D2").setValue(data.activeScheduleId);
+    // 3b. 更新全域的 'Active Schedule ID' (Cell E2)
+    // 這個值會讓所有使用者下次開啟時，預設載入同一個課表
+    if (activeScheduleId) {
+      dataSheet.getRange("E2").setValue(activeScheduleId);
+    }
 
-    // 4. 更新 History 工作表 (儲存單一課表的快照)
+    // --- 4. 在 'History' 工作表中新增一筆版本紀錄 ---
     const historySheet = getSheet_(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
-    const historyData = JSON.stringify(data.scheduleData);
-    historySheet.getRange("A2:C2").setValues([[timestampISO, userEmail, historyData]]);
-    historySheet.getRange("D2").setValue(data.scheduleId); // 記錄是哪個課表的歷史
+    const historyDataJson = JSON.stringify(scheduleData);
+    // 儲存時間、儲存者的Email、課表資料快照、以及此快照對應的課表ID
+    historySheet.getRange("A2:D2").setValues([[timestampISO, userEmail, historyDataJson, scheduleId]]);
 
-    const maxHistoryRecords = 20; // Increased history records
+    // 維持歷史紀錄在指定的筆數內
+    const maxHistoryRecords = 20;
     if (historySheet.getLastRow() > maxHistoryRecords + 1) {
       historySheet.deleteRows(maxHistoryRecords + 2, historySheet.getLastRow() - (maxHistoryRecords + 1));
     }
 
-    Logger.log(`數據保存成功 by ${userEmail} for schedule ${data.scheduleId}`);
+    Logger.log(`數據保存成功 by ${userEmail} for schedule ${scheduleId}`);
     return { success: true, lastModified: timestampISO };
 
   } catch (e) {
