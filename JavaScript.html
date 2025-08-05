@@ -1237,8 +1237,7 @@
                 return;
             }
             this.isConnecting = true;
-            this.updateSyncStatus('syncing');
-            [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
+            this.manageLoadingState('start', { message: '正在從雲端同步資料...' });
 
             try {
                 const result = await this.ServerApi.call('getData');
@@ -1260,23 +1259,20 @@
                 this.updateLastModifiedTime(result.lastModified);
                 this.lastSyncTime = new Date();
                 this.saveSchedulesToLocal();
-                this.updateSyncStatus('synced');
-                this.showNotification('從雲端讀取數據成功！');
                 this.resetHistory();
+                this.manageLoadingState('end', { success: true, message: '從雲端讀取數據成功！' });
+
             } catch (error) {
-                this.showNotification('從雲端讀取數據失敗: ' + error.message, 'error');
-                this.updateSyncStatus('error');
+                this.manageLoadingState('end', { success: false, message: '讀取失敗: ' + error.message });
             } finally {
                 this.isConnecting = false;
-                [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
             }
         },
 
         saveDataToServer: async function() {
             if (this.isConnecting) return;
             this.isConnecting = true;
-            this.updateSyncStatus('syncing');
-            [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
+            this.manageLoadingState('start', { message: '正在檢查版本並儲存至雲端...' });
 
             try {
                 const latestData = await this.ServerApi.call('getData');
@@ -1288,10 +1284,10 @@
                 if (serverLastModified !== localLastModified && localLastModified) {
                     this.updateSyncStatus('error');
                     this.showConfirm('儲存失敗！雲端資料已被其他人修改。<br><br>為避免覆蓋他人工作，請先「從雲端讀取資料」同步後，再重新進行您的變更。', true);
+                    this.manageLoadingState('end', { success: false, message: '儲存失敗：資料版本衝突' });
                     return;
                 }
 
-                this.showLoading('版本一致，正在保存數據...');
                 const dataToSend = {
                     scheduleId: this.activeScheduleId,
                     activeScheduleId: this.activeScheduleId,
@@ -1309,18 +1305,35 @@
 
                 this.lastSyncTime = new Date();
                 this.updateLastModifiedTime(saveResult.lastModified);
-                this.updateSyncStatus('synced');
-                this.showNotification('數據已成功儲存到雲端！');
                 this.updateCleanSnapshot();
                 this.checkDirty();
+                this.manageLoadingState('end', { success: true, message: '數據已成功儲存到雲端！' });
 
             } catch (error) {
-                this.showNotification('數據儲存失敗: ' + error.message, 'error');
-                this.updateSyncStatus('error');
+                this.manageLoadingState('end', { success: false, message: '數據儲存失敗: ' + error.message });
             } finally {
-                this.hideLoading();
                 this.isConnecting = false;
+            }
+        },
+
+        manageLoadingState: function(state, options = {}) {
+            const { success = true, message = '' } = options;
+
+            if (state === 'start') {
+                this.showLoading(message);
+                this.updateSyncStatus('syncing');
+                [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
+            } else if (state === 'end') {
+                this.hideLoading();
                 [this.elements.loadFromCloudBtn, this.elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
+
+                if (success) {
+                    this.updateSyncStatus('synced');
+                    this.showNotification(message, 'success');
+                } else {
+                    this.updateSyncStatus('error');
+                    this.showNotification(message, 'error');
+                }
             }
         },
 
