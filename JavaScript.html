@@ -3,7 +3,7 @@
     // 將全局變數放入一個命名空間或對象，減少污染
     const App = {
         // --- STATE ---
-        APP_VERSION: '6.3.1',
+        APP_VERSION: '6.3.2',
         schedules: {}, // Object to hold all schedule tables
         activeScheduleId: null, // ID of the currently active schedule
         activeMetadataTimestamp: null, // Timestamp for the list of schedules
@@ -555,7 +555,7 @@
         populateFilterModal: function() {
             const filterType = this.elements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
             const items = new Set();
-            let title = '選擇要顯示的課程';
+            let title = '���擇要顯示的課程';
 
             // 1. Populate the search input for course names
             const searchContainer = this.elements.filterSearchContainer;
@@ -712,7 +712,7 @@
             }
 
             // If an inline form is active and the click is outside of it, trigger its close/blur behavior.
-            if (this.activeInlineForm && !e.target.closest('.inline-add-form')) {
+            if (this.activeInlineForm && !e.target.closest('.inline-add-form') && !e.target.closest('.inline-notes-editor')) {
                 this.activeInlineForm.close();
             } 
             // If there's no active form and the click is outside any class item, clear selections.
@@ -778,6 +778,7 @@
                 </div>
                 <input type="text" placeholder="使用人" class="inline-input" name="teacher" value="${isEditMode ? classItemToEdit.teacher : ''}">
                 ${departmentSelectorHtml}
+                ${this.currentViewMode === 'day' ? `<textarea placeholder="備註 (僅在日檢視顯示/編輯)" class="inline-input" name="notes" style="min-height: 60px;">${isEditMode ? classItemToEdit.notes || '' : ''}</textarea>` : ''}
                 <div class="inline-form-actions">
                     <button title="儲存" class="save-inline">✓</button>
                 </div>
@@ -792,6 +793,7 @@
             const teacher = formDiv.querySelector('input[name="teacher"]').value.trim();
             const selectedDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
             const selectedDays = isEditMode ? [day] : Array.from(formDiv.querySelectorAll('.inline-day-checkbox:checked')).map(cb => parseInt(cb.value));
+            const notesTextarea = formDiv.querySelector('textarea[name="notes"]');
 
             if (!name) { this.showNotification('課程名稱不能為空！', 'error'); return false; }
             if (!teacher) { this.showNotification('使用人不能為空！', 'error'); return false; }
@@ -804,7 +806,14 @@
             if (this.timeToMinutes(formattedTimeStart) >= this.timeToMinutes(formattedTimeEnd)) { this.showNotification('開始時間不能晚於或等於結束時間！', 'error'); return false; }
 
             if (isEditMode) {
-                const classItem = originalData;
+                const classItem = this.scheduleData[context.classroom]?.[context.day]?.find(c => c.id === originalData.id);
+
+                if (!classItem) {
+                    this.showNotification('錯誤：找不到要更新的課程項目。', 'error');
+                    console.error("Could not find class item to update with id:", originalData.id);
+                    return false;
+                }
+
                 if (name !== originalData.name) {
                     const otherNameOccurrences = this._countOccurrences(item => item.name === originalData.name && item.id !== classItem.id);
                     if (otherNameOccurrences > 0) {
@@ -842,6 +851,9 @@
                 classItem.timeStart = formattedTimeStart;
                 classItem.timeEnd = formattedTimeEnd;
                 classItem.departments = selectedDepartments;
+                if (notesTextarea) {
+                    classItem.notes = notesTextarea.value.trim();
+                }
 
             } else {
                 let hasConflictOccurred = false;
@@ -854,7 +866,8 @@
                         timeStart: formattedTimeStart, 
                         timeEnd: formattedTimeEnd, 
                         teacher,
-                        departments: selectedDepartments
+                        departments: selectedDepartments,
+                        notes: notesTextarea ? notesTextarea.value.trim() : ''
                     };
 
                     if (this.checkTimeConflict(classroom, selectedDay, classItem)) {
@@ -872,6 +885,50 @@
                 if (selectedDays.length > 0 && !hasConflictOccurred) this.showNotification('已新增課程');
             }
             return true;
+        },
+
+        _createInlineNotesEditor: function(notesDiv) {
+            if (this.activeInlineForm) return;
+
+            const classElement = notesDiv.closest('.class-item');
+            const classId = classElement.dataset.id;
+            const classroom = classElement.closest('td').dataset.classroom;
+            const day = parseInt(classElement.closest('td').dataset.day);
+            const classItem = this.scheduleData[classroom]?.[day]?.find(c => c.id === classId);
+
+            if (!classItem) return;
+
+            const originalNotes = classItem.notes || '';
+            const textarea = document.createElement('textarea');
+            textarea.className = 'inline-notes-editor';
+            textarea.value = originalNotes;
+
+            notesDiv.replaceWith(textarea);
+            textarea.focus();
+            textarea.select();
+
+            const closeEditor = (shouldSave) => {
+                if (shouldSave) {
+                    const newNotes = textarea.value.trim();
+                    if (newNotes !== originalNotes) {
+                        classItem.notes = newNotes;
+                        this.saveDataToLocal();
+                        this.saveState();
+                    }
+                }
+                this.activeInlineForm = null;
+                this.renderScheduleTable();
+            };
+
+            this.activeInlineForm = { close: () => closeEditor(false) };
+
+            textarea.addEventListener('blur', () => closeEditor(true));
+            textarea.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeEditor(false);
+                }
+            });
         },
 
         _createOrEditCourseForm: async function(container, classItemToEdit, context) {
@@ -1018,8 +1075,13 @@
                     clearTimeout(this.clickTimer);
                     this.clickTimer = null;
                     this.lastClickedId = null;
-                    // The second click is the double-click, trigger edit.
-                    this.handleEditFieldClick(event, event.target.closest('.editable') || classElement);
+                    
+                    const notesElement = event.target.closest('.course-notes');
+                    if (notesElement && this.currentViewMode === 'day') {
+                        this._createInlineNotesEditor(notesElement);
+                    } else {
+                        this.handleEditFieldClick(event, event.target.closest('.editable') || classElement);
+                    }
                 } else {
                     // This is the first click. Set a timer.
                     clearTimeout(this.clickTimer);
@@ -1505,8 +1567,13 @@
             const departmentTags = (classItem.departments || []).map(dept => `<span class="department-tag-vertical">${dept}</span>`).join('');
             const allDepartmentsTooltip = (classItem.departments || []).join(', ');
 
+            const notesHtml = this.currentViewMode === 'day' 
+                ? `<div class="course-notes editable" data-field="notes">${classItem.notes || ''}</div>`
+                : '';
+            
+            const viewModeClass = this.currentViewMode === 'day' ? 'day-view-layout' : '';
             const classDiv = document.createElement('div');
-            classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''}`);
+            classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''} ${viewModeClass}`);
             classDiv.style.backgroundColor = bgColor;
             classDiv.dataset.id = classItem.id;
             classDiv.dataset.name = classItem.name;
@@ -1516,10 +1583,12 @@
                     <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
                     <div class="editable" data-field="teacher">${classItem.teacher}</div>
                 </div>
+                ${notesHtml}
                 <div class="department-tags-vertical-container editable" data-field="departments" data-tooltip="部門: ${allDepartmentsTooltip}">${departmentTags}</div>
                 <span class="delete-btn" data-classroom="${classroom}" data-day="${day}">×</span>
                 ${conflictIcon}
             `;
+
             return classDiv;
         },
 
