@@ -1,0 +1,186 @@
+<script>
+function createModalModule(app) {
+  const elements = app.elements; // Shortcut to elements
+
+  // --- Private Methods ---
+
+  /**
+   * Generic function to show a modal and handle its lifecycle.
+   * @private
+   */
+  function _showModal(config) {
+    return new Promise((resolve) => {
+        const { modal, textElement, inputElement, okButton, cancelButton, message, defaultValue, isAlert } = config;
+
+        if (textElement) {
+            textElement.innerHTML = message;
+        }
+        if (inputElement) {
+            inputElement.value = defaultValue;
+            inputElement.focus();
+            inputElement.select();
+        }
+        if (cancelButton) {
+            cancelButton.style.display = isAlert ? 'none' : 'inline-block';
+        }
+
+        modal.style.display = 'flex';
+
+        const cleanup = () => {
+            okButton.removeEventListener('click', okHandler);
+            if (cancelButton) cancelButton.removeEventListener('click', cancelHandler);
+            if (inputElement) inputElement.removeEventListener('keydown', keydownHandler);
+            modal.style.display = 'none';
+        };
+
+        const okHandler = () => {
+            cleanup();
+            resolve(inputElement ? inputElement.value : true);
+        };
+
+        const cancelHandler = () => {
+            cleanup();
+            resolve(inputElement ? null : false);
+        };
+
+        const keydownHandler = (e) => {
+            if (e.key === 'Enter') okHandler();
+            else if (e.key === 'Escape') cancelHandler();
+        };
+
+        okButton.addEventListener('click', okHandler, { once: true });
+        if (cancelButton) cancelButton.addEventListener('click', cancelHandler, { once: true });
+        if (inputElement) inputElement.addEventListener('keydown', keydownHandler);
+    });
+  }
+
+  // --- Public Methods ---
+
+  return {
+    /**
+     * Sets up standard event listeners for a modal (trigger, close button, overlay click).
+     */
+    setupModalListeners: function(triggerBtn, modal, closeBtn, onOpen) {
+        if (!modal || !closeBtn) return;
+        
+        const openModal = () => {
+            if (onOpen) onOpen();
+            modal.style.display = 'flex';
+        }
+        const closeModal = () => modal.style.display = 'none';
+
+        if (triggerBtn) {
+            triggerBtn.addEventListener('click', openModal);
+        }
+        
+        closeBtn.addEventListener('click', closeModal);
+        
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    },
+
+    /**
+     * Shows a confirmation dialog.
+     */
+    showConfirm: function(message, isAlert = false) {
+        return _showModal({
+            modal: elements.confirmModal,
+            textElement: elements.confirmText,
+            okButton: elements.confirmOk,
+            cancelButton: elements.confirmCancel,
+            message: message,
+            isAlert: isAlert
+        });
+    },
+
+    /**
+     * Shows a prompt dialog with a text input.
+     */
+    showPrompt: function(message, defaultValue = '') {
+        return _showModal({
+            modal: elements.promptModal,
+            textElement: elements.promptText,
+            inputElement: elements.promptInput,
+            okButton: elements.promptOk,
+            cancelButton: elements.promptCancel,
+            message: message,
+            defaultValue: defaultValue
+        });
+    },
+
+    /**
+     * Populates the filter modal with checkboxes based on the selected filter type.
+     */
+    populateFilterModal: function() {
+        const filterType = elements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
+        const items = new Set();
+        let title = '請選擇要顯示的課程';
+
+        // 1. Populate the search input for course names
+        const searchContainer = elements.filterSearchContainer;
+        if (filterType === 'name') {
+            searchContainer.style.display = 'block';
+            if (!searchContainer.querySelector('#filter-search-input')) {
+                searchContainer.innerHTML = `
+                    <input type="text" id="filter-search-input" placeholder="在此搜尋以快速勾選..." class="filter-search-input w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                `;
+                searchContainer.querySelector('#filter-search-input').addEventListener('input', (e) => {
+                    const searchText = e.target.value.toLowerCase().trim();
+                    elements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                        const courseName = cb.value.toLowerCase();
+                        cb.checked = searchText ? courseName.includes(searchText) : false;
+                    });
+                });
+            }
+        } else {
+            searchContainer.style.display = 'none';
+        }
+
+        // 2. Gather all items based on filter type
+        Object.values(app.scheduleData).forEach(classroom => {
+            if (typeof classroom !== 'object' || classroom === null) return;
+            Object.values(classroom).forEach(day => {
+                if (!Array.isArray(day)) return;
+                day.forEach(course => {
+                    if (!course) return;
+                    if (filterType === 'name' && course.name) {
+                        items.add(course.name);
+                    } else if (filterType === 'department') {
+                        title = '選擇要顯示的部門';
+                        (course.departments || []).forEach(dept => {
+                            if (dept) items.add(dept);
+                        });
+                    } else if (filterType === 'teacher') {
+                        title = '選擇要顯示的使用人';
+                        if (course.teacher) items.add(course.teacher);
+                    }
+                });
+            });
+        });
+
+        // 3. Render the checkbox list
+        elements.filterListTitle.textContent = title;
+        const sortedItems = Array.from(items).sort();
+        const listElement = elements.filterCourseList;
+        listElement.innerHTML = '';
+
+        sortedItems.forEach(item => {
+            const isChecked = app.activeFilters.some(f => f.value === item && f.type === filterType);
+            const div = document.createElement('div');
+            div.setAttribute('class', 'flex items-center');
+            div.innerHTML = `
+                <input type="checkbox" id="filter-${item}" value="${item}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
+                <label for="filter-${item}" class="ml-2 block text-sm text-gray-900 truncate">${item}</label>
+            `;
+            listElement.appendChild(div);
+        });
+        
+        const searchInput = searchContainer.querySelector('#filter-search-input');
+        if (searchInput) searchInput.value = '';
+    }
+  };
+}
+</script>

@@ -32,6 +32,7 @@
         // ServerApi object is now in Api.js.html
 
         init: function() {
+            this.modals = createModalModule(this);
             const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
             this.currentUserEmail = this.getShortUserName(fullEmail);
 
@@ -113,7 +114,7 @@
             this.setupModalListeners(els.showDepartmentManagerBtn, els.departmentManagerModal, els.departmentManagerModalClose);
             this.setupModalListeners(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose, () => this.loadVersions());
             this.setupModalListeners(els.showHelpBtn, els.helpModal, els.helpModalClose);
-            this.setupModalListeners(els.showFilterBtn, els.filterModal, els.filterModalClose, () => this.populateFilterModal());
+            this.setupModalListeners(els.showFilterBtn, els.filterModal, els.filterModalClose, () => this.modals.populateFilterModal());
             this.setupModalListeners(els.manageSchedulesBtn, els.scheduleManagerModal, els.scheduleManagerModalClose, () => this.renderScheduleList());
 
             els.addScheduleBtn.addEventListener('click', () => this.handleAddSchedule());
@@ -134,7 +135,7 @@
                 }
             });
 
-            els.filterTypeSelector.addEventListener('change', () => this.populateFilterModal());
+            els.filterTypeSelector.addEventListener('change', () => this.modals.populateFilterModal());
             els.filterSelectAll.addEventListener('click', () => this.toggleAllFilterCheckboxes(true));
             els.filterDeselectAll.addEventListener('click', () => this.toggleAllFilterCheckboxes(false));
             els.filterApply.addEventListener('click', () => this.applyFilters());
@@ -439,75 +440,7 @@
         },
 
         // --- Filter Logic ---
-        populateFilterModal: function() {
-            const filterType = AppElements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
-            const items = new Set();
-            let title = '請選擇要顯示的課程';
-
-            // 1. Populate the search input for course names
-            const searchContainer = AppElements.filterSearchContainer;
-            if (filterType === 'name') {
-                searchContainer.style.display = 'block';
-                if (!searchContainer.querySelector('#filter-search-input')) {
-                    searchContainer.innerHTML = `
-                        <input type="text" id="filter-search-input" placeholder="在此搜尋以快速勾選..." class="filter-search-input w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    `;
-                    searchContainer.querySelector('#filter-search-input').addEventListener('input', (e) => {
-                        const searchText = e.target.value.toLowerCase().trim();
-                        AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                            const courseName = cb.value.toLowerCase();
-                            cb.checked = searchText ? courseName.includes(searchText) : false;
-                        });
-                    });
-                }
-            } else {
-                searchContainer.style.display = 'none';
-            }
-
-
-            // 2. Gather all items based on filter type (with added defensive checks)
-            Object.values(this.scheduleData).forEach(classroom => {
-                if (typeof classroom !== 'object' || classroom === null) return; // Check if classroom is a valid object
-                Object.values(classroom).forEach(day => {
-                    if (!Array.isArray(day)) return; // Check if day is a valid array
-                    day.forEach(course => {
-                        if (!course) return; // Check if course exists
-                        if (filterType === 'name' && course.name) {
-                            items.add(course.name);
-                        } else if (filterType === 'department') {
-                            title = '選擇要顯示的部門';
-                            (course.departments || []).forEach(dept => {
-                                if (dept) items.add(dept);
-                            });
-                        } else if (filterType === 'teacher') {
-                            title = '選擇要顯示的使用人';
-                            if (course.teacher) items.add(course.teacher);
-                        }
-                    });
-                });
-            });
-
-            // 3. Render the checkbox list
-            AppElements.filterListTitle.textContent = title;
-            const sortedItems = Array.from(items).sort();
-            const listElement = AppElements.filterCourseList;
-            listElement.innerHTML = '';
-
-            sortedItems.forEach(item => {
-                const isChecked = this.activeFilters.some(f => f.value === item && f.type === filterType);
-                const div = document.createElement('div');
-                div.setAttribute('class', 'flex items-center');
-                div.innerHTML = `
-                    <input type="checkbox" id="filter-${item}" value="${item}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
-                    <label for="filter-${item}" class="ml-2 block text-sm text-gray-900 truncate">${item}</label>
-                `;
-                listElement.appendChild(div);
-            });
-            
-            // Clear search input when repopulating
-            const searchInput = searchContainer.querySelector('#filter-search-input');
-            if (searchInput) searchInput.value = '';
-        },
+        
 
         toggleAllFilterCheckboxes: function(shouldBeChecked) {
             AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -533,7 +466,7 @@
 
         clearFilters: function() {
             this.activeFilters = [];
-            this.populateFilterModal(); // Repopulate to uncheck everything
+            this.modals.populateFilterModal(); // Repopulate to uncheck everything
             this.renderScheduleTable();
             this.updateActiveFilterDisplay();
             AppElements.filterModal.style.display = 'none';
@@ -639,7 +572,7 @@
         },
 
         _buildCourseFormHtml: function(isEditMode, classItemToEdit, day) {
-            const daySelectorHtml = isEditMode ? '' : this.WEEKDAYS.map((dayName, index) => `
+            const daySelectorHtml = isEditMode ? '' : AppConfig.WEEKDAYS.map((dayName, index) => `
                 <label><input type="checkbox" class="inline-day-checkbox" value="${index}" ${index === day ? 'checked' : ''}> ${dayName.replace('星期', '')}</label>
             `).join('');
 
@@ -1593,7 +1526,7 @@
                 // Day display span
                 const daySpan = document.createElement('span');
                 daySpan.className = 'text-lg font-semibold text-gray-700 w-24 text-center';
-                daySpan.textContent = this.WEEKDAYS[this.currentDayIndex];
+                daySpan.textContent = AppConfig.WEEKDAYS[this.currentDayIndex];
 
                 // Next day button
                 const nextBtn = document.createElement('button');
