@@ -25,6 +25,8 @@
         currentViewMode: 'week', // 'week' or 'day'
         dayViewSortMode: 'time', // 'classroom' or 'time'
         currentDayIndex: 0, // 0 for Monday, 6 for Sunday
+        modals: null,
+        historyModule: null,
 
         // elements object is now in Elements.js.html
 
@@ -33,6 +35,7 @@
 
         init: function() {
             this.modals = createModalModule(this);
+            this.historyModule = createHistoryModule(this);
             const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
             this.currentUserEmail = this.getShortUserName(fullEmail);
 
@@ -212,7 +215,7 @@
             this.updateDepartmentList();
             this.renderScheduleTable();
             this.updateSyncStatus('offline');
-            this.resetHistory();
+            this.historyModule.resetHistory();
             localStorage.setItem('activeScheduleId', scheduleId);
         },
 
@@ -1141,7 +1144,7 @@
                 this.updateLastModifiedTime(result.lastModified);
                 this.lastSyncTime = new Date();
                 this.saveSchedulesToLocal();
-                this.resetHistory();
+                this.historyModule.resetHistory();
                 this.manageLoadingState('end', { success: true, message: '從雲端讀取數據成功！' });
 
             } catch (error) {
@@ -1188,7 +1191,7 @@
                 this.lastSyncTime = new Date();
                 this.updateLastModifiedTime(saveResult.lastModified);
                 this.updateCleanSnapshot();
-                this.checkDirty();
+                this.historyModule.checkDirty();
                 this.manageLoadingState('end', { success: true, message: '數據已成功儲存到雲端！' });
 
             } catch (error) {
@@ -1852,109 +1855,7 @@
             }
         },
 
-        // --- History (Undo/Redo) ---
-        saveState: function() {
-            this.history = this.history.slice(0, this.historyIndex + 1);
-            const currentState = {
-                // Only save the data for the *active* schedule
-                classrooms: JSON.parse(JSON.stringify(this.classrooms)),
-                scheduleData: JSON.parse(JSON.stringify(this.scheduleData)),
-                departments: JSON.parse(JSON.stringify(this.departments)),
-                activeFilters: JSON.parse(JSON.stringify(this.activeFilters))
-            };
-            this.history.push(currentState);
-            this.historyIndex = this.history.length - 1;
-            if (this.history.length > 50) { this.history.shift(); this.historyIndex--; }
-            this.updateUndoRedoButtons();
-            this.checkDirty();
-        },
-
-        resetHistory: function() {
-            const initialState = {
-                classrooms: JSON.parse(JSON.stringify(this.classrooms)),
-                scheduleData: JSON.parse(JSON.stringify(this.scheduleData)),
-                departments: JSON.parse(JSON.stringify(this.departments)),
-                activeFilters: JSON.parse(JSON.stringify(this.activeFilters))
-            };
-            this.history = [initialState];
-            this.historyIndex = 0;
-            this.updateUndoRedoButtons();
-            this.updateCleanSnapshot();
-            this.checkDirty();
-        },
-
-        undo: function() {
-            if (this.historyIndex > 0) {
-                this.historyIndex--;
-                this.loadState(this.history[this.historyIndex]);
-            }
-        },
-
-        redo: function() {
-            if (this.historyIndex < this.history.length - 1) {
-                this.historyIndex++;
-                this.loadState(this.history[this.historyIndex]);
-            }
-        },
-
-        loadState: function(state) {
-            this.classrooms = JSON.parse(JSON.stringify(state.classrooms));
-            this.scheduleData = JSON.parse(JSON.stringify(state.scheduleData));
-            this.departments = JSON.parse(JSON.stringify(state.departments));
-            this.activeFilters = JSON.parse(JSON.stringify(state.activeFilters));
-            this.buildCourseColorMap();
-            this.updateClassroomList();
-            this.updateDepartmentList();
-            this.renderScheduleTable();
-            this.updateActiveFilterDisplay();
-            this.saveDataToLocal();
-            this.updateUndoRedoButtons();
-            this.checkDirty();
-        },
-
-        updateUndoRedoButtons: function() {
-            AppElements.undoBtn.disabled = this.historyIndex <= 0;
-            AppElements.redoBtn.disabled = this.historyIndex >= this.history.length - 1;
-        },
-
-        updateCleanSnapshot: function() {
-            this.cleanStateSnapshot = JSON.stringify({
-                classrooms: this.classrooms,
-                scheduleData: this.scheduleData,
-                departments: this.departments
-            });
-            // Also save the clean state to the main schedules object
-            if (this.schedules[this.activeScheduleId]) {
-                this.schedules[this.activeScheduleId].data = {
-                    classrooms: JSON.parse(JSON.stringify(this.classrooms)),
-                    scheduleData: JSON.parse(JSON.stringify(this.scheduleData)),
-                    departments: JSON.parse(JSON.stringify(this.departments))
-                };
-                this.saveSchedulesToLocal();
-            }
-        },
-
-        checkDirty: function() {
-            const currentStateSnapshot = JSON.stringify({
-                classrooms: this.classrooms,
-                scheduleData: this.scheduleData,
-                departments: this.departments
-            });
-            this.setDirty(currentStateSnapshot !== this.cleanStateSnapshot);
-        },
-
-        setDirty: function(isDirty) {
-            if (this.isDirty === isDirty) return;
-            this.isDirty = isDirty;
-            const saveBtn = AppElements.saveToCloudBtn;
-            if (isDirty) {
-                saveBtn.classList.add('animate-pulse');
-                this.updateSyncStatus('dirty');
-            } else {
-                saveBtn.classList.remove('animate-pulse');
-                this.updateSyncStatus('synced');
-            }
-        },
+        
 
         getShortUserName: function(email) {
             if (!email || email.indexOf('@') === -1) return email;

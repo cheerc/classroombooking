@@ -1,0 +1,122 @@
+<script>
+function createHistoryModule(app) {
+  const elements = AppElements; // Shortcut to elements
+
+  // --- Private State ---
+  let history = [];
+  let historyIndex = -1;
+  let cleanStateSnapshot = '';
+
+  // --- Private Methods ---
+
+  function _getCurrentState() {
+    return {
+      classrooms: JSON.parse(JSON.stringify(app.classrooms)),
+      scheduleData: JSON.parse(JSON.stringify(app.scheduleData)),
+      departments: JSON.parse(JSON.stringify(app.departments)),
+      activeFilters: JSON.parse(JSON.stringify(app.activeFilters))
+    };
+  }
+
+  // --- Public Methods ---
+
+  return {
+    saveState: function() {
+        history = history.slice(0, historyIndex + 1);
+        const currentState = _getCurrentState();
+        history.push(currentState);
+        historyIndex = history.length - 1;
+        if (history.length > 50) { 
+            history.shift(); 
+            historyIndex--; 
+        }
+        this.updateUndoRedoButtons();
+        this.checkDirty();
+    },
+
+    resetHistory: function() {
+        const initialState = _getCurrentState();
+        history = [initialState];
+        historyIndex = 0;
+        this.updateUndoRedoButtons();
+        this.updateCleanSnapshot();
+        this.checkDirty();
+    },
+
+    undo: function() {
+        if (historyIndex > 0) {
+            historyIndex--;
+            this.loadState(history[historyIndex]);
+        }
+    },
+
+    redo: function() {
+        if (historyIndex < history.length - 1) {
+            historyIndex++;
+            this.loadState(history[historyIndex]);
+        }
+    },
+
+    loadState: function(state) {
+        app.classrooms = JSON.parse(JSON.stringify(state.classrooms));
+        app.scheduleData = JSON.parse(JSON.stringify(state.scheduleData));
+        app.departments = JSON.parse(JSON.stringify(state.departments));
+        app.activeFilters = JSON.parse(JSON.stringify(state.activeFilters));
+        
+        // These methods still live on the main app object
+        app.buildCourseColorMap();
+        app.updateClassroomList();
+        app.updateDepartmentList();
+        app.renderScheduleTable();
+        app.updateActiveFilterDisplay();
+        app.saveDataToLocal();
+
+        this.updateUndoRedoButtons();
+        this.checkDirty();
+    },
+
+    updateUndoRedoButtons: function() {
+        elements.undoBtn.disabled = historyIndex <= 0;
+        elements.redoBtn.disabled = historyIndex >= history.length - 1;
+    },
+
+    updateCleanSnapshot: function() {
+        cleanStateSnapshot = JSON.stringify({
+            classrooms: app.classrooms,
+            scheduleData: app.scheduleData,
+            departments: app.departments
+        });
+        if (app.schedules[app.activeScheduleId]) {
+            app.schedules[app.activeScheduleId].data = {
+                classrooms: JSON.parse(JSON.stringify(app.classrooms)),
+                scheduleData: JSON.parse(JSON.stringify(app.scheduleData)),
+                departments: JSON.parse(JSON.stringify(app.departments))
+            };
+            app.saveSchedulesToLocal();
+        }
+    },
+
+    checkDirty: function() {
+        const currentStateSnapshot = JSON.stringify({
+            classrooms: app.classrooms,
+            scheduleData: app.scheduleData,
+            departments: app.departments
+        });
+        this.setDirty(currentStateSnapshot !== cleanStateSnapshot);
+    },
+
+    setDirty: function(isDirty) {
+        if (app.isDirty === isDirty) return;
+        app.isDirty = isDirty;
+        const saveBtn = elements.saveToCloudBtn;
+        if (isDirty) {
+            saveBtn.classList.add('animate-pulse');
+            app.updateSyncStatus('dirty');
+        } else {
+            saveBtn.classList.remove('animate-pulse');
+            app.updateSyncStatus('synced');
+        }
+    }
+  };
+}
+</script>
