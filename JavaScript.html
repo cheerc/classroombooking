@@ -29,28 +29,7 @@
         // elements object is now in Elements.js.html
 
         // --- API Communication ---
-        ServerApi: {
-            /**
-             * Generic wrapper for google.script.run that returns a Promise.
-             * @param {string} functionName The name of the Apps Script function to call.
-             * @param {...any} args The arguments to pass to the function.
-             * @returns {Promise<any>} A promise that resolves with the result or rejects with an error.
-             */
-            call: function(functionName, ...args) {
-                return new Promise((resolve, reject) => {
-                    if (typeof google === 'undefined' || !google.script || !google.script.run) {
-                        // This helps in local development/testing where the API isn't present.
-                        console.error("google.script.run is not available.");
-                        return reject(new Error('Cannot connect to the server.'));
-                    }
-
-                    google.script.run
-                        .withSuccessHandler(resolve)
-                        .withFailureHandler(reject)
-                        [functionName](...args);
-                });
-            }
-        },
+        // ServerApi object is now in Api.js.html
 
         init: function() {
             const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
@@ -291,7 +270,7 @@
             this.showLoading('正在新增課表...');
             const newId = 'schedule_' + Date.now();
             try {
-                const result = await this.ServerApi.call('addSchedule', { id: newId, name: newName, metadataTimestamp: this.activeMetadataTimestamp });
+                const result = await ServerApi.call('addSchedule', { id: newId, name: newName, metadataTimestamp: this.activeMetadataTimestamp });
                 if (result.error) {
                     throw new Error(result.error);
                 }
@@ -324,7 +303,7 @@
                 if (newName && newName.trim() !== oldName) {
                     this.showLoading('正在重新命名...');
                     try {
-                        const result = await this.ServerApi.call('renameSchedule', { id: id, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
+                        const result = await ServerApi.call('renameSchedule', { id: id, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
                         if (result.error) { throw new Error(result.error); }
                         this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
                         this.schedules[id].name = newName.trim();
@@ -344,7 +323,7 @@
                 if (await this.showConfirm(`確定要刪除課表 "${this.schedules[id].name}" 嗎？此操作無法復原。`)) {
                     this.showLoading('正在刪除課表...');
                     try {
-                        const result = await this.ServerApi.call('deleteSchedule', { id: id, metadataTimestamp: this.activeMetadataTimestamp });
+                        const result = await ServerApi.call('deleteSchedule', { id: id, metadataTimestamp: this.activeMetadataTimestamp });
                         if (result.error) { throw new Error(result.error); }
                         this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
                         delete this.schedules[id];
@@ -370,7 +349,7 @@
                 if (newName && newName.trim()) {
                     this.showLoading('正在複製課表，請稍候...');
                     try {
-                        const result = await this.ServerApi.call('copySchedule', { sourceId: sourceId, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
+                        const result = await ServerApi.call('copySchedule', { sourceId: sourceId, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
                         if (result.error) { throw new Error(result.error); }
                         this.activeMetadataTimestamp = result.newMetadataTimestamp; // Update metadata timestamp
                         const newId = result.newId;
@@ -1128,7 +1107,7 @@
             this.showNotification('正在獲取版本列表...', 'info');
             
             try {
-                const versions = await this.ServerApi.call('getVersions', this.activeScheduleId);
+                const versions = await ServerApi.call('getVersions', this.activeScheduleId);
                 if (!versions || versions.error) {
                     throw new Error(versions ? versions.error : '未知錯誤');
                 }
@@ -1165,7 +1144,7 @@
             this.showLoading('正在讀取歷史版本...');
 
             try {
-                const data = await this.ServerApi.call('getVersionData', versionId);
+                const data = await ServerApi.call('getVersionData', versionId);
                 if (data && data.success) {
                     const currentSchedule = this.schedules[this.activeScheduleId];
                     currentSchedule.data.classrooms = data.classrooms || [];
@@ -1210,7 +1189,7 @@
             this.manageLoadingState('start', { message: '正在從雲端同步資料...' });
 
             try {
-                const result = await this.ServerApi.call('getData');
+                const result = await ServerApi.call('getData');
                 if (!result || result.error) {
                     throw new Error(result ? result.error : '從服務器獲取的數據為空');
                 }
@@ -1245,7 +1224,7 @@
             this.manageLoadingState('start', { message: '正在檢查版本並儲存至雲端...' });
 
             try {
-                const latestData = await this.ServerApi.call('getData');
+                const latestData = await ServerApi.call('getData');
                 if (latestData.error) throw new Error(latestData.error);
 
                 const serverLastModified = latestData.lastModified ? new Date(latestData.lastModified).getTime() : null;
@@ -1268,7 +1247,7 @@
                     }
                 };
 
-                const saveResult = await this.ServerApi.call('saveData', dataToSend);
+                const saveResult = await ServerApi.call('saveData', dataToSend);
                 if (!saveResult || !saveResult.success) {
                     throw new Error(saveResult?.error || '儲存時發生未知錯誤');
                 }
