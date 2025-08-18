@@ -97,20 +97,20 @@
             els.addClassroomBtn.addEventListener('click', () => this.handleAddClassroom());
             els.addDepartmentBtn.addEventListener('click', () => this.handleAddDepartment());
             els.saveToCloudBtn.addEventListener('click', async () => {
-                if (await this.showConfirm('確定要將本地資料儲存到雲端嗎？<br>這將會建立一個新的版本紀錄。')) {
+                if (await this.modals.showConfirm('確定要將本地資料儲存到雲端嗎？<br>這將會建立一個新的版本紀錄。')) {
                     this.saveDataToServer();
                 }
             });
             els.loadFromCloudBtn.addEventListener('click', async () => {
-                if (this.isDirty && !await this.showConfirm('您有未儲存的變更，確定要從雲端讀取資料並覆蓋嗎？')) {
+                if (this.isDirty && !await this.modals.showConfirm('您有未儲存的變更，確定要從雲端讀取資料並覆蓋嗎？')) {
                     return;
                 }
                 this.loadDataFromServer();
             });
             els.clearAllBtn.addEventListener('click', () => this.handleClearAll());
             els.loadVersionBtn.addEventListener('click', () => this.handleLoadVersion());
-            els.undoBtn.addEventListener('click', () => this.undo());
-            els.redoBtn.addEventListener('click', () => this.redo());
+            els.undoBtn.addEventListener('click', () => this.historyModule.undo());
+            els.redoBtn.addEventListener('click', () => this.historyModule.redo());
             
             // Modal Listeners
             this.setupModalListeners(els.showClassroomManagerBtn, els.classroomManagerModal, els.classroomManagerModalClose);
@@ -303,7 +303,7 @@
             if (renameBtn) {
                 const id = renameBtn.dataset.id;
                 const oldName = this.schedules[id].name;
-                const newName = await this.showPrompt('請輸入新的課表名稱：', oldName);
+                const newName = await this.modals.showPrompt('請輸入新的課表名稱：', oldName);
                 if (newName && newName.trim() !== oldName) {
                     this.showLoading('正在重新命名...');
                     try {
@@ -324,7 +324,7 @@
 
             if (deleteBtn) {
                 const id = deleteBtn.dataset.id;
-                if (await this.showConfirm(`確定要刪除課表 "${this.schedules[id].name}" 嗎？此操作無法復原。`)) {
+                if (await this.modals.showConfirm(`確定要刪除課表 "${this.schedules[id].name}" 嗎？此操作無法復原。`)) {
                     this.showLoading('正在刪除課表...');
                     try {
                         const result = await ServerApi.call('deleteSchedule', { id: id, metadataTimestamp: this.activeMetadataTimestamp });
@@ -349,7 +349,7 @@
             if (copyBtn) {
                 const sourceId = copyBtn.dataset.id;
                 const sourceName = this.schedules[sourceId].name;
-                const newName = await this.showPrompt('請為複製的課表命名：', `${sourceName} (複製)`);
+                const newName = await this.modals.showPrompt('請為複製的課表命名：', `${sourceName} (複製)`);
                 if (newName && newName.trim()) {
                     this.showLoading('正在複製課表，請稍候...');
                     try {
@@ -377,7 +377,7 @@
         handleScheduleSelectChange: async function(e) {
             const newId = e.target.value;
             if (this.isDirty) {
-                if (!await this.showConfirm('您有未儲存的變更，確定要切換課表並捨棄變更嗎？')) {
+                if (!await this.modals.showConfirm('您有未儲存的變更，確定要切換課表並捨棄變更嗎？')) {
                     e.target.value = this.activeScheduleId; // Revert selection
                     return;
                 }
@@ -464,7 +464,7 @@
             this.renderScheduleTable();
             this.updateActiveFilterDisplay();
             AppElements.filterModal.style.display = 'none';
-            this.saveState(); // Make applying a filter an undoable action
+            this.historyModule.saveState(); // Make applying a filter an undoable action
         },
 
         clearFilters: function() {
@@ -473,7 +473,7 @@
             this.renderScheduleTable();
             this.updateActiveFilterDisplay();
             AppElements.filterModal.style.display = 'none';
-            this.saveState(); // Make clearing a filter an undoable action
+            this.historyModule.saveState(); // Make clearing a filter an undoable action
         },
 
         updateActiveFilterDisplay: function() {
@@ -520,11 +520,11 @@
             }
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
                 e.preventDefault();
-                this.undo();
+                this.historyModule.undo();
             }
             if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
                 e.preventDefault();
-                this.redo();
+                this.historyModule.redo();
             }
         },
 
@@ -640,7 +640,7 @@
                 if (name !== originalData.name) {
                     const otherNameOccurrences = this._countOccurrences(item => item.name === originalData.name && item.id !== classItem.id);
                     if (otherNameOccurrences > 0) {
-                        const confirmAll = await this.showConfirm(`找到 ${otherNameOccurrences} 個其他名為 "${originalData.name}" 的課程。<br>要全部一起改名為 "${name}" 嗎？`);
+                        const confirmAll = await this.modals.showConfirm(`找到 ${otherNameOccurrences} 個其他名為 "${originalData.name}" 的課程。<br>要全部一起改名為 "${name}" 嗎？`);
                         if (confirmAll) {
                             this._updateAllOccurrences(item => item.name === originalData.name, item => item.name = name);
                             const activeFilterIndex = this.activeFilters.findIndex(f => f.type === 'name' && f.value === originalData.name);
@@ -657,7 +657,7 @@
                 if (teacher !== originalData.teacher) {
                     const otherTeacherOccurrences = this._countOccurrences(item => item.name === originalData.name && item.teacher === originalData.teacher && item.id !== classItem.id);
                     if (otherTeacherOccurrences > 0) {
-                        const confirmAll = await this.showConfirm(`找到 ${otherTeacherOccurrences} 堂其他由 "${originalData.teacher}" 上的 "${originalData.name}" 課程。<br>要將使用人一起變更為 "${teacher}" 嗎？`);
+                        const confirmAll = await this.modals.showConfirm(`找到 ${otherTeacherOccurrences} 堂其他由 "${originalData.teacher}" 上的 "${originalData.name}" 課程。<br>要將使用人一起變更為 "${teacher}" 嗎？`);
                         if (confirmAll) {
                             this._updateAllOccurrences(
                                 item => item.name === originalData.name && item.teacher === originalData.teacher,
@@ -736,7 +736,7 @@
                     if (newNotes !== originalNotes) {
                         classItem.notes = newNotes;
                         this.saveDataToLocal();
-                        this.saveState();
+                        this.historyModule.saveState();
                     }
                 }
                 this.activeInlineForm = null;
@@ -798,7 +798,7 @@
                     }
                 } else {
                     if (isDirty()) {
-                        if (!await this.showConfirm('您有未儲存的變更，確定要捨棄嗎？')) {
+                        if (!await this.modals.showConfirm('您有未儲存的變更，確定要捨棄嗎？')) {
                             if(this.activeInlineForm) this.activeInlineForm.isClosing = false;
                             return false; // Abort closing
                         }
@@ -810,7 +810,7 @@
                 if (forceSave) {
                     this.showNotification(isEditMode ? '已更新課程資訊' : '已新增課程');
                     this.saveDataToLocal();
-                    this.saveState();
+                    this.historyModule.saveState();
                 }
                 return true;
             };
@@ -925,7 +925,7 @@
             const classroom = btn.dataset.classroom;
             const day = parseInt(btn.dataset.day);
             const className = classElement.querySelector('[data-field="name"]').textContent;
-            if (await this.showConfirm(`確定要刪除課程 "${className}" 嗎？`)) {
+            if (await this.modals.showConfirm(`確定要刪除課程 "${className}" 嗎？`)) {
                 if (!this.scheduleData[classroom] || !this.scheduleData[classroom][day]) return;
                 const classIndex = this.scheduleData[classroom][day].findIndex(c => c.id === classId);
                 if (classIndex > -1) {
@@ -936,7 +936,7 @@
                     this.renderScheduleTable();
                     this.showNotification('已刪除課程');
                     this.saveDataToLocal();
-                    this.saveState();
+                    this.historyModule.saveState();
                 }
             }
         },
@@ -982,7 +982,7 @@
                 classItem.departments = selectedDepartments;
                 this.renderScheduleTable();
                 this.saveDataToLocal();
-                this.saveState();
+                this.historyModule.saveState();
                 closeEditor();
             };
 
@@ -1073,7 +1073,7 @@
                 this.showNotification('請選擇一個有效的版本', 'error');
                 return;
             }
-            if (this.isDirty && !await this.showConfirm(`您有未儲存的變更，確定要讀取歷史版本並覆蓋當前的課表嗎？`)) {
+            if (this.isDirty && !await this.modals.showConfirm(`您有未儲存的變更，確定要讀取歷史版本並覆蓋當前的課表嗎？`)) {
                 return;
             }
             AppElements.versionHistoryModal.style.display = 'none';
@@ -1168,7 +1168,7 @@
 
                 if (serverLastModified !== localLastModified && localLastModified) {
                     this.updateSyncStatus('error');
-                    this.showConfirm('儲存失敗！雲端資料已被其他人修改。<br><br>為避免覆蓋他人工作，請先「從雲端讀取資料」同步後，再重新進行您的變更。', true);
+                    this.modals.showConfirm('儲存失敗！雲端資料已被其他人修改。<br><br>為避免覆蓋他人工作，請先「從雲端讀取資料」同步後，再重新進行您的變更。', true);
                     this.manageLoadingState('end', { success: false, message: '儲存失敗：資料版本衝突' });
                     return;
                 }
@@ -1236,76 +1236,6 @@
         hideLoading: function() {
             AppElements.loadingOverlay.style.display = 'none';
             if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
-        },
-
-        _showModal: function(config) {
-            return new Promise((resolve) => {
-                const { modal, textElement, inputElement, okButton, cancelButton, message, defaultValue, isAlert } = config;
-
-                if (textElement) {
-                    textElement.innerHTML = message;
-                }
-                if (inputElement) {
-                    inputElement.value = defaultValue;
-                    inputElement.focus();
-                    inputElement.select();
-                }
-                if (cancelButton) {
-                    cancelButton.style.display = isAlert ? 'none' : 'inline-block';
-                }
-
-                modal.style.display = 'flex';
-
-                const cleanup = () => {
-                    okButton.removeEventListener('click', okHandler);
-                    if (cancelButton) cancelButton.removeEventListener('click', cancelHandler);
-                    if (inputElement) inputElement.removeEventListener('keydown', keydownHandler);
-                    modal.style.display = 'none';
-                };
-
-                const okHandler = () => {
-                    const a = 1;
-                    cleanup();
-                    resolve(inputElement ? inputElement.value : true);
-                };
-
-                const cancelHandler = () => {
-                    cleanup();
-                    resolve(inputElement ? null : false);
-                };
-
-                const keydownHandler = (e) => {
-                    if (e.key === 'Enter') okHandler();
-                    else if (e.key === 'Escape') cancelHandler();
-                };
-
-                okButton.addEventListener('click', okHandler, { once: true });
-                if (cancelButton) cancelButton.addEventListener('click', cancelHandler, { once: true });
-                if (inputElement) inputElement.addEventListener('keydown', keydownHandler);
-            });
-        },
-
-        showConfirm: function(message, isAlert = false) {
-            return this._showModal({
-                modal: AppElements.confirmModal,
-                textElement: AppElements.confirmText,
-                okButton: AppElements.confirmOk,
-                cancelButton: AppElements.confirmCancel,
-                message: message,
-                isAlert: isAlert
-            });
-        },
-
-        showPrompt: function(message, defaultValue = '') {
-            return this._showModal({
-                modal: AppElements.promptModal,
-                textElement: AppElements.promptText,
-                inputElement: AppElements.promptInput,
-                okButton: AppElements.promptOk,
-                cancelButton: AppElements.promptCancel,
-                message: message,
-                defaultValue: defaultValue
-            });
         },
 
         updateSyncStatus: function(status) {
@@ -1725,7 +1655,7 @@
                             this.renderScheduleTable();
                             this.saveDataToLocal();
                             this.showNotification('已移動課程');
-                            this.saveState();
+                            this.historyModule.saveState();
                         }
                     });
                 });
@@ -1750,7 +1680,7 @@
             
             this.saveDataToLocal();
             this.showNotification(`已新增${itemType}: ${name}`);
-            this.saveState();
+            this.historyModule.saveState();
         },
 
         handleAddClassroom: function() {
@@ -1817,7 +1747,7 @@
                 return;
             }
 
-            if (await this.showConfirm(`確定要刪除${currentConfig.typeName} "${itemName}" 嗎？`)) {
+            if (await this.modals.showConfirm(`確定要刪除${currentConfig.typeName} "${itemName}" 嗎？`)) {
                 const itemIndex = currentConfig.sourceArray.indexOf(itemName);
                 if (itemIndex > -1) {
                     currentConfig.sourceArray.splice(itemIndex, 1);
@@ -1830,12 +1760,12 @@
                 currentConfig.updateList();
                 this.saveDataToLocal();
                 this.showNotification(`已刪除${currentConfig.typeName}: ${itemName}`);
-                this.saveState();
+                this.historyModule.saveState();
             }
         },
 
         handleClearAll: async function() {
-            if (await this.showConfirm('確定要清除所有本地暫存資料嗎？<br>這將會刪除所有課表並重置為一個預設課表。此操作不可恢復！')) {
+            if (await this.modals.showConfirm('確定要清除所有本地暫存資料嗎？<br>這將會刪除所有課表並重置為一個預設課表。此操作不可恢復！')) {
                 // Clear everything from local storage
                 localStorage.removeItem('schedules');
                 localStorage.removeItem('activeScheduleId');
