@@ -2,7 +2,7 @@
 function createUIModule(app) {
   const elements = AppElements; // Shortcut to elements
 
-  return {
+  const uiModule = {
     showLoading: function(message = '載入中，請稍候...') {
         elements.loadingText.textContent = message;
         elements.loadingOverlay.style.display = 'flex';
@@ -82,21 +82,425 @@ function createUIModule(app) {
 
         if (state === 'start') {
             this.showLoading(message);
-            app.updateSyncStatus('syncing');
+            this.updateSyncStatus('syncing');
             [elements.loadFromCloudBtn, elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
         } else if (state === 'end') {
             this.hideLoading();
             [elements.loadFromCloudBtn, elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
 
             if (success) {
-                app.updateSyncStatus('synced');
+                this.updateSyncStatus('synced');
                 this.showNotification(message, 'success');
             } else {
-                app.updateSyncStatus('error');
+                this.updateSyncStatus('error');
                 this.showNotification(message, 'error');
             }
         }
+    },
+
+    updateSyncStatus: function(status) {
+        const els = AppElements;
+        let icon = '', text = '', subtext = '', cssClass = '';
+
+        const lastModifiedString = app.lastCloudModifiedTime 
+            ? '雲端版本: ' + new Date(app.lastCloudModifiedTime).toLocaleString()
+            : '未曾同步';
+
+        switch (status) {
+            case 'syncing':
+                icon = '🔄'; text = '正在同步...'; subtext = '請稍候...'; cssClass = 'syncing';
+                break;
+            case 'error':
+                icon = '❌'; text = '同步失敗'; subtext = '請檢查網路或稍後再試'; cssClass = 'error';
+                break;
+            case 'dirty':
+                icon = '⚠️'; text = '有未儲存的變更'; subtext = lastModifiedString; cssClass = 'dirty';
+                break;
+            case 'synced':
+            default:
+                icon = '✅'; text = '資料已同步'; subtext = lastModifiedString; cssClass = 'synced';
+                break;
+        }
+        els.syncStatus.className = 'sync-status ' + cssClass;
+        els.syncStatusText.textContent = `${icon} ${text}`;
+        els.lastSyncTimeText.textContent = subtext;
+    },
+
+    updateScheduleSelect: function() {
+        const select = AppElements.scheduleSelect;
+        select.innerHTML = '';
+        for (const id in app.schedules) {
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = app.schedules[id].name;
+            select.appendChild(option);
+        }
+        select.value = app.activeScheduleId;
+    },
+
+    renderScheduleList: function() {
+        const listElement = AppElements.scheduleList;
+        listElement.innerHTML = '';
+        const currentUser = app.getShortUserName(typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '');
+        const isAdmin = currentUser.toLowerCase() === 'cheerc';
+
+        for (const id in app.schedules) {
+            const schedule = app.schedules[id];
+            const createdBy = app.getShortUserName(schedule.createdBy || '未知');
+            const canManage = isAdmin || (currentUser === createdBy);
+
+            const li = document.createElement('li');
+            li.className = 'schedule-list-item';
+            
+            let buttonsHtml = `<button class="copy-schedule-btn text-green-600 hover:text-green-800 text-sm" data-id="${id}">複製</button>`;
+            if (canManage) {
+                buttonsHtml += `<button class="rename-schedule-btn text-blue-600 hover:text-blue-800 text-sm ml-2" data-id="${id}">重新命名</button>`;
+                buttonsHtml += `<button class="delete-schedule-btn text-red-600 hover:text-red-800 text-sm ml-2" data-id="${id}">刪除</button>`;
+            }
+
+            li.innerHTML = `
+                <div class="schedule-info">
+                    <span class="schedule-name" data-tooltip="${schedule.name}" data-id="${id}">${schedule.name}</span>
+                    <span class="schedule-owner">(建立者: ${createdBy})</span>
+                </div>
+                <div class="schedule-actions">
+                    ${buttonsHtml}
+                </div>
+            `;
+            listElement.appendChild(li);
+        }
+        this.initializeTooltips();
+    },
+
+    updateActiveFilterDisplay: function() {
+        const display = AppElements.activeFilterDisplay;
+        if (app.activeFilters.length === 0) {
+            display.textContent = '未套用任何篩選';
+        } else {
+            const counts = app.activeFilters.reduce((acc, f) => {
+                if (f.type === 'name') acc.name = (acc.name || 0) + 1;
+                else if (f.type === 'department') acc.department = (acc.department || 0) + 1;
+                else if (f.type === 'teacher') acc.teacher = (acc.teacher || 0) + 1;
+                return acc;
+            }, {});
+            
+            const parts = [];
+            if (counts.name) parts.push(`${counts.name} 門課程`);
+            if (counts.department) parts.push(`${counts.department} 個部門`);
+            if (counts.teacher) parts.push(`${counts.teacher} 位使用人`);
+
+            display.textContent = `已篩選: ${parts.join(', ')}`;
+        }
+    },
+
+    renderList: function(listElement, items, renderItemFn) {
+        listElement.innerHTML = '';
+        items.forEach(item => {
+            const li = renderItemFn(item);
+            if (li) listElement.appendChild(li);
+        });
+    },
+
+    updateDepartmentList: function() {
+        try {
+            const sortedDepartments = app.departments.slice().sort();
+            this.renderList(AppElements.departmentList, sortedDepartments, (department) => {
+                const li = document.createElement('li');
+                li.setAttribute('class', 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded');
+                li.innerHTML = `<span>${department}</span><button class="delete-department text-red-600 hover:text-red-800" data-department="${department}"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>`;
+                return li;
+            });
+            this.populateDepartmentQuickFilter();
+        } catch (e) {
+            console.error('更新部門列表失敗:', e);
+            this.showNotification('更新部門列表失敗', 'error');
+        }
+    },
+
+    populateDepartmentQuickFilter: function() {
+        const select = AppElements.departmentQuickFilter;
+        if (!select) return;
+        const currentVal = select.value;
+        select.innerHTML = '<option value="all">所有部門</option>';
+        const sortedDepartments = app.departments.slice().sort();
+        sortedDepartments.forEach(dept => {
+            const option = document.createElement('option');
+            option.value = dept;
+            option.textContent = dept;
+            select.appendChild(option);
+        });
+        select.value = currentVal && app.departments.includes(currentVal) ? currentVal : 'all';
+    },
+
+    updateClassroomList: function() {
+        try {
+            const sortedClassrooms = app.sortClassrooms(app.classrooms);
+            this.renderList(AppElements.classroomList, sortedClassrooms, (classroom) => {
+                const li = document.createElement('li');
+                li.setAttribute('class', 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded');
+                li.innerHTML = `<span>${classroom}</span><button class="delete-classroom text-red-600 hover:text-red-800" data-classroom="${classroom}"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>`;
+                return li;
+            });
+        } catch (e) {
+            console.error('更新教室列表失敗:', e);
+            this.showNotification('更新教室列表失敗', 'error');
+        }
+    },
+
+    createClassElement: function(classItem, classroom, day, overrideColor = null) {
+        const hasConflict = app.checkTimeConflict(classroom, day, classItem);
+        const conflictIcon = hasConflict 
+            ? `<div class="conflict-icon" title="時間衝突"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.752a3 3 0 01-2.598 4.5H4.644a3 3 0 01-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg></div>`
+            : '';
+        
+        const bgColor = overrideColor || app.courseColorMap[classItem.name] || '#E2E8F0';
+
+        const departmentTags = (classItem.departments || []).map(dept => `<span class="department-tag-vertical">${dept}</span>`).join('');
+        const allDepartmentsTooltip = (classItem.departments || []).join(', ');
+
+        const notesHtml = app.currentViewMode === 'day' 
+            ? `<div class="course-notes editable" data-field="notes">${classItem.notes || ''}</div>`
+            : '';
+        
+        const viewModeClass = app.currentViewMode === 'day' ? 'day-view-layout' : '';
+        const classDiv = document.createElement('div');
+        classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''} ${viewModeClass}`);
+        classDiv.style.backgroundColor = bgColor;
+        classDiv.dataset.id = classItem.id;
+        classDiv.dataset.name = classItem.name;
+        classDiv.innerHTML = `
+            <div class="class-item-content">
+                <div class="font-medium editable" data-field="name">${classItem.name}</div>
+                <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
+                <div class="editable" data-field="teacher">${classItem.teacher}</div>
+            </div>
+            ${notesHtml}
+            <div class="department-tags-vertical-container editable" data-field="departments" data-tooltip="部門: ${allDepartmentsTooltip}">${departmentTags}</div>
+            <span class="delete-btn" data-classroom="${classroom}" data-day="${day}">×</span>
+            ${conflictIcon}
+        `;
+
+        return classDiv;
+    },
+
+    toggleSelection: function(clickedElement) {
+        const courseName = clickedElement.dataset.name;
+        const isAlreadyPrimary = clickedElement.classList.contains('primary-selection');
+
+        this.clearAllSelections();
+
+        if (!isAlreadyPrimary) {
+            document.body.classList.add('has-selection');
+            const allClassElements = document.querySelectorAll('.class-item');
+            allClassElements.forEach(el => {
+                if (el.dataset.name === courseName) {
+                    el.classList.toggle('primary-selection', el === clickedElement);
+                    el.classList.toggle('secondary-selection', el !== clickedElement);
+                }
+            });
+        }
+    },
+
+    clearAllSelections: function() {
+        document.body.classList.remove('has-selection');
+        document.querySelectorAll('.class-item.primary-selection, .class-item.secondary-selection').forEach(el => {
+            el.classList.remove('primary-selection', 'secondary-selection');
+        });
+    },
+
+    setViewMode: function(mode) {
+        if (app.currentViewMode === mode) return;
+        app.currentViewMode = mode;
+
+        if (mode === 'day') {
+            AppElements.dayViewSortSelector.style.display = 'flex';
+            const today = new Date().getDay();
+            app.currentDayIndex = (today === 0) ? 6 : today - 1;
+        } else {
+            AppElements.dayViewSortSelector.style.display = 'none';
+        }
+        this.renderScheduleTable();
+    },
+    
+    setDayViewSortMode: function(mode) {
+        if (app.dayViewSortMode === mode) return;
+        app.dayViewSortMode = mode;
+        this.renderScheduleTable();
+    },
+
+    changeDay: function(direction) {
+        if (app.currentViewMode !== 'day') return;
+        app.currentDayIndex = (app.currentDayIndex + direction + 7) % 7;
+        this.renderScheduleTable();
+    },
+
+    updateViewControls: function() {
+        const tableHead = AppElements.scheduleBody.previousElementSibling;
+        tableHead.innerHTML = '';
+        const tr = document.createElement('tr');
+        tr.className = 'relative z-10';
+
+        AppElements.dayViewControls.style.display = 'none';
+
+        if (app.currentViewMode === 'week') {
+            AppElements.viewModeWeekBtn.classList.add('active');
+            AppElements.viewModeDayBtn.classList.remove('active');
+            tr.innerHTML = `
+                <th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
+                    <span class="diagonal-split-top">星期</span>
+                    <span class="diagonal-split-bottom">教室</span>
+                </th>
+                ${AppConfig.WEEKDAYS.map(day => `<th class="border border-gray-300 p-2 bg-gray-200">${day}</th>`).join('')}
+            `;
+        } else {
+            AppElements.viewModeDayBtn.classList.add('active');
+            AppElements.viewModeWeekBtn.classList.remove('active');
+            
+            AppElements.daySortClassroomBtn.classList.toggle('active', app.dayViewSortMode === 'classroom');
+            AppElements.daySortTimeBtn.classList.toggle('active', app.dayViewSortMode === 'time');
+
+            tr.innerHTML = `
+                <th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
+                    <span class="diagonal-split-top">星期</span>
+                    <span class="diagonal-split-bottom">教室</span>
+                </th>
+                <th class="border border-gray-300 p-2 bg-gray-200">
+                    <div class="flex items-center justify-center gap-4">
+                        <button id="header-prev-day-btn" class="p-2 rounded-full hover:bg-gray-300 transition"><svg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M15 19l-7-7 7-7' /></svg></button>
+                        <span class="text-lg font-semibold text-gray-700 w-24 text-center">${AppConfig.WEEKDAYS[app.currentDayIndex]}</span>
+                        <button id="header-next-day-btn" class="p-2 rounded-full hover:bg-gray-300 transition"><svg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M9 5l7 7-7 7' /></svg></button>
+                    </div>
+                </th>
+            `;
+        }
+        tableHead.appendChild(tr);
+    },
+
+    renderScheduleTable: function() {
+        try {
+            this.updateViewControls();
+
+            let dataToRender = app.scheduleData;
+            const quickFilterDept = AppElements.departmentQuickFilter.value;
+
+            if (quickFilterDept && quickFilterDept !== 'all') {
+                dataToRender = app.filterDataByDepartment(dataToRender, quickFilterDept);
+            }
+
+            if (app.activeFilters && app.activeFilters.length > 0) {
+                dataToRender = app.filterDataByActiveFilters(dataToRender);
+            }
+
+            AppElements.scheduleBody.innerHTML = '';
+
+            if (app.currentViewMode === 'day' && app.dayViewSortMode === 'time') {
+                this.renderDayViewByTime(dataToRender);
+            } else {
+                this.renderByClassroom(dataToRender);
+            }
+
+            this.setupDragAndDrop();
+            this.initializeTooltips();
+        } catch (e) {
+            console.error('渲染課程表失敗:', e);
+            this.showNotification('渲染課程表失敗', 'error');
+        }
+    },
+
+    renderDayViewByTime: function(dataToRender) {
+        const day = app.currentDayIndex;
+        let allCoursesForDay = [];
+        for (const classroom in dataToRender) {
+            if (dataToRender[classroom][day]) {
+                dataToRender[classroom][day].forEach(course => {
+                    allCoursesForDay.push({ ...course, classroom: classroom });
+                });
+            }
+        }
+
+        allCoursesForDay.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
+
+        allCoursesForDay.forEach(course => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${course.classroom}</td>`;
+            const td = document.createElement('td');
+            td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
+            td.dataset.classroom = course.classroom;
+            td.dataset.day = day;
+            const classDiv = this.createClassElement(course, course.classroom, day);
+            td.appendChild(classDiv);
+            tr.appendChild(td);
+            AppElements.scheduleBody.appendChild(tr);
+        });
+    },
+
+    renderByClassroom: function(dataToRender) {
+        const classroomsWithSchedule = new Set([...app.classrooms, ...Object.keys(dataToRender)]);
+        const sortedClassrooms = app.sortClassrooms(Array.from(classroomsWithSchedule));
+        sortedClassrooms.forEach(classroom => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${classroom}</td>`;
+            
+            const daysToRender = app.currentViewMode === 'week' ? [0, 1, 2, 3, 4, 5, 6] : [app.currentDayIndex];
+
+            for (const day of daysToRender) {
+                const td = document.createElement('td');
+                td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
+                td.dataset.classroom = classroom;
+                td.dataset.day = day;
+                const classes = (dataToRender[classroom]?.[day] || []);
+                let lastColor = null;
+                classes.forEach((classItem) => {
+                    let currentColor = app.courseColorMap[classItem.name] || '#E2E8F0';
+                    let finalColor = currentColor;
+                    if (currentColor === lastColor) {
+                        const currentIndex = AppConfig.COURSE_COLORS.indexOf(currentColor);
+                        const nextIndex = (currentIndex + 1) % AppConfig.COURSE_COLORS.length;
+                        finalColor = AppConfig.COURSE_COLORS[nextIndex];
+                    }
+                    const classDiv = this.createClassElement(classItem, classroom, day, finalColor);
+                    td.appendChild(classDiv);
+                    lastColor = finalColor;
+                });
+                tr.appendChild(td);
+            }
+            AppElements.scheduleBody.appendChild(tr);
+        });
+    },
+
+    setupDragAndDrop: function() {
+        try {
+            document.querySelectorAll('.schedule-cell').forEach(cell => {
+                if (cell.sortable) cell.sortable.destroy();
+                cell.sortable = new Sortable(cell, {
+                    group: 'classes',
+                    animation: 150,
+                    onStart: (evt) => {
+                        app.originalSourceListElement = evt.from;
+                    },
+                    onMove: (evt) => {
+                        if (app.currentViewMode === 'day' && app.dayViewSortMode === 'time') {
+                            return false;
+                        }
+                        return evt.from !== evt.to;
+                    },
+                    onEnd: (evt) => {
+                        if (app.currentViewMode === 'day' && app.dayViewSortMode === 'time') {
+                            this.renderScheduleTable();
+                            return;
+                        }
+                        app.handleDrop(evt);
+                    }
+                });
+            });
+        } catch (e) {
+            console.error('設置拖曳功能失敗:', e);
+            this.showNotification('設置拖曳功能失敗', 'error');
+        }
     }
   };
+
+  return uiModule;
 }
 </script>
+
