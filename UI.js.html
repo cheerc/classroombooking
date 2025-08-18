@@ -1,0 +1,102 @@
+<script>
+function createUIModule(app) {
+  const elements = AppElements; // Shortcut to elements
+
+  return {
+    showLoading: function(message = '載入中，請稍候...') {
+        elements.loadingText.textContent = message;
+        elements.loadingOverlay.style.display = 'flex';
+        if (app.loadingTimeout) clearTimeout(app.loadingTimeout);
+        app.loadingTimeout = setTimeout(() => {
+            this.hideLoading();
+            this.showNotification('載入超時，使用本地數據', 'error');
+            app.isConnecting = false;
+        }, 30000);
+    },
+
+    hideLoading: function() {
+        elements.loadingOverlay.style.display = 'none';
+        if (app.loadingTimeout) clearTimeout(app.loadingTimeout);
+    },
+
+    showNotification: function(message, type = 'success', duration = 3000) {
+        const notification = elements.notification;
+        notification.innerHTML = message;
+        notification.classList.remove('success', 'error', 'info');
+        notification.classList.add(type, 'show');
+        setTimeout(() => notification.classList.remove('show'), duration);
+    },
+
+    initializeTooltips: function() {
+        let activeTooltip = {
+            element: null,
+            hideTimeout: null
+        };
+
+        document.querySelectorAll('[data-tooltip]:not([data-tooltip-initialized])').forEach(el => {
+            el.setAttribute('data-tooltip-initialized', 'true');
+
+            const showTooltip = () => {
+                if (activeTooltip.element) {
+                    activeTooltip.element.remove();
+                }
+                clearTimeout(activeTooltip.hideTimeout);
+
+                const tooltipDiv = document.createElement('div');
+                tooltipDiv.className = 'fixed bg-gray-800 text-white text-xs rounded py-1 px-2 shadow-lg';
+                tooltipDiv.style.zIndex = '1050';
+                tooltipDiv.textContent = el.getAttribute('data-tooltip');
+                document.body.appendChild(tooltipDiv);
+                activeTooltip.element = tooltipDiv;
+
+                const rect = el.getBoundingClientRect();
+                const tooltipRect = tooltipDiv.getBoundingClientRect();
+                const viewportWidth = window.innerWidth;
+                let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+                let top = rect.top - tooltipRect.height - 5;
+                if (left < 5) left = 5;
+                if (left + tooltipRect.width > viewportWidth - 5) left = viewportWidth - tooltipRect.width - 5;
+                if (top < 5) top = rect.bottom + 5;
+                tooltipDiv.style.left = `${left}px`;
+                tooltipDiv.style.top = `${top}px`;
+            };
+
+            const hideTooltip = (immediately = false) => {
+                clearTimeout(activeTooltip.hideTimeout);
+                activeTooltip.hideTimeout = setTimeout(() => {
+                    if (activeTooltip.element) {
+                        activeTooltip.element.remove();
+                        activeTooltip.element = null;
+                    }
+                }, immediately ? 0 : 50);
+            };
+
+            el.addEventListener('mouseenter', showTooltip);
+            el.addEventListener('mouseleave', hideTooltip);
+            el.addEventListener('click', () => hideTooltip(true));
+        });
+    },
+
+    manageLoadingState: function(state, options = {}) {
+        const { success = true, message = '' } = options;
+
+        if (state === 'start') {
+            this.showLoading(message);
+            app.updateSyncStatus('syncing');
+            [elements.loadFromCloudBtn, elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
+        } else if (state === 'end') {
+            this.hideLoading();
+            [elements.loadFromCloudBtn, elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
+
+            if (success) {
+                app.updateSyncStatus('synced');
+                this.showNotification(message, 'success');
+            } else {
+                app.updateSyncStatus('error');
+                this.showNotification(message, 'error');
+            }
+        }
+    }
+  };
+}
+</script>
