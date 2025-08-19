@@ -57,7 +57,7 @@ function getData() {
     if (lastRow < 2) {
       return { schedules: {}, activeScheduleId: null, lastModified: null, metadataTimestamp: metadataTimestamp };
     }
-    const indexData = dataSheet.getRange("A2:D" + lastRow).getValues();
+    const indexData = dataSheet.getRange(`A2:D${lastRow}`).getValues();
     const schedules = {};
     let latestModTime = null;
 
@@ -99,7 +99,7 @@ function getData() {
       metadataTimestamp: metadataTimestamp
     };
 
-    Logger.log("返回數據: " + JSON.stringify(result).substring(0, 500));
+    Logger.log(`返回數據: ${JSON.stringify(result).substring(0, 500)}`);
     return result;
 
   } catch (e) {
@@ -124,7 +124,7 @@ function saveData(payload) { // Renamed to payload for clarity
 
   try {
     // --- 1. 解構並驗證從客戶端傳來的資料 ---
-    Logger.log("開始保存數據: " + JSON.stringify(payload).substring(0, 500));
+    Logger.log(`開始保存數據: ${JSON.stringify(payload).substring(0, 500)}`);
     const { scheduleId, activeScheduleId, scheduleData } = payload;
     if (!scheduleId || !scheduleData) {
       throw new Error("無效的數據格式。數據必須包含 scheduleId 和 scheduleData。");
@@ -154,7 +154,7 @@ function saveData(payload) { // Renamed to payload for clarity
     const dataSheet = getSheet(SHEET_DATA);
     
     // 3a. 更新 'Last Modified' 時間 (Column C)
-    const scheduleIds = dataSheet.getRange("A2:A" + dataSheet.getLastRow()).getValues().flat();
+    const scheduleIds = dataSheet.getRange(`A2:A${dataSheet.getLastRow()}`).getValues().flat();
     const rowIndex = scheduleIds.indexOf(scheduleId);
     if (rowIndex !== -1) {
       dataSheet.getRange(rowIndex + 2, 3).setValue(timestampISO);
@@ -367,7 +367,7 @@ function copySchedule(copyInfo) {
       throw new Error(`找不到來源課表 (ID: ${sourceId})。`);
     }
 
-    const newId = 'schedule_' + Date.now();
+    const newId = `schedule_${Date.now()}`;
     const newSheet = sourceSheet.copyTo(ss);
     newSheet.setName(newId);
 
@@ -400,7 +400,7 @@ function getVersions(scheduleId) {
     if (lastRow < 2) return []; // No data rows
 
     // Get all data, including the schedule ID column (D)
-    const data = historySheet.getRange("A2:D" + lastRow).getValues();
+    const data = historySheet.getRange(`A2:D${lastRow}`).getValues();
     
     const versions = data
       .filter(row => row[3] === scheduleId) // Filter by scheduleId in column D

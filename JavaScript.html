@@ -78,7 +78,7 @@
 
         loadSchedule: function(scheduleId) {
             if (!this.schedules[scheduleId]) {
-                this.ui.showNotification('錯誤：找不到指定的課表 ID: ' + scheduleId, 'error');
+                this.ui.showNotification(`錯誤：找不到指定的課表 ID: ${scheduleId}`, 'error');
                 const firstId = Object.keys(this.schedules)[0];
                 if (firstId) this.loadSchedule(firstId);
                 return;
@@ -115,7 +115,7 @@
                 return;
             }
             this.ui.showLoading('正在新增課表...');
-            const newId = 'schedule_' + Date.now();
+            const newId = `schedule_${Date.now()}`;
             try {
                 const result = await ServerApi.call('addSchedule', { id: newId, name: newName, metadataTimestamp: this.activeMetadataTimestamp });
                 if (result.error) {
@@ -308,7 +308,7 @@
                 this.loadSchedule(this.activeScheduleId);
 
                 this.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE, this.lastCloudModifiedTime);
-                this.ui.showNotification('已在本地載入版本: ' + new Date(data.versionId).toLocaleString(), 'info');
+                this.ui.showNotification(`已在本地載入版本: ${new Date(data.versionId).toLocaleString()}`, 'info');
             } catch (error) {
                 this.ui.showNotification('讀取版本失敗: ' + error.message, 'error');
             } finally {
@@ -358,7 +358,7 @@
                 this.ui.manageLoadingState('end', { success: true, message: '從雲端讀取數據成功！' });
 
             } catch (error) {
-                this.ui.manageLoadingState('end', { success: false, message: '讀取失敗: ' + error.message });
+                this.ui.manageLoadingState('end', { success: false, message: `讀取失敗: ${error.message}` });
             } finally {
                 this.isConnecting = false;
             }
@@ -403,7 +403,7 @@
                 this.ui.manageLoadingState('end', { success: true, message: '數據已成功儲存到雲端！' });
 
             } catch (error) {
-                this.ui.manageLoadingState('end', { success: false, message: '數據儲存失敗: ' + error.message });
+                this.ui.manageLoadingState('end', { success: false, message: `數據儲存失敗: ${error.message}` });
             } finally {
                 this.isConnecting = false;
             }

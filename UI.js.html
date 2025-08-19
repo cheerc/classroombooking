@@ -103,7 +103,7 @@ function createUIModule(app) {
         let icon = '', text = '', subtext = '', cssClass = '';
 
         const lastModifiedString = app.lastCloudModifiedTime 
-            ? '雲端版本: ' + new Date(app.lastCloudModifiedTime).toLocaleString()
+            ? `雲端版本: ${new Date(app.lastCloudModifiedTime).toLocaleString()}`
             : '未曾同步';
 
         switch (status) {
