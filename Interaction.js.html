@@ -7,28 +7,6 @@ function createInteractionModule(app) {
     clickTimer: null,
     lastClickedId: null,
 
-    setupModalListeners: function(triggerBtn, modal, closeBtn, onOpen) {
-        if (!modal || !closeBtn) return;
-        
-        const openModal = () => {
-            if (onOpen) onOpen();
-            modal.style.display = 'flex';
-        }
-        const closeModal = () => modal.style.display = 'none';
-
-        if (triggerBtn) {
-            triggerBtn.addEventListener('click', openModal);
-        }
-        
-        closeBtn.addEventListener('click', closeModal);
-        
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                closeModal();
-            }
-        });
-    },
-
     addEventListeners: function() {
         const els = AppElements;
         els.loadingCancel.addEventListener('click', () => {
@@ -55,12 +33,12 @@ function createInteractionModule(app) {
         els.undoBtn.addEventListener('click', () => app.historyModule.undo());
         els.redoBtn.addEventListener('click', () => app.historyModule.redo());
         
-        this.setupModalListeners(els.showClassroomManagerBtn, els.classroomManagerModal, els.classroomManagerModalClose);
-        this.setupModalListeners(els.showDepartmentManagerBtn, els.departmentManagerModal, els.departmentManagerModalClose);
-        this.setupModalListeners(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose, () => app.loadVersions());
-        this.setupModalListeners(els.showHelpBtn, els.helpModal, els.helpModalClose);
-        this.setupModalListeners(els.showFilterBtn, els.filterModal, els.filterModalClose, () => app.modals.populateFilterModal());
-        this.setupModalListeners(els.manageSchedulesBtn, els.scheduleManagerModal, els.scheduleManagerModalClose, () => app.ui.renderScheduleList());
+        app.modals.setupModalListeners(els.showClassroomManagerBtn, els.classroomManagerModal, els.classroomManagerModalClose);
+        app.modals.setupModalListeners(els.showDepartmentManagerBtn, els.departmentManagerModal, els.departmentManagerModalClose);
+        app.modals.setupModalListeners(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose, () => app.loadVersions());
+        app.modals.setupModalListeners(els.showHelpBtn, els.helpModal, els.helpModalClose);
+        app.modals.setupModalListeners(els.showFilterBtn, els.filterModal, els.filterModalClose, () => app.modals.populateFilterModal());
+        app.modals.setupModalListeners(els.manageSchedulesBtn, els.scheduleManagerModal, els.scheduleManagerModalClose, () => app.ui.renderScheduleList());
 
         els.addScheduleBtn.addEventListener('click', () => app.handleAddSchedule());
         els.scheduleList.addEventListener('click', (e) => app.handleScheduleListClick(e));
