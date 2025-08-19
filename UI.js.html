@@ -367,7 +367,7 @@ function createUIModule(app) {
                     <span class="diagonal-split-top">星期</span>
                     <span class="diagonal-split-bottom">教室</span>
                 </th>
-                ${AppConfig.WEEKDAYS.map(day => `<th class="border border-gray-300 p-2 bg-gray-200">${day}</th>`).join('')}
+                ${AppConfig.WEEKDAYS.map(day => `<th class="border border-gray-300 p-2 bg-gray-200 w-1/7">${day}</th>`).join('')}
             `;
         } else {
             AppElements.viewModeDayBtn.classList.add('active');
