@@ -64,12 +64,10 @@ function createHistoryModule(app) {
         app.activeFilters = JSON.parse(JSON.stringify(state.activeFilters));
         
         // These methods still live on the main app object
-        app.buildCourseColorMap();
         app.ui.updateClassroomList();
         app.ui.updateDepartmentList();
         app.ui.renderScheduleTable();
         app.ui.updateActiveFilterDisplay();
-        app.saveDataToLocal();
 
         this.updateUndoRedoButtons();
         this.checkDirty();
