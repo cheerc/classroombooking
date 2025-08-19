@@ -65,10 +65,10 @@ function createHistoryModule(app) {
         
         // These methods still live on the main app object
         app.buildCourseColorMap();
-        app.updateClassroomList();
-        app.updateDepartmentList();
-        app.renderScheduleTable();
-        app.updateActiveFilterDisplay();
+        app.ui.updateClassroomList();
+        app.ui.updateDepartmentList();
+        app.ui.renderScheduleTable();
+        app.ui.updateActiveFilterDisplay();
         app.saveDataToLocal();
 
         this.updateUndoRedoButtons();
@@ -111,10 +111,10 @@ function createHistoryModule(app) {
         const saveBtn = elements.saveToCloudBtn;
         if (isDirty) {
             saveBtn.classList.add('animate-pulse');
-            app.updateSyncStatus(AppConfig.STATUS.DIRTY);
+            app.ui.updateSyncStatus(AppConfig.STATUS.DIRTY);
         } else {
             saveBtn.classList.remove('animate-pulse');
-            app.updateSyncStatus(AppConfig.STATUS.SYNCED);
+            app.ui.updateSyncStatus(AppConfig.STATUS.SYNCED);
         }
     }
   };
