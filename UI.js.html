@@ -78,7 +78,7 @@ function createUIModule(app) {
     },
 
     manageLoadingState: function(state, options = {}) {
-        const { success = true, message = '' } = options;
+        const { success = true, message = '', isConflict = false } = options;
 
         if (state === 'start') {
             this.showLoading(message);
@@ -92,8 +92,14 @@ function createUIModule(app) {
                 this.updateSyncStatus(AppConfig.STATUS.SYNCED);
                 this.showNotification(message, 'success');
             } else {
-                this.updateSyncStatus(AppConfig.STATUS.ERROR);
-                this.showNotification(message, 'error');
+                // If it's a conflict, we don't show a redundant notification toast,
+                // as the main modal is already providing the information.
+                if (isConflict) {
+                    this.updateSyncStatus(AppConfig.STATUS.CONFLICT);
+                } else {
+                    this.updateSyncStatus(AppConfig.STATUS.ERROR);
+                    this.showNotification(message, 'error');
+                }
             }
         }
     },
@@ -112,6 +118,9 @@ function createUIModule(app) {
                 break;
             case AppConfig.STATUS.ERROR:
                 icon = '❌'; text = '同步失敗'; subtext = '請檢查網路或稍後再試'; cssClass = AppConfig.STATUS.ERROR;
+                break;
+            case AppConfig.STATUS.CONFLICT:
+                icon = '⚠️'; text = '版本衝突'; subtext = '請先讀取雲端資料'; cssClass = AppConfig.STATUS.ERROR; // Use same color for attention
                 break;
             case AppConfig.STATUS.DIRTY:
                 icon = '⚠️'; text = '有未儲存的變更'; subtext = lastModifiedString; cssClass = AppConfig.STATUS.DIRTY;

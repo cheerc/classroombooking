@@ -11,7 +11,7 @@
         departments: [],
         courseColorMap: {},
         lastSyncTime: null,
-        lastCloudModifiedTime: null,
+        scheduleLastModified: {},
         loadingTimeout: null,
         isConnecting: false,
         activeInlineForm: null,
@@ -342,6 +342,16 @@
                 if (!result || result.error) throw new Error(result ? result.error : '從服務器獲取的數據為空');
                 
                 this.schedules = result.schedules || {};
+                this.scheduleLastModified = {}; // Clear old timestamps
+                for (const id in this.schedules) {
+                    if (this.schedules[id].lastModified) {
+                        this.scheduleLastModified[id] = this.schedules[id].lastModified;
+                        // The timestamp is sensitive and only needed for the save operation,
+                        // let's not keep it in the main data object that gets saved to local storage.
+                        delete this.schedules[id].lastModified;
+                    }
+                }
+
                 this.activeScheduleId = result.activeScheduleId || Object.keys(this.schedules)[0];
                 this.activeMetadataTimestamp = result.metadataTimestamp;
 
@@ -352,7 +362,6 @@
                 }
 
                 this.ui.updateScheduleSelect();
-                this.updateLastModifiedTime(result.lastModified);
                 this.lastSyncTime = new Date();
                 this.saveSchedulesToLocal();
                 this.historyModule.resetHistory();
@@ -371,22 +380,15 @@
             this.ui.manageLoadingState('start', { message: '正在檢查版本並儲存至雲端...' });
 
             try {
-                const latestData = await ServerApi.call('getData');
-                if (latestData.error) throw new Error(latestData.error);
-
-                const serverLastModified = latestData.lastModified ? new Date(latestData.lastModified).getTime() : null;
-                const localLastModified = this.lastCloudModifiedTime ? this.lastCloudModifiedTime.getTime() : null;
-
-                if (serverLastModified && localLastModified && serverLastModified !== localLastModified) {
-                    this.ui.updateSyncStatus('error');
-                    this.modals.showConfirm('儲存失敗！雲端資料已被其他人修改。<br><br>為避免覆蓋他人工作，請先「從雲端讀取資料」同步後，再重新進行您的變更。', true);
-                    this.ui.manageLoadingState('end', { success: false, message: '儲存失敗：資料版本衝突' });
-                    return;
+                const currentScheduleTimestamp = this.scheduleLastModified[this.activeScheduleId];
+                if (!currentScheduleTimestamp) {
+                    throw new Error("找不到當前課表的版本資訊，無法儲存。請嘗試重新載入。");
                 }
 
                 const dataToSend = {
                     scheduleId: this.activeScheduleId,
                     activeScheduleId: this.activeScheduleId,
+                    lastModified: currentScheduleTimestamp, // *** STEP 4: Attach the specific timestamp
                     scheduleData: {
                         classrooms: this.classrooms,
                         scheduleData: this.scheduleData,
@@ -395,10 +397,20 @@
                 };
 
                 const saveResult = await ServerApi.call('saveData', dataToSend);
-                if (!saveResult || !saveResult.success) throw new Error(saveResult?.error || '儲存時發生未知錯誤');
+
+                // *** STEP 4: Handle new conflict error
+                if (saveResult && saveResult.conflict) {
+                    this.modals.showConfirm(saveResult.error, true); // Show the specific error from server
+                    this.ui.manageLoadingState('end', { success: false, isConflict: true });
+                    return;
+                }
+
+                if (!saveResult || !saveResult.success) {
+                    throw new Error(saveResult?.error || '儲存時發生未知錯誤');
+                }
 
                 this.lastSyncTime = new Date();
-                this.updateLastModifiedTime(saveResult.lastModified);
+                this.scheduleLastModified[this.activeScheduleId] = saveResult.lastModified;
                 this.historyModule.updateCleanSnapshot();
                 this.historyModule.checkDirty();
                 this.ui.manageLoadingState('end', { success: true, message: '數據已成功儲存到雲端！' });
@@ -408,11 +420,6 @@
             } finally {
                 this.isConnecting = false;
             }
-        },
-
-        updateLastModifiedTime: function(time) {
-            try { this.lastCloudModifiedTime = time ? new Date(time) : null; } 
-            catch (e) { console.error("解析雲端修改時間失敗:", e); this.lastCloudModifiedTime = null; }
         },
 
         // --- UTILITY ---

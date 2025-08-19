@@ -593,8 +593,8 @@ function createInteractionModule(app) {
             app.activeScheduleId = null;
             app.activeFilters = [];
             app.lastSyncTime = null;
+            app.scheduleLastModified = {};
             app.courseColorMap = {};
-            app.updateLastModifiedTime(null);
             
             app.loadInitialSchedules();
             app.ui.updateActiveFilterDisplay();

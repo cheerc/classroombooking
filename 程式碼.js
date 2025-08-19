@@ -79,6 +79,7 @@ function getData() {
           schedules[scheduleId] = {
             name: scheduleName,
             createdBy: createdBy,
+            lastModified: lastModified.toISOString(), // *** STEP 1: Add lastModified to each schedule object
             data: { scheduleData, classrooms, departments }
           };
 
@@ -95,7 +96,8 @@ function getData() {
     const result = {
       schedules: schedules,
       activeScheduleId: activeScheduleId,
-      lastModified: latestModTime ? latestModTime.toISOString() : null,
+      // lastModified is no longer needed at the global level for optimistic locking, but can be kept for other informational purposes.
+      // We will remove it to avoid confusion.
       metadataTimestamp: metadataTimestamp
     };
 
@@ -124,13 +126,31 @@ function saveData(payload) { // Renamed to payload for clarity
 
   try {
     // --- 1. 解構並驗證從客戶端傳來的資料 ---
-    Logger.log(`開始保存數據: ${JSON.stringify(payload).substring(0, 500)}`);
-    const { scheduleId, activeScheduleId, scheduleData } = payload;
-    if (!scheduleId || !scheduleData) {
-      throw new Error("無效的數據格式。數據必須包含 scheduleId 和 scheduleData。");
+    const { scheduleId, activeScheduleId, scheduleData, lastModified } = payload; // *** STEP 3: Add lastModified
+    if (!scheduleId || !scheduleData || !lastModified) { // *** STEP 3: Validate lastModified
+      throw new Error("無效的數據格式。數據必須包含 scheduleId, scheduleData, 和 lastModified 時間戳。");
     }
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const dataSheet = getSheet(SHEET_DATA);
+
+    // --- 2. 版本衝突檢查 ---
+    const scheduleIds = dataSheet.getRange(`A2:A${dataSheet.getLastRow()}`).getValues().flat();
+    const rowIndex = scheduleIds.indexOf(scheduleId);
+    if (rowIndex === -1) {
+      throw new Error(`在索引中找不到 ID 為 "${scheduleId}" 的課表。`);
+    }
+    const serverLastModified = new Date(dataSheet.getRange(rowIndex + 2, 3).getValue()).toISOString();
+    
+    if (serverLastModified !== lastModified) {
+      return { 
+        success: false, 
+        error: '儲存失敗！此課表已被他人修改。為避免覆蓋，請先從雲端讀取最新資料後再進行您的變更。',
+        conflict: true 
+      };
+    }
+
+    // --- 3. 更新指定課表ID的工作表內容 ---
     const scheduleSheet = ss.getSheetByName(scheduleId);
     if (!scheduleSheet) {
       throw new Error(`找不到 ID 為 "${scheduleId}" 的工作表。`);
@@ -140,7 +160,6 @@ function saveData(payload) { // Renamed to payload for clarity
     const timestamp = new Date();
     const timestampISO = timestamp.toISOString();
 
-    // --- 2. 更新指定課表ID的工作表內容 ---
     const scheduleDataJson = JSON.stringify(scheduleData.scheduleData || {});
     const classroomsJson = JSON.stringify(scheduleData.classrooms || []);
     const departmentsJson = JSON.stringify(scheduleData.departments || []);
@@ -150,30 +169,21 @@ function saveData(payload) { // Renamed to payload for clarity
       [departmentsJson]
     ]);
 
-    // --- 3. 更新 'Data' 索引工作表 ---
-    const dataSheet = getSheet(SHEET_DATA);
+    // --- 4. 更新 'Data' 索引工作表 ---
+    // 4a. 更新 'Last Modified' 時間 (Column C)
+    dataSheet.getRange(rowIndex + 2, 3).setValue(timestampISO);
     
-    // 3a. 更新 'Last Modified' 時間 (Column C)
-    const scheduleIds = dataSheet.getRange(`A2:A${dataSheet.getLastRow()}`).getValues().flat();
-    const rowIndex = scheduleIds.indexOf(scheduleId);
-    if (rowIndex !== -1) {
-      dataSheet.getRange(rowIndex + 2, 3).setValue(timestampISO);
-    }
-    
-    // 3b. 更新全域的 'Active Schedule ID' (Cell E2)
-    // 這個值會讓所有使用者下次開啟時，預設載入同一個課表
+    // 4b. 更新全域的 'Active Schedule ID' (Cell E2)
     if (activeScheduleId) {
       dataSheet.getRange("E2").setValue(activeScheduleId);
     }
 
-    // --- 4. 在 'History' 工作表中新增一筆版本紀錄 ---
+    // --- 5. 在 'History' 工作表中新增一筆版本紀錄 ---
     const historySheet = getSheet(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
     const historyDataJson = JSON.stringify(scheduleData);
-    // 儲存時間、儲存者的Email、課表資料快照、以及此快照對應的課表ID
     historySheet.getRange("A2:D2").setValues([[timestampISO, userEmail, historyDataJson, scheduleId]]);
 
-    // 維持歷史紀錄在指定的筆數內
     const maxHistoryRecords = 20;
     if (historySheet.getLastRow() > maxHistoryRecords + 1) {
       historySheet.deleteRows(maxHistoryRecords + 2, historySheet.getLastRow() - (maxHistoryRecords + 1));
