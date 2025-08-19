@@ -20,7 +20,7 @@
         cleanStateSnapshot: '',
         activeFilters: [],
         currentUserEmail: '',
-        currentViewMode: 'week',
+        currentViewMode: AppConfig.MODES.WEEK,
         dayViewSortMode: 'time',
         currentDayIndex: 0,
         
@@ -99,7 +99,7 @@
             this.ui.updateClassroomList();
             this.ui.updateDepartmentList();
             this.ui.renderScheduleTable();
-            this.ui.updateSyncStatus('offline');
+            this.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE);
             this.historyModule.resetHistory();
             localStorage.setItem('activeScheduleId', scheduleId);
         },
@@ -307,7 +307,7 @@
                 this.saveSchedulesToLocal();
                 this.loadSchedule(this.activeScheduleId);
 
-                this.ui.updateSyncStatus('offline', this.lastCloudModifiedTime);
+                this.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE, this.lastCloudModifiedTime);
                 this.ui.showNotification('已在本地載入版本: ' + new Date(data.versionId).toLocaleString(), 'info');
             } catch (error) {
                 this.ui.showNotification('讀取版本失敗: ' + error.message, 'error');

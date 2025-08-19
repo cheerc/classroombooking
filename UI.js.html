@@ -82,17 +82,17 @@ function createUIModule(app) {
 
         if (state === 'start') {
             this.showLoading(message);
-            this.updateSyncStatus('syncing');
+            this.updateSyncStatus(AppConfig.STATUS.SYNCING);
             [elements.loadFromCloudBtn, elements.saveToCloudBtn].forEach(btn => btn.disabled = true);
         } else if (state === 'end') {
             this.hideLoading();
             [elements.loadFromCloudBtn, elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
 
             if (success) {
-                this.updateSyncStatus('synced');
+                this.updateSyncStatus(AppConfig.STATUS.SYNCED);
                 this.showNotification(message, 'success');
             } else {
-                this.updateSyncStatus('error');
+                this.updateSyncStatus(AppConfig.STATUS.ERROR);
                 this.showNotification(message, 'error');
             }
         }
@@ -107,18 +107,18 @@ function createUIModule(app) {
             : '未曾同步';
 
         switch (status) {
-            case 'syncing':
-                icon = '🔄'; text = '正在同步...'; subtext = '請稍候...'; cssClass = 'syncing';
+            case AppConfig.STATUS.SYNCING:
+                icon = '🔄'; text = '正在同步...'; subtext = '請稍候...'; cssClass = AppConfig.STATUS.SYNCING;
                 break;
-            case 'error':
-                icon = '❌'; text = '同步失敗'; subtext = '請檢查網路或稍後再試'; cssClass = 'error';
+            case AppConfig.STATUS.ERROR:
+                icon = '❌'; text = '同步失敗'; subtext = '請檢查網路或稍後再試'; cssClass = AppConfig.STATUS.ERROR;
                 break;
-            case 'dirty':
-                icon = '⚠️'; text = '有未儲存的變更'; subtext = lastModifiedString; cssClass = 'dirty';
+            case AppConfig.STATUS.DIRTY:
+                icon = '⚠️'; text = '有未儲存的變更'; subtext = lastModifiedString; cssClass = AppConfig.STATUS.DIRTY;
                 break;
-            case 'synced':
+            case AppConfig.STATUS.SYNCED:
             default:
-                icon = '✅'; text = '資料已同步'; subtext = lastModifiedString; cssClass = 'synced';
+                icon = '✅'; text = '資料已同步'; subtext = lastModifiedString; cssClass = AppConfig.STATUS.SYNCED;
                 break;
         }
         els.syncStatus.className = 'sync-status ' + cssClass;
@@ -258,11 +258,11 @@ function createUIModule(app) {
         const departmentTags = (classItem.departments || []).map(dept => `<span class="department-tag-vertical">${dept}</span>`).join('');
         const allDepartmentsTooltip = (classItem.departments || []).join(', ');
 
-        const notesHtml = app.currentViewMode === 'day' 
+        const notesHtml = app.currentViewMode === AppConfig.MODES.DAY 
             ? `<div class="course-notes editable" data-field="notes">${classItem.notes || ''}</div>`
             : '';
         
-        const viewModeClass = app.currentViewMode === 'day' ? 'day-view-layout' : '';
+        const viewModeClass = app.currentViewMode === AppConfig.MODES.DAY ? 'day-view-layout' : '';
         const classDiv = document.createElement('div');
         classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''} ${viewModeClass}`);
         classDiv.style.backgroundColor = bgColor;
@@ -312,7 +312,7 @@ function createUIModule(app) {
         if (app.currentViewMode === mode) return;
         app.currentViewMode = mode;
 
-        if (mode === 'day') {
+        if (mode === AppConfig.MODES.DAY) {
             AppElements.dayViewSortSelector.style.display = 'flex';
             const today = new Date().getDay();
             app.currentDayIndex = (today === 0) ? 6 : today - 1;
@@ -329,7 +329,7 @@ function createUIModule(app) {
     },
 
     changeDay: function(direction) {
-        if (app.currentViewMode !== 'day') return;
+        if (app.currentViewMode !== AppConfig.MODES.DAY) return;
         app.currentDayIndex = (app.currentDayIndex + direction + 7) % 7;
         this.renderScheduleTable();
     },
@@ -342,7 +342,7 @@ function createUIModule(app) {
 
         AppElements.dayViewControls.style.display = 'none';
 
-        if (app.currentViewMode === 'week') {
+        if (app.currentViewMode === AppConfig.MODES.WEEK) {
             AppElements.viewModeWeekBtn.classList.add('active');
             AppElements.viewModeDayBtn.classList.remove('active');
             tr.innerHTML = `
@@ -393,7 +393,7 @@ function createUIModule(app) {
 
             AppElements.scheduleBody.innerHTML = '';
 
-            if (app.currentViewMode === 'day' && app.dayViewSortMode === 'time') {
+            if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
                 this.renderDayViewByTime(dataToRender);
             } else {
                 this.renderByClassroom(dataToRender);
@@ -441,7 +441,7 @@ function createUIModule(app) {
             const tr = document.createElement('tr');
             tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${classroom}</td>`;
             
-            const daysToRender = app.currentViewMode === 'week' ? [0, 1, 2, 3, 4, 5, 6] : [app.currentDayIndex];
+            const daysToRender = app.currentViewMode === AppConfig.MODES.WEEK ? [0, 1, 2, 3, 4, 5, 6] : [app.currentDayIndex];
 
             for (const day of daysToRender) {
                 const td = document.createElement('td');
@@ -479,13 +479,13 @@ function createUIModule(app) {
                         app.originalSourceListElement = evt.from;
                     },
                     onMove: (evt) => {
-                        if (app.currentViewMode === 'day' && app.dayViewSortMode === 'time') {
+                        if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
                             return false;
                         }
                         return evt.from !== evt.to;
                     },
                     onEnd: (evt) => {
-                        if (app.currentViewMode === 'day' && app.dayViewSortMode === 'time') {
+                        if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
                             this.renderScheduleTable();
                             return;
                         }

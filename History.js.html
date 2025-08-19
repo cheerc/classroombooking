@@ -111,10 +111,10 @@ function createHistoryModule(app) {
         const saveBtn = elements.saveToCloudBtn;
         if (isDirty) {
             saveBtn.classList.add('animate-pulse');
-            app.updateSyncStatus('dirty');
+            app.updateSyncStatus(AppConfig.STATUS.DIRTY);
         } else {
             saveBtn.classList.remove('animate-pulse');
-            app.updateSyncStatus('synced');
+            app.updateSyncStatus(AppConfig.STATUS.SYNCED);
         }
     }
   };

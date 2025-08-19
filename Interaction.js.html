@@ -86,8 +86,8 @@ function createInteractionModule(app) {
         els.filterClear.addEventListener('click', () => app.clearFilters());
         els.departmentQuickFilter.addEventListener('change', () => app.ui.renderScheduleTable());
 
-        els.viewModeWeekBtn.addEventListener('click', () => app.ui.setViewMode('week'));
-        els.viewModeDayBtn.addEventListener('click', () => app.ui.setViewMode('day'));
+        els.viewModeWeekBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.WEEK));
+        els.viewModeDayBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.DAY));
         
         els.daySortClassroomBtn.addEventListener('click', () => app.ui.setDayViewSortMode('classroom'));
         els.daySortTimeBtn.addEventListener('click', () => app.ui.setDayViewSortMode('time'));
