@@ -146,7 +146,7 @@ function createInteractionModule(app) {
         }
     },
 
-    _buildCourseFormHtml: function(isEditMode, classItemToEdit, day) {
+    buildCourseFormHtml: function(isEditMode, classItemToEdit, day) {
         const daySelectorHtml = isEditMode ? '' : AppConfig.WEEKDAYS.map((dayName, index) => `
             <label><input type="checkbox" class="inline-day-checkbox" value="${index}" ${index === day ? 'checked' : ''}> ${dayName.replace('星期', '')}</label>
         `).join('');
@@ -180,7 +180,7 @@ function createInteractionModule(app) {
         `;
     },
 
-    _handleCourseFormSave: async function(formDiv, isEditMode, originalData, context) {
+    handleCourseFormSave: async function(formDiv, isEditMode, originalData, context) {
         const { classroom, day } = context;
         const name = formDiv.querySelector('input[name="name"]').value.trim();
         const timeStart = formDiv.querySelector('input[name="timeStart"]').value.trim();
@@ -210,11 +210,11 @@ function createInteractionModule(app) {
             }
 
             if (name !== originalData.name) {
-                const otherNameOccurrences = app._countOccurrences(item => item.name === originalData.name && item.id !== classItem.id);
+                const otherNameOccurrences = app.countOccurrences(item => item.name === originalData.name && item.id !== classItem.id);
                 if (otherNameOccurrences > 0) {
                     const confirmAll = await app.modals.showConfirm(`找到 ${otherNameOccurrences} 個其他名為 "${originalData.name}" 的課程。<br>要全部一起改名為 "${name}" 嗎？`);
                     if (confirmAll) {
-                        app._updateAllOccurrences(item => item.name === originalData.name, item => item.name = name);
+                        app.updateAllOccurrences(item => item.name === originalData.name, item => item.name = name);
                         const activeFilterIndex = app.activeFilters.findIndex(f => f.type === 'name' && f.value === originalData.name);
                         if (activeFilterIndex > -1) app.activeFilters[activeFilterIndex].value = name;
                     } else {
@@ -227,11 +227,11 @@ function createInteractionModule(app) {
             }
 
             if (teacher !== originalData.teacher) {
-                const otherTeacherOccurrences = app._countOccurrences(item => item.name === originalData.name && item.teacher === originalData.teacher && item.id !== classItem.id);
+                const otherTeacherOccurrences = app.countOccurrences(item => item.name === originalData.name && item.teacher === originalData.teacher && item.id !== classItem.id);
                 if (otherTeacherOccurrences > 0) {
                     const confirmAll = await app.modals.showConfirm(`找到 ${otherTeacherOccurrences} 堂其他由 "${originalData.teacher}" 上的 "${originalData.name}" 課程。<br>要將使用人一起變更為 "${teacher}" 嗎？`);
                     if (confirmAll) {
-                        app._updateAllOccurrences(
+                        app.updateAllOccurrences(
                             item => item.name === originalData.name && item.teacher === originalData.teacher,
                             item => item.teacher = teacher
                         );
@@ -282,7 +282,7 @@ function createInteractionModule(app) {
         return true;
     },
 
-    _createInlineNotesEditor: function(notesDiv) {
+    createInlineNotesEditor: function(notesDiv) {
         if (app.activeInlineForm) return;
 
         const classElement = notesDiv.closest('.class-item');
@@ -326,13 +326,13 @@ function createInteractionModule(app) {
         });
     },
 
-    _createOrEditCourseForm: async function(container, classItemToEdit, context) {
+    createOrEditCourseForm: async function(container, classItemToEdit, context) {
         const isEditMode = classItemToEdit !== null;
         const originalData = isEditMode ? { ...classItemToEdit } : {};
 
         const formDiv = document.createElement('div');
         formDiv.setAttribute('class', 'inline-add-form');
-        formDiv.innerHTML = this._buildCourseFormHtml(isEditMode, classItemToEdit, context.day);
+        formDiv.innerHTML = this.buildCourseFormHtml(isEditMode, classItemToEdit, context.day);
 
         if (isEditMode) {
             container.innerHTML = '';
@@ -363,7 +363,7 @@ function createInteractionModule(app) {
             if(app.activeInlineForm) app.activeInlineForm.isClosing = true;
 
             if (forceSave) {
-                const saved = await this._handleCourseFormSave(formDiv, isEditMode, originalData, context);
+                const saved = await this.handleCourseFormSave(formDiv, isEditMode, originalData, context);
                 if (!saved) { 
                     if(app.activeInlineForm) app.activeInlineForm.isClosing = false;
                     return false; 
@@ -403,7 +403,7 @@ function createInteractionModule(app) {
         const day = parseInt(cell.dataset.day);
         if (!classroom || isNaN(day)) return;
 
-        this._createOrEditCourseForm(cell, null, { classroom, day });
+        this.createOrEditCourseForm(cell, null, { classroom, day });
     },
 
     handleEditFieldClick: async function(e, element) {
@@ -425,7 +425,7 @@ function createInteractionModule(app) {
         const classItem = app.scheduleData[classroom]?.[day]?.find(c => c.id === classId);
         if (!classItem) return;
 
-        this._createOrEditCourseForm(classElement, classItem, { classroom, day });
+        this.createOrEditCourseForm(classElement, classItem, { classroom, day });
     },
 
     handleScheduleBodyClick: function(event) {
@@ -469,7 +469,7 @@ function createInteractionModule(app) {
                 
                 const notesElement = event.target.closest('.course-notes');
                 if (notesElement && app.currentViewMode === 'day') {
-                    this._createInlineNotesEditor(notesElement);
+                    this.createInlineNotesEditor(notesElement);
                 } else {
                     this.handleEditFieldClick(event, event.target.closest('.editable') || classElement);
                 }
@@ -507,7 +507,7 @@ function createInteractionModule(app) {
         }
     },
 
-    _handleAddItem: function(config) {
+    handleAddItem: function(config) {
         const { itemType, name, sourceArray, inputElement, updateListFn, postAddFn } = config;
         if (!name) return;
         if (sourceArray.includes(name)) {
@@ -525,7 +525,7 @@ function createInteractionModule(app) {
     },
 
     handleAddClassroom: function() {
-        this._handleAddItem({
+        this.handleAddItem({
             itemType: '教室',
             name: elements.classroomNameInput.value.trim(),
             sourceArray: app.classrooms,
@@ -536,7 +536,7 @@ function createInteractionModule(app) {
     },
 
     handleAddDepartment: function() {
-        this._handleAddItem({
+        this.handleAddItem({
             itemType: '部門',
             name: elements.departmentNameInput.value.trim(),
             sourceArray: app.departments,

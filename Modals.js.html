@@ -8,7 +8,7 @@ function createModalModule(app) {
    * Generic function to show a modal and handle its lifecycle.
    * @private
    */
-  function _showModal(config) {
+  function showModal(config) {
     return new Promise((resolve) => {
         const { modal, textElement, inputElement, okButton, cancelButton, message, defaultValue, isAlert } = config;
 
@@ -86,7 +86,7 @@ function createModalModule(app) {
      * Shows a confirmation dialog.
      */
     showConfirm: function(message, isAlert = false) {
-        return _showModal({
+        return showModal({
             modal: elements.confirmModal,
             textElement: elements.confirmText,
             okButton: elements.confirmOk,
@@ -100,7 +100,7 @@ function createModalModule(app) {
      * Shows a prompt dialog with a text input.
      */
     showPrompt: function(message, defaultValue = '') {
-        return _showModal({
+        return showModal({
             modal: elements.promptModal,
             textElement: elements.promptText,
             inputElement: elements.promptInput,

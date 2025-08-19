@@ -6,7 +6,7 @@ const SHEET_HISTORY = "History";
  * @param {string} name The name of the sheet.
  * @returns {GoogleAppsScript.Spreadsheet.Sheet} The sheet object.
  */
-function getSheet_(name) {
+function getSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
@@ -43,7 +43,7 @@ function getData() {
   try {
     Logger.log("開始獲取數據");
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const dataSheet = getSheet_(SHEET_DATA);
+    const dataSheet = getSheet(SHEET_DATA);
     // Metadata timestamp migration
     let metadataTimestamp = dataSheet.getRange("F1").getValue();
     if (!metadataTimestamp) {
@@ -151,7 +151,7 @@ function saveData(payload) { // Renamed to payload for clarity
     ]);
 
     // --- 3. 更新 'Data' 索引工作表 ---
-    const dataSheet = getSheet_(SHEET_DATA);
+    const dataSheet = getSheet(SHEET_DATA);
     
     // 3a. 更新 'Last Modified' 時間 (Column C)
     const scheduleIds = dataSheet.getRange("A2:A" + dataSheet.getLastRow()).getValues().flat();
@@ -167,7 +167,7 @@ function saveData(payload) { // Renamed to payload for clarity
     }
 
     // --- 4. 在 'History' 工作表中新增一筆版本紀錄 ---
-    const historySheet = getSheet_(SHEET_HISTORY);
+    const historySheet = getSheet(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
     const historyDataJson = JSON.stringify(scheduleData);
     // 儲存時間、儲存者的Email、課表資料快照、以及此快照對應的課表ID
@@ -198,7 +198,7 @@ function saveData(payload) { // Renamed to payload for clarity
  * @param {string} clientTimestamp The timestamp provided by the client.
  * @returns {string} The new timestamp for the client to store.
  */
-function checkMetadata_(dataSheet, clientTimestamp) {
+function checkMetadata(dataSheet, clientTimestamp) {
   const currentTimestamp = dataSheet.getRange("F1").getValue();
   if (clientTimestamp && currentTimestamp && clientTimestamp !== currentTimestamp) {
     throw new Error('操作失敗！課表列表已被他人修改，請關閉視窗後重新打開以刷新。');
@@ -221,8 +221,8 @@ function addSchedule(scheduleInfo) {
     const { id, name, metadataTimestamp } = scheduleInfo;
     if (!id || !name) throw new Error("必須提供課表 ID 和名稱。");
 
-    const dataSheet = getSheet_(SHEET_DATA);
-    const newMetaTimestamp = checkMetadata_(dataSheet, metadataTimestamp);
+    const dataSheet = getSheet(SHEET_DATA);
+    const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     if (ss.getSheetByName(id)) {
@@ -263,8 +263,8 @@ function renameSchedule(scheduleInfo) {
     const { id, newName, metadataTimestamp } = scheduleInfo;
     if (!id || !newName) throw new Error("必須提供課表 ID 和新名稱。");
 
-    const dataSheet = getSheet_(SHEET_DATA);
-    const newMetaTimestamp = checkMetadata_(dataSheet, metadataTimestamp);
+    const dataSheet = getSheet(SHEET_DATA);
+    const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
     const indexData = dataSheet.getRange("A2:D" + dataSheet.getLastRow()).getValues();
     const rowIndex = indexData.findIndex(row => row[0] === id);
@@ -307,8 +307,8 @@ function deleteSchedule(scheduleInfo) {
     const { id, metadataTimestamp } = scheduleInfo;
     if (!id) throw new Error("必須提供課表 ID。");
 
-    const dataSheet = getSheet_(SHEET_DATA);
-    const newMetaTimestamp = checkMetadata_(dataSheet, metadataTimestamp);
+    const dataSheet = getSheet(SHEET_DATA);
+    const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const indexData = dataSheet.getRange("A2:D" + dataSheet.getLastRow()).getValues();
@@ -358,8 +358,8 @@ function copySchedule(copyInfo) {
     const { sourceId, newName, metadataTimestamp } = copyInfo;
     if (!sourceId || !newName) throw new Error("必須提供來源課表 ID 和新名稱。");
 
-    const dataSheet = getSheet_(SHEET_DATA);
-    const newMetaTimestamp = checkMetadata_(dataSheet, metadataTimestamp);
+    const dataSheet = getSheet(SHEET_DATA);
+    const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sourceSheet = ss.getSheetByName(sourceId);
@@ -395,7 +395,7 @@ function getVersions(scheduleId) {
     if (!scheduleId) {
       throw new Error("必須提供課表 ID 以獲取版本紀錄。");
     }
-    const historySheet = getSheet_(SHEET_HISTORY);
+    const historySheet = getSheet(SHEET_HISTORY);
     const lastRow = historySheet.getLastRow();
     if (lastRow < 2) return []; // No data rows
 
@@ -424,7 +424,7 @@ function getVersionData(versionId) {
     if (!versionId) {
       throw new Error("未提供版本ID");
     }
-    const historySheet = getSheet_(SHEET_HISTORY);
+    const historySheet = getSheet(SHEET_HISTORY);
     const data = historySheet.getRange("A:C").getValues(); // A: Timestamp, B: User, C: ScheduleData JSON
     
     const versionRow = data.slice(1).find(row => row[0] && new Date(row[0]).toISOString() === versionId);

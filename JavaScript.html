@@ -558,7 +558,7 @@
             return filteredData;
         },
 
-        _countOccurrences: function(predicate) {
+        countOccurrences: function(predicate) {
             let count = 0;
             for (const classroom in this.scheduleData) {
                 for (const day in this.scheduleData[classroom]) {
@@ -572,7 +572,7 @@
             return count;
         },
 
-        _updateAllOccurrences: function(predicate, updateFn) {
+        updateAllOccurrences: function(predicate, updateFn) {
             for (const classroom in this.scheduleData) {
                 for (const day in this.scheduleData[classroom]) {
                     this.scheduleData[classroom][day].forEach(item => {

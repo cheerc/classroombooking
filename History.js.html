@@ -9,7 +9,7 @@ function createHistoryModule(app) {
 
   // --- Private Methods ---
 
-  function _getCurrentState() {
+  function getCurrentState() {
     return {
       classrooms: JSON.parse(JSON.stringify(app.classrooms)),
       scheduleData: JSON.parse(JSON.stringify(app.scheduleData)),
@@ -23,7 +23,7 @@ function createHistoryModule(app) {
   return {
     saveState: function() {
         history = history.slice(0, historyIndex + 1);
-        const currentState = _getCurrentState();
+        const currentState = getCurrentState();
         history.push(currentState);
         historyIndex = history.length - 1;
         if (history.length > 50) { 
@@ -35,7 +35,7 @@ function createHistoryModule(app) {
     },
 
     resetHistory: function() {
-        const initialState = _getCurrentState();
+        const initialState = getCurrentState();
         history = [initialState];
         historyIndex = 0;
         this.updateUndoRedoButtons();
