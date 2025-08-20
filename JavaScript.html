@@ -68,7 +68,6 @@
 
         // --- DATA & SCHEDULE LOGIC ---
         showFirstTimeScheduleSelector: function() {
-            console.log("[DEBUG] No local active schedule found. Showing first-time selector.");
             const modal = AppElements.firstTimeScheduleSelectModal;
             const select = AppElements.firstTimeScheduleSelect;
             const confirmBtn = AppElements.firstTimeScheduleConfirmBtn;
@@ -94,7 +93,6 @@
             confirmBtn.onclick = () => {
                 const selectedId = select.value;
                 if (selectedId) {
-                    console.log(`[DEBUG] User selected schedule: ${selectedId}`);
                     modal.style.display = 'none';
                     this.loadSchedule(selectedId);
                     this.ui.updateScheduleSelect(); // Ensure main dropdown is also updated
@@ -107,7 +105,6 @@
             
             // Check if the locally stored ID is a valid schedule that we just got from the server
             if (localActiveId && this.schedules[localActiveId]) {
-                console.log(`[DEBUG] Found valid local active schedule: ${localActiveId}`);
                 this.loadSchedule(localActiveId);
                 this.ui.updateScheduleSelect();
             } else {
