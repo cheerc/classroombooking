@@ -20,7 +20,9 @@
         cleanStateSnapshot: '',
         activeFilters: [],
         currentUserEmail: '',
-        currentViewMode: AppConfig.MODES.WEEK,
+        // Load last view mode from local storage, default to WEEK view.
+        currentViewMode: localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK,
+        // Day view sort mode always defaults to 'time' on fresh loads or when switching.
         dayViewSortMode: 'time',
         currentDayIndex: 0,
         

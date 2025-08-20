@@ -62,7 +62,10 @@ function createInteractionModule(app) {
         els.filterDeselectAll.addEventListener('click', () => app.toggleAllFilterCheckboxes(false));
         els.filterApply.addEventListener('click', () => app.applyFilters());
         els.filterClear.addEventListener('click', () => app.clearFilters());
-        els.departmentQuickFilter.addEventListener('change', () => app.ui.renderScheduleTable());
+        els.departmentQuickFilter.addEventListener('change', (e) => {
+            localStorage.setItem('lastQuickFilter', e.target.value);
+            app.ui.renderScheduleTable();
+        });
 
         els.viewModeWeekBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.WEEK));
         els.viewModeDayBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.DAY));

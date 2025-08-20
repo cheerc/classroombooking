@@ -247,7 +247,7 @@ function createUIModule(app) {
     populateDepartmentQuickFilter: function() {
         const select = AppElements.departmentQuickFilter;
         if (!select) return;
-        const currentVal = select.value;
+        
         select.innerHTML = '<option value="all">所有部門</option>';
         const sortedDepartments = app.departments.slice().sort();
         sortedDepartments.forEach(dept => {
@@ -256,7 +256,15 @@ function createUIModule(app) {
             option.textContent = dept;
             select.appendChild(option);
         });
-        select.value = currentVal && app.departments.includes(currentVal) ? currentVal : 'all';
+
+        // After populating, try to set the value from localStorage.
+        const lastFilter = localStorage.getItem('lastQuickFilter');
+        // Check if the saved filter is a valid, existing department.
+        if (lastFilter && app.departments.includes(lastFilter)) {
+            select.value = lastFilter;
+        } else {
+            select.value = 'all'; // Default to "all" if not found or invalid.
+        }
     },
 
     updateClassroomList: function() {
@@ -337,13 +345,13 @@ function createUIModule(app) {
     setViewMode: function(mode) {
         if (app.currentViewMode === mode) return;
         app.currentViewMode = mode;
+        localStorage.setItem('lastViewMode', mode); // Save the user's choice
 
         if (mode === AppConfig.MODES.DAY) {
-            AppElements.dayViewSortSelector.style.display = 'flex';
             const today = new Date().getDay();
             app.currentDayIndex = (today === 0) ? 6 : today - 1;
-        } else {
-            AppElements.dayViewSortSelector.style.display = 'none';
+            // Every time we switch to day view, default to 'time' sort.
+            app.dayViewSortMode = 'time'; 
         }
         this.renderScheduleTable();
     },
@@ -361,6 +369,13 @@ function createUIModule(app) {
     },
 
     updateViewControls: function() {
+        // This logic now correctly runs every time the view is rendered.
+        if (app.currentViewMode === AppConfig.MODES.DAY) {
+            AppElements.dayViewSortSelector.style.display = 'flex';
+        } else {
+            AppElements.dayViewSortSelector.style.display = 'none';
+        }
+
         const tableHead = AppElements.scheduleBody.previousElementSibling;
         tableHead.innerHTML = '';
         const tr = document.createElement('tr');
