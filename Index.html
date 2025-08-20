@@ -323,6 +323,19 @@
         </div>
     </div>
 
+    <div id="first-time-schedule-select-modal" class="loading-overlay" style="display: none;">
+        <div class="bg-white p-8 rounded-lg shadow-lg text-left max-w-lg w-full relative">
+            <h2 class="text-2xl font-bold mb-6 text-center text-blue-800">請選擇要載入的課表</h2>
+            <div class="mb-4">
+                <label for="first-time-schedule-select" class="sr-only">選擇課表</label>
+                <select id="first-time-schedule-select" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg">
+                    <!-- Options will be populated by JS -->
+                </select>
+            </div>
+            <button id="first-time-schedule-confirm-btn" class="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition text-lg">確定</button>
+        </div>
+    </div>
+
     <?!= HtmlService.createHtmlOutputFromFile('Config.js.html').getContent(); ?>
     <?!= HtmlService.createHtmlOutputFromFile('Elements.js.html').getContent(); ?>
     <?!= HtmlService.createHtmlOutputFromFile('Api.js.html').getContent(); ?>

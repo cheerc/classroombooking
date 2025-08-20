@@ -54,8 +54,9 @@
                 });
             }
 
-            this.loadInitialSchedules();
-            this.interaction.addEventListeners(); // Delegate event listener setup
+            // The initial load logic is now split. We first load from local storage,
+            // then fetch from server, which will then call loadInitialSchedules again.
+            this.interaction.addEventListeners();
             AppElements.versionBadge.textContent = `版本 ${AppConfig.APP_VERSION}`;
 
             setTimeout(() => {
@@ -66,15 +67,63 @@
         },
 
         // --- DATA & SCHEDULE LOGIC ---
-        loadInitialSchedules: function() {
-            const localSchedules = localStorage.getItem('schedules');
-            this.schedules = localSchedules ? JSON.parse(localSchedules) : { 'default': { name: '預設課表', data: { classrooms: [], scheduleData: {}, departments: [] } } };
-            
-            const localActiveId = localStorage.getItem('activeScheduleId');
-            this.activeScheduleId = localActiveId && this.schedules[localActiveId] ? localActiveId : Object.keys(this.schedules)[0];
+        showFirstTimeScheduleSelector: function() {
+            console.log("[DEBUG] No local active schedule found. Showing first-time selector.");
+            const modal = AppElements.firstTimeScheduleSelectModal;
+            const select = AppElements.firstTimeScheduleSelect;
+            const confirmBtn = AppElements.firstTimeScheduleConfirmBtn;
 
-            this.loadSchedule(this.activeScheduleId);
-            this.ui.updateScheduleSelect();
+            select.innerHTML = ''; // Clear previous options
+            const scheduleIds = Object.keys(this.schedules);
+
+            if (scheduleIds.length === 0) {
+                select.innerHTML = '<option disabled>沒有可用的課表</option>';
+                confirmBtn.disabled = true;
+            } else {
+                scheduleIds.forEach(id => {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = this.schedules[id].name;
+                    select.appendChild(option);
+                });
+                confirmBtn.disabled = false;
+            }
+
+            modal.style.display = 'flex';
+
+            confirmBtn.onclick = () => {
+                const selectedId = select.value;
+                if (selectedId) {
+                    console.log(`[DEBUG] User selected schedule: ${selectedId}`);
+                    modal.style.display = 'none';
+                    this.loadSchedule(selectedId);
+                    this.ui.updateScheduleSelect(); // Ensure main dropdown is also updated
+                }
+            };
+        },
+
+        loadInitialSchedules: function() {
+            const localActiveId = localStorage.getItem('activeScheduleId');
+            
+            // Check if the locally stored ID is a valid schedule that we just got from the server
+            if (localActiveId && this.schedules[localActiveId]) {
+                console.log(`[DEBUG] Found valid local active schedule: ${localActiveId}`);
+                this.loadSchedule(localActiveId);
+                this.ui.updateScheduleSelect();
+            } else {
+                // If no local preference, or the preference is invalid (e.g., schedule was deleted)
+                if (Object.keys(this.schedules).length > 0) {
+                    // We have schedules from the server, so we MUST ask the user to choose one.
+                    this.showFirstTimeScheduleSelector();
+                } else {
+                    // No schedules on the server at all. This is a rare edge case.
+                    this.ui.showNotification("雲端沒有任何課表。請聯絡管理員新增一個。", "info", 5000);
+                    this.schedules = {};
+                    this.activeScheduleId = null;
+                    this.ui.renderScheduleTable(); // Render an empty table
+                    this.ui.updateScheduleSelect();
+                }
+            }
         },
 
         loadSchedule: function(scheduleId) {
@@ -101,7 +150,7 @@
             this.ui.updateDepartmentList();
             this.ui.renderScheduleTable();
             this.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE);
-            this.historyModule.resetHistory();
+            this.historyModule.resetHistory(); // Moved from loadDataFromServer
             localStorage.setItem('activeScheduleId', scheduleId);
         },
 
@@ -355,16 +404,11 @@
                 this.activeScheduleId = result.activeScheduleId || Object.keys(this.schedules)[0];
                 this.activeMetadataTimestamp = result.metadataTimestamp;
 
-                if (!this.activeScheduleId) {
-                    this.loadInitialSchedules();
-                } else {
-                    this.loadSchedule(this.activeScheduleId);
-                }
+                // After fetching data, the client decides which schedule to load.
+                this.loadInitialSchedules();
 
-                this.ui.updateScheduleSelect();
                 this.lastSyncTime = new Date();
                 this.saveSchedulesToLocal();
-                this.historyModule.resetHistory();
                 this.ui.manageLoadingState('end', { success: true, message: '從雲端讀取數據成功！' });
 
             } catch (error) {

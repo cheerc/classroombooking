@@ -95,9 +95,7 @@ function getData() {
 
     const result = {
       schedules: schedules,
-      activeScheduleId: activeScheduleId,
-      // lastModified is no longer needed at the global level for optimistic locking, but can be kept for other informational purposes.
-      // We will remove it to avoid confusion.
+      // activeScheduleId is no longer sent from the server. The client will decide.
       metadataTimestamp: metadataTimestamp
     };
 
@@ -173,10 +171,10 @@ function saveData(payload) { // Renamed to payload for clarity
     // 4a. 更新 'Last Modified' 時間 (Column C)
     dataSheet.getRange(rowIndex + 2, 3).setValue(timestampISO);
     
-    // 4b. 更新全域的 'Active Schedule ID' (Cell E2)
-    if (activeScheduleId) {
-      dataSheet.getRange("E2").setValue(activeScheduleId);
-    }
+    // 4b. 不再更新全域的 'Active Schedule ID'
+    // if (activeScheduleId) {
+    //   dataSheet.getRange("E2").setValue(activeScheduleId);
+    // }
 
     // --- 5. 在 'History' 工作表中新增一筆版本紀錄 ---
     const historySheet = getSheet(SHEET_HISTORY);
