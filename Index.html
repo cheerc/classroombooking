@@ -23,134 +23,138 @@
 
     <div id="notification" class="notification"></div>
 
-    <!-- Floating Action Buttons -->
-    <div class="fixed top-4 left-4 z-50 flex flex-col gap-2">
-        <button id="undo-btn" data-tooltip="復原 (Ctrl+Z)" class="bg-gray-500 text-white p-3 rounded-md hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex justify-center items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-            </svg>
-        </button>
-        <button id="redo-btn" data-tooltip="重做 (Ctrl+Y)" class="bg-gray-500 text-white p-3 rounded-md hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex justify-center items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />
-            </svg>
-        </button>
-        
-        <hr class="my-2 border-gray-400">
+    <!-- Main Flex Container -->
+    <div class="flex justify-center gap-4 w-full h-full">
 
-        <button id="save-to-cloud-btn" data-tooltip="儲存資料到雲端" class="bg-blue-600 text-white p-3 rounded-md hover:bg-blue-700 transition flex justify-center items-center shadow-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"></path>
-            </svg>
-        </button>
-        <button id="load-from-cloud-btn" data-tooltip="從雲端讀取資料" class="bg-teal-600 text-white p-3 rounded-md hover:bg-teal-700 transition flex justify-center items-center shadow-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9.75V16.5m0 0l3-3m-3 3l-3-3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"></path>
-            </svg>
-        </button>
-        <button id="clear-all" data-tooltip="清除本地暫存資料" class="bg-red-600 text-white p-3 rounded-md hover:bg-red-700 transition flex justify-center items-center shadow-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-            </svg>
-        </button>
+        <!-- Floating Action Buttons (now a sticky flex item) -->
+        <div class="sticky top-4 h-min flex flex-col gap-2">
+            <button id="undo-btn" data-tooltip="復原 (Ctrl+Z)" class="bg-gray-500 text-white p-3 rounded-md hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex justify-center items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                </svg>
+            </button>
+            <button id="redo-btn" data-tooltip="重做 (Ctrl+Y)" class="bg-gray-500 text-white p-3 rounded-md hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex justify-center items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />
+                </svg>
+            </button>
+            
+            <hr class="my-2 border-gray-400">
 
-        <hr id="admin-separator" class="my-2 border-gray-400">
+            <button id="save-to-cloud-btn" data-tooltip="儲存資料到雲端" class="bg-blue-600 text-white p-3 rounded-md hover:bg-blue-700 transition flex justify-center items-center shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"></path>
+                </svg>
+            </button>
+            <button id="load-from-cloud-btn" data-tooltip="從雲端讀取資料" class="bg-teal-600 text-white p-3 rounded-md hover:bg-teal-700 transition flex justify-center items-center shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9.75V16.5m0 0l3-3m-3 3l-3-3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"></path>
+                </svg>
+            </button>
+            <button id="clear-all" data-tooltip="清除本地暫存資料" class="bg-red-600 text-white p-3 rounded-md hover:bg-red-700 transition flex justify-center items-center shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+            </button>
 
-        <button id="show-classroom-manager-btn" data-tooltip="教室管理" class="bg-sky-500 text-white p-3 rounded-md hover:bg-sky-600 transition shadow-lg flex justify-center items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
-            </svg>
-        </button>
-                <button id="show-department-manager-btn" data-tooltip="部門管理" class="bg-purple-500 text-white p-3 rounded-md hover:bg-purple-600 transition shadow-lg flex justify-center items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-        </button>
-        <button id="show-version-history-btn" data-tooltip="版本紀錄" class="bg-yellow-500 text-white p-3 rounded-md hover:bg-yellow-600 transition shadow-lg flex justify-center items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-        </button>
-    </div>
+            <hr id="admin-separator" class="my-2 border-gray-400">
 
-    <div class="pl-20 flex flex-col flex-grow min-h-0">
-        <div class="max-w-7xl w-full mx-auto bg-white rounded-lg shadow-lg p-6 flex flex-col flex-grow min-h-0">
-            <div class="relative mb-6 flex justify-center items-center flex-shrink-0">
-                <div class="absolute top-1/2 left-0 transform -translate-y-1/2">
-                    <div id="sync-status" class="sync-status">
-                        <div id="sync-status-text">本地模式</div>
-                        <div id="last-sync-time" class="last-sync-time"></div>
+            <button id="show-classroom-manager-btn" data-tooltip="教室管理" class="bg-sky-500 text-white p-3 rounded-md hover:bg-sky-600 transition shadow-lg flex justify-center items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                </svg>
+            </button>
+                    <button id="show-department-manager-btn" data-tooltip="部門管理" class="bg-purple-500 text-white p-3 rounded-md hover:bg-purple-600 transition shadow-lg flex justify-center items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+            </button>
+            <button id="show-version-history-btn" data-tooltip="版本紀錄" class="bg-yellow-500 text-white p-3 rounded-md hover:bg-yellow-600 transition shadow-lg flex justify-center items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </button>
+        </div>
+
+        <div class="flex flex-col flex-grow min-h-0 max-w-7xl w-full">
+            <div class="w-full bg-white rounded-lg shadow-lg p-6 flex flex-col flex-grow min-h-0">
+                <div class="relative mb-6 flex justify-center items-center flex-shrink-0">
+                    <div class="absolute top-1/2 left-0 transform -translate-y-1/2">
+                        <div id="sync-status" class="sync-status">
+                            <div id="sync-status-text">本地模式</div>
+                            <div id="last-sync-time" class="last-sync-time"></div>
+                        </div>
+                    </div>
+                    <div id="schedule-manager-container" class="flex items-center gap-4">
+                        <select id="schedule-select" class="text-3xl font-bold text-blue-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm py-1 pl-3 pr-10">
+                            <!-- Options will be populated by JS -->
+                        </select>
+                        <button id="manage-schedules-btn" data-tooltip="課表管理" class="bg-green-500 text-white p-3 rounded-md hover:bg-green-600 transition shadow-lg flex justify-center items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="absolute top-1/2 right-0 transform -translate-y-1/2">
+                        <button id="show-help-btn" class="bg-sky-500 text-white px-4 py-2 rounded-md hover:bg-sky-600 transition">
+                            使用說明
+                        </button>
                     </div>
                 </div>
-                <div id="schedule-manager-container" class="flex items-center gap-4">
-                    <select id="schedule-select" class="text-3xl font-bold text-blue-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm py-1 pl-3 pr-10">
+
+                <div class="flex justify-center items-center gap-4 mb-4">
+                    <button id="show-filter-btn" class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 transition flex items-center shadow">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                          <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
+                        </svg>
+                        進階篩選
+                    </button>
+                    <select id="department-quick-filter" class="bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm">
                         <!-- Options will be populated by JS -->
                     </select>
-                    <button id="manage-schedules-btn" data-tooltip="課表管理" class="bg-green-500 text-white p-3 rounded-md hover:bg-green-600 transition shadow-lg flex justify-center items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        </svg>
-                    </button>
+                    <div id="active-filter-display" class="text-sm text-gray-600 font-medium mr-auto"></div>
+
+                    <div id="day-view-sort-selector" class="flex items-center p-1 bg-gray-200 rounded-lg mr-4" style="display: none;">
+                        <button id="day-sort-classroom" class="px-3 py-1 text-sm font-medium rounded-md transition-colors day-sort-btn active">依教室</button>
+                        <button id="day-sort-time" class="px-3 py-1 text-sm font-medium rounded-md transition-colors day-sort-btn">依時間</button>
+                    </div>
+
+                    <div id="view-mode-selector" class="flex items-center p-1 bg-gray-200 rounded-lg">
+                        <button id="view-mode-week" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn active">週檢視</button>
+                        <button id="view-mode-day" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn">日檢視</button>
+                    </div>
+                    <!-- This is now handled inside the table header -->
+                    <div id="day-view-controls" class="flex items-center gap-2" style="display: none;">
+                        <button id="prev-day-btn" class="p-2 rounded-full hover:bg-gray-200 transition">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                        <h3 id="current-day-display" class="text-lg font-semibold text-gray-700 w-24 text-center"></h3>
+                        <button id="next-day-btn" class="p-2 rounded-full hover:bg-gray-200 transition">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
-                <div class="absolute top-1/2 right-0 transform -translate-y-1/2">
-                    <button id="show-help-btn" class="bg-sky-500 text-white px-4 py-2 rounded-md hover:bg-sky-600 transition">
-                        使用說明
-                    </button>
+
+                <div id="department-filter-container" class="flex justify-center items-center gap-2 mb-4 flex-wrap"></div>
+
+                <div class="overflow-y-auto flex-grow min-h-0">
+                    <table id="schedule-table" class="schedule-table w-full table-fixed">
+                        <thead class="sticky top-0 z-20">
+                            <!-- Header will be dynamically generated by JS -->
+                        </thead>
+                        <tbody id="schedule-body">
+                            </tbody>
+                    </table>
                 </div>
+
+                <!-- Buttons are now in the floating panel -->
+
             </div>
-
-            <div class="flex justify-center items-center gap-4 mb-4">
-                <button id="show-filter-btn" class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 transition flex items-center shadow">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
-                    </svg>
-                    進階篩選
-                </button>
-                <select id="department-quick-filter" class="bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm">
-                    <!-- Options will be populated by JS -->
-                </select>
-                <div id="active-filter-display" class="text-sm text-gray-600 font-medium mr-auto"></div>
-
-                <div id="day-view-sort-selector" class="flex items-center p-1 bg-gray-200 rounded-lg mr-4" style="display: none;">
-                    <button id="day-sort-classroom" class="px-3 py-1 text-sm font-medium rounded-md transition-colors day-sort-btn active">依教室</button>
-                    <button id="day-sort-time" class="px-3 py-1 text-sm font-medium rounded-md transition-colors day-sort-btn">依時間</button>
-                </div>
-
-                <div id="view-mode-selector" class="flex items-center p-1 bg-gray-200 rounded-lg">
-                    <button id="view-mode-week" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn active">週檢視</button>
-                    <button id="view-mode-day" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn">日檢視</button>
-                </div>
-                <!-- This is now handled inside the table header -->
-                <div id="day-view-controls" class="flex items-center gap-2" style="display: none;">
-                    <button id="prev-day-btn" class="p-2 rounded-full hover:bg-gray-200 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-                        </svg>
-                    </button>
-                    <h3 id="current-day-display" class="text-lg font-semibold text-gray-700 w-24 text-center"></h3>
-                    <button id="next-day-btn" class="p-2 rounded-full hover:bg-gray-200 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-            <div id="department-filter-container" class="flex justify-center items-center gap-2 mb-4 flex-wrap"></div>
-
-            <div class="overflow-y-auto flex-grow min-h-0">
-                <table id="schedule-table" class="schedule-table w-full table-fixed">
-                    <thead class="sticky top-0 z-20">
-                        <!-- Header will be dynamically generated by JS -->
-                    </thead>
-                    <tbody id="schedule-body">
-                        </tbody>
-                </table>
-            </div>
-
-            <!-- Buttons are now in the floating panel -->
-
         </div>
     </div>
 
