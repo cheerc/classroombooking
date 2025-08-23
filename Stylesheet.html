@@ -268,12 +268,15 @@
     }
 
     .inline-add-form {
+        position: absolute;
+        /* JS will set top and left dynamically */
+        min-width: 280px;
+        max-width: 320px; /* Add a max-width for consistency */
         background-color: white;
-        border: 2px solid #3b82f6; /* blue-500 */
+        border: 2px solid #3b82f6;
         border-radius: 8px;
         padding: 12px;
         box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-        position: relative;
         z-index: 20;
         display: flex;
         flex-direction: column;
