@@ -31,7 +31,6 @@ function doGet() {
   const template = HtmlService.createTemplateFromFile('Index');
   template.userEmail = Session.getActiveUser().getEmail();
   return template.evaluate()
-    .setTitle('教室使用登記表')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
