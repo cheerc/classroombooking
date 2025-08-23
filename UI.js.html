@@ -246,7 +246,7 @@ function createUIModule(app) {
 
     populateDepartmentQuickFilter: function() {
         const select = AppElements.departmentQuickFilter;
-        if (!select) return;
+        if (!select) return; 
         
         select.innerHTML = '<option value="all">所有部門</option>';
         const sortedDepartments = app.departments.slice().sort();
@@ -282,7 +282,9 @@ function createUIModule(app) {
     },
 
     createClassElement: function(classItem, classroom, day, overrideColor = null) {
+        const isUpcoming = app.nextUpcomingClassIds.has(classItem.id);
         const hasConflict = app.checkTimeConflict(classroom, day, classItem);
+        
         const conflictIcon = hasConflict 
             ? `<div class="conflict-icon" title="時間衝突"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.752a3 3 0 01-2.598 4.5H4.644a3 3 0 01-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg></div>`
             : '';
@@ -298,7 +300,8 @@ function createUIModule(app) {
         
         const viewModeClass = app.currentViewMode === AppConfig.MODES.DAY ? 'day-view-layout' : '';
         const classDiv = document.createElement('div');
-        classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''} ${viewModeClass}`);
+        // Add the 'upcoming-highlight' class as a marker for our JS, but it has no style itself.
+        classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''} ${isUpcoming ? 'upcoming-highlight' : ''} ${viewModeClass}`);
         classDiv.style.backgroundColor = bgColor;
         classDiv.dataset.id = classItem.id;
         classDiv.dataset.name = classItem.name;
@@ -419,6 +422,9 @@ function createUIModule(app) {
 
     renderScheduleTable: function() {
         try {
+            // First, determine which classes should be highlighted.
+            app.findNextUpcomingClasses();
+
             this.updateViewControls();
 
             let dataToRender = app.scheduleData;
@@ -442,10 +448,39 @@ function createUIModule(app) {
 
             this.setupDragAndDrop();
             this.initializeTooltips();
+            this.addUpcomingClassIndicators(); // Add indicators after table is rendered
         } catch (e) {
             console.error('渲染課程表失敗:', e);
             this.showNotification('渲染課程表失敗', 'error');
         }
+    },
+
+    addUpcomingClassIndicators: function() {
+        document.querySelectorAll('.class-item.upcoming-highlight').forEach(classItem => {
+            const parentRow = classItem.closest('tr');
+            if (!parentRow) return;
+
+            const headerCell = parentRow.querySelector('td:first-child');
+            if (!headerCell) return;
+
+            // Ensure the cell can contain an absolutely positioned element
+            headerCell.style.position = 'relative';
+
+            const arrow = document.createElement('div');
+            arrow.className = 'upcoming-arrow-marker';
+            arrow.innerHTML = `
+                <span class="mr-1">即將上課</span>
+                <div class="arrow-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                </div>
+            `;
+            
+            // Calculate vertical position to align with the middle of the class item
+            const topPosition = classItem.offsetTop + (classItem.offsetHeight / 2);
+            arrow.style.top = `${topPosition}px`;
+
+            headerCell.appendChild(arrow);
+        });
     },
 
     renderDayViewByTime: function(dataToRender) {

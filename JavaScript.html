@@ -20,11 +20,17 @@
         cleanStateSnapshot: '',
         activeFilters: [],
         currentUserEmail: '',
-        // Load last view mode from local storage, default to WEEK view.
         currentViewMode: localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK,
-        // Day view sort mode always defaults to 'time' on fresh loads or when switching.
         dayViewSortMode: 'time',
-        currentDayIndex: 0,
+        currentDayIndex: (() => {
+            // If the initial view mode is 'day', set the index to today. Otherwise, default to Monday (0).
+            if ((localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK) === AppConfig.MODES.DAY) {
+                const today = new Date().getDay();
+                return (today === 0) ? 6 : today - 1; // Sunday is 0, we want it to be 6.
+            }
+            return 0;
+        })(),
+        nextUpcomingClassIds: new Set(),
         
         // --- MODULES ---
         modals: null,
@@ -66,6 +72,15 @@
                     console.warn("Initial data load failed:", error.message);
                 });
             }, 500);
+
+            // Set up a timer to periodically check for the next upcoming class.
+            setInterval(() => {
+                const updated = this.findNextUpcomingClasses();
+                // If an update happened (i.e., we are on the correct day view), re-render the table.
+                if (updated) {
+                    this.ui.renderScheduleTable();
+                }
+            }, 60 * 1000); // Check every minute
         },
 
         // --- DATA & SCHEDULE LOGIC ---
@@ -463,6 +478,48 @@
             } finally {
                 this.isConnecting = false;
             }
+        },
+
+        findNextUpcomingClasses: function() {
+            this.nextUpcomingClassIds.clear();
+            const today = new Date();
+            const todayIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
+
+            // This feature only works if the user is viewing today's schedule in day view.
+            if (this.currentViewMode !== AppConfig.MODES.DAY || this.currentDayIndex !== todayIndex) {
+                return false; // Return false to indicate no update was made
+            }
+
+            const nowInMinutes = today.getHours() * 60 + today.getMinutes();
+            let upcomingClasses = [];
+
+            // Collect all of today's classes that haven't started yet.
+            for (const classroom in this.scheduleData) {
+                if (this.scheduleData[classroom]?.[todayIndex]) {
+                    this.scheduleData[classroom][todayIndex].forEach(course => {
+                        const startTimeInMinutes = this.timeToMinutes(course.timeStart);
+                        if (startTimeInMinutes > nowInMinutes) {
+                            upcomingClasses.push(course);
+                        }
+                    });
+                }
+            }
+
+            if (upcomingClasses.length === 0) {
+                return false; // No upcoming classes today
+            }
+
+            // Find the earliest start time among the upcoming classes.
+            const nextStartTime = Math.min(...upcomingClasses.map(c => this.timeToMinutes(c.timeStart)));
+
+            // Find all classes that match this earliest start time.
+            upcomingClasses.forEach(course => {
+                if (this.timeToMinutes(course.timeStart) === nextStartTime) {
+                    this.nextUpcomingClassIds.add(course.id);
+                }
+            });
+            
+            return true; // Return true to indicate an update was made
         },
 
         // --- UTILITY ---

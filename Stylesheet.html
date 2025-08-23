@@ -434,4 +434,42 @@
         background-color: transparent;
         color: #4b5563; /* gray-600 */
     }
+
+    /* --- Upcoming Class Combined Highlight --- */
+    @keyframes pulse-border {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7); /* orange-500 with opacity */
+        }
+        50% {
+            box-shadow: 0 0 0 4px rgba(249, 115, 22, 0);
+        }
+    }
+
+    .class-item.upcoming-highlight {
+        border: 2px solid #f97316; /* orange-500 */
+        animation: pulse-border 2s infinite;
+    }
+
+    .upcoming-arrow-marker {
+        position: absolute;
+        right: 0px; /* Position it at the edge of the cell */
+        transform: translateY(-50%); /* Vertically center */
+        color: #f97316; /* orange-500 */
+        display: flex;
+        align-items: center;
+        font-size: 12px;
+        font-weight: 600;
+        pointer-events: none; /* Prevent it from blocking clicks on the cell */
+    }
+
+    .upcoming-arrow-marker .arrow-icon {
+        width: 24px;
+        height: 24px;
+        animation: bounce-horizontal 1.5s infinite;
+    }
+
+    @keyframes bounce-horizontal {
+        0%, 100% { transform: translateX(0); }
+        50% { transform: translateX(-5px); }
+    }
 </style>
