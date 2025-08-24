@@ -415,6 +415,7 @@ function createInteractionModule(app) {
     },
 
     handleEmptyCellDoubleClick: async function(e, cell) {
+        if (app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) return;
         if (app.activeInlineForm) {
             const isClosed = await app.activeInlineForm.close();
             if (!isClosed) return;
@@ -427,6 +428,7 @@ function createInteractionModule(app) {
     },
 
     handleEditFieldClick: async function(e, element) {
+        if (app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) return;
         if (app.activeInlineForm) {
             const isClosed = await app.activeInlineForm.close();
             if (!isClosed) return;
@@ -449,6 +451,17 @@ function createInteractionModule(app) {
     },
 
     handleScheduleBodyClick: function(event) {
+        if (app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
+            // In "All Schedules" view, only allow selection
+            const classElement = event.target.closest('.class-item');
+            if (classElement) {
+                app.ui.toggleSelection(classElement);
+            } else {
+                app.ui.clearAllSelections();
+            }
+            return;
+        }
+
         if (app.activeInlineForm) {
             return;
         }
@@ -506,6 +519,7 @@ function createInteractionModule(app) {
     },
 
     handleDeleteClassClick: async function(event, btn) {
+        if (app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) return;
         const classElement = btn.closest('.class-item');
         const classId = classElement.dataset.id;
         const classroom = btn.dataset.classroom;

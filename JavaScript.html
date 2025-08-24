@@ -141,6 +141,17 @@
         },
 
         loadSchedule: function(scheduleId) {
+            if (scheduleId === AppConfig.ALL_SCHEDULES_ID) {
+                this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
+                this.classrooms = [];
+                this.scheduleData = {};
+                this.departments = [];
+                this.ui.renderScheduleTable();
+                this.ui.updateGlobalUIForScheduleMode();
+                localStorage.setItem('activeScheduleId', scheduleId);
+                return;
+            }
+
             if (!this.schedules[scheduleId]) {
                 this.ui.showNotification(`錯誤：找不到指定的課表 ID: ${scheduleId}`, 'error');
                 const firstId = Object.keys(this.schedules)[0];
@@ -163,6 +174,7 @@
             this.ui.updateClassroomList();
             this.ui.updateDepartmentList();
             this.ui.renderScheduleTable();
+            this.ui.updateGlobalUIForScheduleMode();
             this.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE);
             this.historyModule.resetHistory(); // Moved from loadDataFromServer
             localStorage.setItem('activeScheduleId', scheduleId);
@@ -289,7 +301,38 @@
                     return;
                 }
             }
-            this.loadSchedule(newId);
+            if (newId === AppConfig.ALL_SCHEDULES_ID) {
+                this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
+                
+                const allDepartments = new Set();
+                const allSchedulesData = {};
+
+                Object.values(this.schedules).forEach(schedule => {
+                    if (!schedule.data) return;
+                    if (schedule.data.departments) {
+                        schedule.data.departments.forEach(dept => allDepartments.add(dept));
+                    }
+                    if (schedule.data.scheduleData) {
+                        Object.entries(schedule.data.scheduleData).forEach(([classroom, days]) => {
+                            if (!allSchedulesData[classroom]) allSchedulesData[classroom] = {};
+                            Object.entries(days).forEach(([day, courses]) => {
+                                if (!allSchedulesData[classroom][day]) allSchedulesData[classroom][day] = [];
+                                allSchedulesData[classroom][day].push(...courses);
+                            });
+                        });
+                    }
+                });
+                
+                this.departments = Array.from(allDepartments).sort();
+                this.buildCourseColorMap(allSchedulesData);
+                
+                this.ui.updateDepartmentList();
+                this.ui.renderScheduleTable();
+                this.ui.updateGlobalUIForScheduleMode();
+                localStorage.setItem('activeScheduleId', this.activeScheduleId);
+            } else {
+                this.loadSchedule(newId);
+            }
         },
 
         // --- FILTER LOGIC ---
@@ -557,12 +600,12 @@
             return hash;
         },
 
-        buildCourseColorMap: function() {
+        buildCourseColorMap: function(dataSource = this.scheduleData) {
             this.courseColorMap = {};
             const allNames = new Set();
-            if (!this.scheduleData) return;
+            if (!dataSource) return;
 
-            Object.values(this.scheduleData).forEach(classroom => {
+            Object.values(dataSource).forEach(classroom => {
                 if (!classroom) return;
                 Object.values(classroom).forEach(daySchedule => {
                     if (Array.isArray(daySchedule)) {

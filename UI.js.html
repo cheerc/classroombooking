@@ -13,7 +13,6 @@ function createUIModule(app) {
             }
             activeTooltip.element = null;
         } else {
-            // Give a small delay for mouse-out events
             activeTooltip.hideTimeout = setTimeout(() => {
                 if (activeTooltip.element && activeTooltip.element.parentElement) {
                     activeTooltip.element.remove();
@@ -50,17 +49,14 @@ function createUIModule(app) {
     initializeTooltips: function() {
         document.querySelectorAll('[data-tooltip]:not([data-tooltip-initialized])').forEach(el => {
             el.setAttribute('data-tooltip-initialized', 'true');
-
             const showTooltip = () => {
-                this.hideActiveTooltip(true); // Hide any existing tooltip immediately
-
+                this.hideActiveTooltip(true);
                 const tooltipDiv = document.createElement('div');
                 tooltipDiv.className = 'fixed bg-gray-800 text-white text-xs rounded py-1 px-2 shadow-lg';
                 tooltipDiv.style.zIndex = '1050';
                 tooltipDiv.textContent = el.getAttribute('data-tooltip');
                 document.body.appendChild(tooltipDiv);
                 activeTooltip.element = tooltipDiv;
-
                 const rect = el.getBoundingClientRect();
                 const tooltipRect = tooltipDiv.getBoundingClientRect();
                 const viewportWidth = window.innerWidth;
@@ -72,7 +68,6 @@ function createUIModule(app) {
                 tooltipDiv.style.left = `${left}px`;
                 tooltipDiv.style.top = `${top}px`;
             };
-
             el.addEventListener('mouseenter', showTooltip);
             el.addEventListener('mouseleave', () => this.hideActiveTooltip(false));
             el.addEventListener('click', () => this.hideActiveTooltip(true));
@@ -81,7 +76,6 @@ function createUIModule(app) {
 
     manageLoadingState: function(state, options = {}) {
         const { success = true, message = '', isConflict = false } = options;
-
         if (state === 'start') {
             this.showLoading(message);
             this.updateSyncStatus(AppConfig.STATUS.SYNCING);
@@ -89,7 +83,6 @@ function createUIModule(app) {
         } else if (state === 'end') {
             this.hideLoading();
             [elements.loadFromCloudBtn, elements.saveToCloudBtn].forEach(btn => btn.disabled = false);
-
             if (success) {
                 this.updateSyncStatus(AppConfig.STATUS.SYNCED);
                 this.showNotification(message, 'success');
@@ -104,14 +97,39 @@ function createUIModule(app) {
         }
     },
 
+    updateGlobalUIForScheduleMode: function() {
+        const isAllSchedulesMode = app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
+        const els = AppElements;
+        const buttonsToDisable = [
+            els.saveToCloudBtn, els.loadVersionBtn, els.showClassroomManagerBtn,
+            els.showDepartmentManagerBtn, els.manageSchedulesBtn, els.undoBtn, els.redoBtn,
+            els.showVersionHistoryBtn
+        ];
+        buttonsToDisable.forEach(btn => {
+            if (btn) {
+                btn.disabled = isAllSchedulesMode;
+                btn.classList.toggle('opacity-50', isAllSchedulesMode);
+                btn.classList.toggle('cursor-not-allowed', isAllSchedulesMode);
+            }
+        });
+
+        if (isAllSchedulesMode) {
+            els.syncStatus.className = 'sync-status readonly-mode';
+            els.syncStatusText.textContent = '👀 唯讀總覽模式';
+            els.lastSyncTimeText.textContent = '合併顯示所有課表';
+        } else {
+            app.historyModule.checkDirty();
+        }
+    },
+
     updateSyncStatus: function(status) {
+        if (app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
+            this.updateGlobalUIForScheduleMode();
+            return;
+        }
         const els = AppElements;
         let icon = '', text = '', subtext = '', cssClass = '';
-
-        const lastModifiedString = app.lastCloudModifiedTime 
-            ? `雲端版本: ${new Date(app.lastCloudModifiedTime).toLocaleString()}`
-            : '未曾同步';
-
+        const lastModifiedString = app.lastCloudModifiedTime ? `雲端版本: ${new Date(app.lastCloudModifiedTime).toLocaleString()}` : '未曾同步';
         switch (status) {
             case AppConfig.STATUS.SYNCING:
                 icon = '🔄'; text = '正在同步...'; subtext = '請稍候...'; cssClass = AppConfig.STATUS.SYNCING;
@@ -120,7 +138,7 @@ function createUIModule(app) {
                 icon = '❌'; text = '同步失敗'; subtext = '請檢查網路或稍後再試'; cssClass = AppConfig.STATUS.ERROR;
                 break;
             case AppConfig.STATUS.CONFLICT:
-                icon = '⚠️'; text = '版本衝突'; subtext = '請先讀取雲端資料'; cssClass = AppConfig.STATUS.ERROR; // Use same color for attention
+                icon = '⚠️'; text = '版本衝突'; subtext = '請先讀取雲端資料'; cssClass = AppConfig.STATUS.ERROR;
                 break;
             case AppConfig.STATUS.DIRTY:
                 icon = '⚠️'; text = '有未儲存的變更'; subtext = lastModifiedString; cssClass = AppConfig.STATUS.DIRTY;
@@ -139,6 +157,10 @@ function createUIModule(app) {
         this.hideActiveTooltip();
         const select = AppElements.scheduleSelect;
         select.innerHTML = '';
+        const allOption = document.createElement('option');
+        allOption.value = AppConfig.ALL_SCHEDULES_ID;
+        allOption.textContent = '所有課程';
+        select.appendChild(allOption);
         for (const id in app.schedules) {
             const option = document.createElement('option');
             option.value = id;
@@ -154,22 +176,19 @@ function createUIModule(app) {
         listElement.innerHTML = '';
         const currentUser = app.getShortUserName(typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '');
         const isAdmin = currentUser.toLowerCase() === 'cheerc';
-
         for (const id in app.schedules) {
             const schedule = app.schedules[id];
             const createdBy = app.getShortUserName(schedule.createdBy || '未知');
             const canManage = isAdmin || (currentUser === createdBy);
-
             const li = document.createElement('li');
             li.className = 'schedule-list-item';
-            
             let buttonsHtml = `<button class="copy-schedule-btn text-green-600 hover:text-green-800 text-sm" data-id="${id}">複製</button>`;
             if (canManage) {
                 buttonsHtml += `<button class="rename-schedule-btn text-blue-600 hover:text-blue-800 text-sm ml-2" data-id="${id}">重新命名</button>`;
                 buttonsHtml += `<button class="delete-schedule-btn text-red-600 hover:text-red-800 text-sm ml-2" data-id="${id}">刪除</button>`;
             }
-
-            li.innerHTML = `
+            li.innerHTML = (
+                `
                 <div class="schedule-info">
                     <span class="schedule-name" data-tooltip="${schedule.name}" data-id="${id}">${schedule.name}</span>
                     <span class="schedule-owner">(建立者: ${createdBy})</span>
@@ -177,7 +196,8 @@ function createUIModule(app) {
                 <div class="schedule-actions">
                     ${buttonsHtml}
                 </div>
-            `;
+            `
+            );
             listElement.appendChild(li);
         }
         this.initializeTooltips();
@@ -186,20 +206,18 @@ function createUIModule(app) {
     renderManagerList: function(config) {
         this.hideActiveTooltip();
         const { listElement, items, itemType, sortFn } = config;
-
         const sortedItems = sortFn ? sortFn(items) : [...items].sort();
-
         this.renderList(listElement, sortedItems, (item) => {
             const li = document.createElement('li');
             li.className = 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded';
-            li.innerHTML = `
+            li.innerHTML = (
+                `
                 <span>${item}</span>
                 <button class="delete-${itemType} text-red-600 hover:text-red-800" data-${itemType}="${item}">
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
-            `;
+            `
+            );
             return li;
         });
     },
@@ -215,12 +233,10 @@ function createUIModule(app) {
                 else if (f.type === 'teacher') acc.teacher = (acc.teacher || 0) + 1;
                 return acc;
             }, {});
-            
             const parts = [];
             if (counts.name) parts.push(`${counts.name} 門課程`);
             if (counts.department) parts.push(`${counts.department} 個部門`);
             if (counts.teacher) parts.push(`${counts.teacher} 位使用人`);
-
             display.textContent = `已篩選: ${parts.join(', ')}`;
         }
     },
@@ -250,7 +266,7 @@ function createUIModule(app) {
     populateDepartmentQuickFilter: function() {
         const select = AppElements.departmentQuickFilter;
         if (!select) return;
-        
+        const lastFilter = select.value;
         select.innerHTML = '<option value="all">所有部門</option>';
         const sortedDepartments = app.departments.slice().sort();
         sortedDepartments.forEach(dept => {
@@ -259,8 +275,6 @@ function createUIModule(app) {
             option.textContent = dept;
             select.appendChild(option);
         });
-
-        const lastFilter = localStorage.getItem('lastQuickFilter');
         if (lastFilter && app.departments.includes(lastFilter)) {
             select.value = lastFilter;
         } else {
@@ -285,27 +299,19 @@ function createUIModule(app) {
     createClassElement: function(classItem, classroom, day, overrideColor = null) {
         const isUpcoming = app.nextUpcomingClassIds.has(classItem.id);
         const hasConflict = app.checkTimeConflict(classroom, day, classItem);
-        
-        const conflictIcon = hasConflict 
-            ? `<div class="conflict-icon" title="時間衝突"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.752a3 3 0 01-2.598 4.5H4.644a3 3 0 01-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg></div>`
-            : '';
-        
+        const conflictIcon = hasConflict ? `<div class="conflict-icon" title="時間衝突"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.752a3 3 0 01-2.598 4.5H4.644a3 3 0 01-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg></div>` : '';
         const bgColor = overrideColor || app.courseColorMap[classItem.name] || '#E2E8F0';
-
         const departmentTags = (classItem.departments || []).map(dept => `<span class="department-tag-vertical">${dept}</span>`).join('');
         const allDepartmentsTooltip = (classItem.departments || []).join(', ');
-
-        const notesHtml = app.currentViewMode === AppConfig.MODES.DAY 
-            ? `<div class="course-notes editable" data-field="notes">${classItem.notes || ''}</div>`
-            : '';
-        
+        const notesHtml = app.currentViewMode === AppConfig.MODES.DAY ? `<div class="course-notes editable" data-field="notes">${classItem.notes || ''}</div>` : '';
         const viewModeClass = app.currentViewMode === AppConfig.MODES.DAY ? 'day-view-layout' : '';
         const classDiv = document.createElement('div');
         classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''} ${isUpcoming ? 'upcoming-highlight' : ''} ${viewModeClass}`);
         classDiv.style.backgroundColor = bgColor;
         classDiv.dataset.id = classItem.id;
         classDiv.dataset.name = classItem.name;
-        classDiv.innerHTML = `
+        classDiv.innerHTML = (
+            `
             <div class="class-item-content">
                 <div class="font-medium editable" data-field="name">${classItem.name}</div>
                 <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
@@ -315,17 +321,15 @@ function createUIModule(app) {
             <div class="department-tags-vertical-container editable" data-field="departments" data-tooltip="部門: ${allDepartmentsTooltip}">${departmentTags}</div>
             <span class="delete-btn" data-classroom="${classroom}" data-day="${day}">×</span>
             ${conflictIcon}
-        `;
-
+        `
+        );
         return classDiv;
     },
 
     toggleSelection: function(clickedElement) {
         const courseName = clickedElement.dataset.name;
         const isAlreadyPrimary = clickedElement.classList.contains('primary-selection');
-
         this.clearAllSelections();
-
         if (!isAlreadyPrimary) {
             document.body.classList.add('has-selection');
             const allClassElements = document.querySelectorAll('.class-item');
@@ -349,15 +353,14 @@ function createUIModule(app) {
         if (app.currentViewMode === mode) return;
         app.currentViewMode = mode;
         localStorage.setItem('lastViewMode', mode);
-
         if (mode === AppConfig.MODES.DAY) {
             const today = new Date().getDay();
             app.currentDayIndex = (today === 0) ? 6 : today - 1;
-            app.dayViewSortMode = 'time'; 
+            app.dayViewSortMode = 'time';
         }
         this.renderScheduleTable();
     },
-    
+
     setDayViewSortMode: function(mode) {
         if (app.dayViewSortMode === mode) return;
         app.dayViewSortMode = mode;
@@ -376,33 +379,29 @@ function createUIModule(app) {
         } else {
             AppElements.dayViewSortSelector.style.display = 'none';
         }
-
         const tableHead = AppElements.scheduleBody.previousElementSibling;
         tableHead.innerHTML = '';
         const tr = document.createElement('tr');
         tr.className = 'relative z-10';
-
         AppElements.dayViewControls.style.display = 'none';
-
         if (app.currentViewMode === AppConfig.MODES.WEEK) {
             AppElements.viewModeWeekBtn.classList.add('active');
             AppElements.viewModeDayBtn.classList.remove('active');
-            tr.innerHTML = `
-                <th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
+            tr.innerHTML = (
+                `<th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
                     <span class="diagonal-split-top">星期</span>
                     <span class="diagonal-split-bottom">教室</span>
                 </th>
                 ${AppConfig.WEEKDAYS.map(day => `<th class="border border-gray-300 p-2 bg-gray-200 w-1/7">${day}</th>`).join('')}
-            `;
+            `
+            );
         } else {
             AppElements.viewModeDayBtn.classList.add('active');
             AppElements.viewModeWeekBtn.classList.remove('active');
-            
             AppElements.daySortClassroomBtn.classList.toggle('active', app.dayViewSortMode === 'classroom');
             AppElements.daySortTimeBtn.classList.toggle('active', app.dayViewSortMode === 'time');
-
-            tr.innerHTML = `
-                <th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
+            tr.innerHTML = (
+                `<th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
                     <span class="diagonal-split-top">星期</span>
                     <span class="diagonal-split-bottom">教室</span>
                 </th>
@@ -413,7 +412,8 @@ function createUIModule(app) {
                         <button id="header-next-day-btn" class="p-2 rounded-full hover:bg-gray-300 transition"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" stroke-width=\"2\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 5l7 7-7 7\" /></svg></button>
                     </div>
                 </th>
-            `;
+            `
+            );
         }
         tableHead.appendChild(tr);
     },
@@ -423,6 +423,10 @@ function createUIModule(app) {
             this.hideActiveTooltip();
             app.findNextUpcomingClasses();
             this.updateViewControls();
+            if (app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
+                this.renderAllSchedulesView();
+                return;
+            }
             let dataToRender = app.scheduleData;
             const quickFilterDept = AppElements.departmentQuickFilter.value;
             if (quickFilterDept && quickFilterDept !== 'all') {
@@ -446,6 +450,99 @@ function createUIModule(app) {
         }
     },
 
+    renderAllSchedulesView: function() {
+        AppElements.scheduleBody.innerHTML = '';
+        const classroomMetadataMap = new Map();
+        const dataForFiltering = {};
+
+        Object.values(app.schedules).forEach(schedule => {
+            if (!schedule.data) return;
+            const scheduleName = schedule.name;
+            if (schedule.data.scheduleData) {
+                Object.entries(schedule.data.scheduleData).forEach(([classroom, days]) => {
+                    const uniqueClassroomName = `[${scheduleName}] ${classroom}`;
+                    
+                    if (!classroomMetadataMap.has(uniqueClassroomName)) {
+                        classroomMetadataMap.set(uniqueClassroomName, { scheduleName, classroomName: classroom });
+                    }
+                    
+                    if (!dataForFiltering[uniqueClassroomName]) {
+                        dataForFiltering[uniqueClassroomName] = {};
+                    }
+
+                    Object.entries(days).forEach(([day, courses]) => {
+                        if (!dataForFiltering[uniqueClassroomName][day]) {
+                            dataForFiltering[uniqueClassroomName][day] = [];
+                        }
+                        dataForFiltering[uniqueClassroomName][day].push(...courses);
+                    });
+                });
+            }
+        });
+
+        let dataToRender = dataForFiltering;
+        const quickFilterDept = AppElements.departmentQuickFilter.value;
+        if (quickFilterDept && quickFilterDept !== 'all') {
+            dataToRender = app.filterDataByDepartment(dataToRender, quickFilterDept);
+        }
+        if (app.activeFilters && app.activeFilters.length > 0) {
+            dataToRender = app.filterDataByActiveFilters(dataToRender);
+        }
+
+        if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
+            const day = app.currentDayIndex;
+            let allCoursesForDay = [];
+            for (const uniqueClassroomName in dataToRender) {
+                if (dataToRender[uniqueClassroomName][day]) {
+                    dataToRender[uniqueClassroomName][day].forEach(course => {
+                        allCoursesForDay.push({ ...course, classroom: uniqueClassroomName });
+                    });
+                }
+            }
+            allCoursesForDay.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
+            allCoursesForDay.forEach(course => {
+                const tr = document.createElement('tr');
+                const { scheduleName, classroomName } = classroomMetadataMap.get(course.classroom);
+                tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top classroom-cell-stacked"><span class="schedule-prefix">${scheduleName}</span><span class="classroom-name-main">${classroomName}</span></td>`;
+                const td = document.createElement('td');
+                td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top readonly-cell');
+                td.dataset.classroom = course.classroom;
+                td.dataset.day = day;
+                const classDiv = this.createClassElement(course, course.classroom, day);
+                classDiv.classList.add('readonly');
+                classDiv.querySelector('.delete-btn').remove();
+                td.appendChild(classDiv);
+                tr.appendChild(td);
+                AppElements.scheduleBody.appendChild(tr);
+            });
+        } else {
+            const sortedClassrooms = Object.keys(dataToRender).sort();
+            sortedClassrooms.forEach(uniqueClassroomName => {
+                const tr = document.createElement('tr');
+                const { scheduleName, classroomName } = classroomMetadataMap.get(uniqueClassroomName);
+                tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top classroom-cell-stacked"><span class="schedule-prefix">${scheduleName}</span><span class="classroom-name-main">${classroomName}</span></td>`;
+                const daysToRender = app.currentViewMode === AppConfig.MODES.WEEK ? [0, 1, 2, 3, 4, 5, 6] : [app.currentDayIndex];
+                for (const day of daysToRender) {
+                    const td = document.createElement('td');
+                    td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top readonly-cell');
+                    td.dataset.classroom = uniqueClassroomName;
+                    td.dataset.day = day;
+                    const courses = dataToRender[uniqueClassroomName]?.[day] || [];
+                    courses.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
+                    courses.forEach(course => {
+                        const classDiv = this.createClassElement(course, uniqueClassroomName, day);
+                        classDiv.classList.add('readonly');
+                        classDiv.querySelector('.delete-btn').remove();
+                        td.appendChild(classDiv);
+                    });
+                    tr.appendChild(td);
+                }
+                AppElements.scheduleBody.appendChild(tr);
+            });
+        }
+        this.initializeTooltips();
+    },
+
     addUpcomingClassIndicators: function() {
         document.querySelectorAll('.class-item.upcoming-highlight').forEach(classItem => {
             const parentRow = classItem.closest('tr');
@@ -455,12 +552,14 @@ function createUIModule(app) {
             headerCell.style.position = 'relative';
             const arrow = document.createElement('div');
             arrow.className = 'upcoming-arrow-marker';
-            arrow.innerHTML = `
+            arrow.innerHTML = (
+                `
                 <span class="mr-1">即將上課</span>
                 <div class="arrow-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
                 </div>
-            `;
+            `
+            );
             const topPosition = classItem.offsetTop + (classItem.offsetHeight / 2);
             arrow.style.top = `${topPosition}px`;
             headerCell.appendChild(arrow);
@@ -480,7 +579,7 @@ function createUIModule(app) {
         allCoursesForDay.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
         allCoursesForDay.forEach(course => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${course.classroom}</td>`;
+            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${course.classroom}</span></td>`;
             const td = document.createElement('td');
             td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
             td.dataset.classroom = course.classroom;
@@ -497,10 +596,8 @@ function createUIModule(app) {
         const sortedClassrooms = app.sortClassrooms(Array.from(classroomsWithSchedule));
         sortedClassrooms.forEach(classroom => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top">${classroom}</td>`;
-            
+            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${classroom}</span></td>`;
             const daysToRender = app.currentViewMode === AppConfig.MODES.WEEK ? [0, 1, 2, 3, 4, 5, 6] : [app.currentDayIndex];
-
             for (const day of daysToRender) {
                 const td = document.createElement('td');
                 td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
@@ -528,21 +625,30 @@ function createUIModule(app) {
 
     setupDragAndDrop: function() {
         try {
+            const isReadOnly = app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
             document.querySelectorAll('.schedule-cell').forEach(cell => {
                 if (cell.sortable) cell.sortable.destroy();
                 cell.sortable = new Sortable(cell, {
-                    group: 'classes',
+                    group: {
+                        name: 'classes',
+                        pull: !isReadOnly,
+                        put: !isReadOnly
+                    },
                     animation: 150,
+                    disabled: isReadOnly,
                     onStart: (evt) => {
+                        if (isReadOnly) return;
                         app.originalSourceListElement = evt.from;
                     },
                     onMove: (evt) => {
+                        if (isReadOnly) return false;
                         if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
                             return false;
                         }
                         return evt.from !== evt.to;
                     },
                     onEnd: (evt) => {
+                        if (isReadOnly) return;
                         if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
                             this.renderScheduleTable();
                             return;
