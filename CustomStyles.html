@@ -490,4 +490,27 @@
         text-align: center;
         vertical-align: middle;
     }
+
+    .classroom-name-main, .upcoming-badge {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .upcoming-badge {
+        margin-top: 4px; /* Add some space */
+        padding: 2px 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #9a3412; /* orange-900 */
+        background-color: #fed7aa; /* orange-200 */
+        border-radius: 9999px;
+        white-space: nowrap;
+        animation: pulse-bg 2s infinite;
+    }
+
+    @keyframes pulse-bg {
+        0%, 100% { background-color: #fed7aa; } /* orange-200 */
+        50% { background-color: #fcd34d; } /* amber-300 */
+    }
 </style>

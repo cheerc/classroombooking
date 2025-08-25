@@ -510,45 +510,39 @@
         },
 
         findNextUpcomingClasses: function() {
+            const originalUpcomingClassIds = new Set(this.nextUpcomingClassIds);
             this.nextUpcomingClassIds.clear();
+            
             const today = new Date();
             const todayIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
 
-            // This feature only works if the user is viewing today's schedule in day view.
             if (this.currentViewMode !== AppConfig.MODES.DAY || this.currentDayIndex !== todayIndex) {
-                return false; // Return false to indicate no update was made
+                return false;
             }
 
             const nowInMinutes = today.getHours() * 60 + today.getMinutes();
-            let upcomingClasses = [];
+            const thresholdInMinutes = 30;
 
-            // Collect all of today's classes that haven't started yet.
             for (const classroom in this.scheduleData) {
                 if (this.scheduleData[classroom]?.[todayIndex]) {
                     this.scheduleData[classroom][todayIndex].forEach(course => {
                         const startTimeInMinutes = this.timeToMinutes(course.timeStart);
-                        if (startTimeInMinutes > nowInMinutes) {
-                            upcomingClasses.push(course);
+                        const timeDifference = startTimeInMinutes - nowInMinutes;
+
+                        if (timeDifference > 0 && timeDifference <= thresholdInMinutes) {
+                            this.nextUpcomingClassIds.add(course.id);
                         }
                     });
                 }
             }
 
-            if (upcomingClasses.length === 0) {
-                return false; // No upcoming classes today
+            // Check if the set of upcoming classes has actually changed to avoid unnecessary re-renders.
+            if (originalUpcomingClassIds.size !== this.nextUpcomingClassIds.size || 
+                ![...originalUpcomingClassIds].every(id => this.nextUpcomingClassIds.has(id))) {
+                return true; // Return true to indicate an update is needed
             }
-
-            // Find the earliest start time among the upcoming classes.
-            const nextStartTime = Math.min(...upcomingClasses.map(c => this.timeToMinutes(c.timeStart)));
-
-            // Find all classes that match this earliest start time.
-            upcomingClasses.forEach(course => {
-                if (this.timeToMinutes(course.timeStart) === nextStartTime) {
-                    this.nextUpcomingClassIds.add(course.id);
-                }
-            });
             
-            return true; // Return true to indicate an update was made
+            return false; // No change, no update needed
         },
 
         // --- UTILITY ---
