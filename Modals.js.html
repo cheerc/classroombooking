@@ -64,8 +64,16 @@ function createModalModule(app) {
         if (!modal || !closeBtn) return;
         
         const openModal = () => {
-            if (onOpen) onOpen();
-            modal.style.display = 'flex';
+            let shouldOpen = true;
+            if (onOpen) {
+                // Only prevent opening if the onOpen function explicitly returns false.
+                if (onOpen() === false) {
+                    shouldOpen = false;
+                }
+            }
+            if (shouldOpen) {
+                modal.style.display = 'flex';
+            }
         }
         const closeModal = () => modal.style.display = 'none';
 
@@ -109,6 +117,10 @@ function createModalModule(app) {
             message: message,
             defaultValue: defaultValue
         });
+    },
+
+    showAlert: function(message) {
+        return this.showConfirm(message, true);
     },
 
     /**

@@ -48,20 +48,6 @@
             const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
             this.currentUserEmail = this.getShortUserName(fullEmail);
 
-            // Permission control
-            if (fullEmail.toLowerCase() !== 'cheerc@talented.com.tw') {
-                const adminElements = [
-                    AppElements.showClassroomManagerBtn,
-                    AppElements.showDepartmentManagerBtn,
-                    AppElements.showVersionHistoryBtn,
-                    AppElements.manageSchedulesBtn,
-                    document.getElementById('admin-separator')
-                ];
-                adminElements.forEach(el => {
-                    if (el) el.style.display = 'none';
-                });
-            }
-
             // The initial load logic is now split. We first load from local storage,
             // then fetch from server, which will then call loadInitialSchedules again.
             this.interaction.addEventListeners();
@@ -569,6 +555,25 @@
         getShortUserName: function(email) {
             if (!email || email.indexOf('@') === -1) return email;
             return email.split('@')[0];
+        },
+
+        isCurrentUserAdmin: function() {
+            const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
+            return fullEmail.toLowerCase() === 'cheerc@talented.com.tw';
+        },
+
+        canManageCurrentScheduleSettings: function() {
+            if (this.isCurrentUserAdmin()) {
+                return true;
+            }
+            if (this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
+                return false; // Cannot manage settings in "All Schedules" view
+            }
+            const schedule = this.schedules[this.activeScheduleId];
+            if (!schedule || !schedule.createdBy) {
+                return false; // No schedule or creator info
+            }
+            return this.currentUserEmail === this.getShortUserName(schedule.createdBy);
         },
 
         ensureDataIds: function(scheduleData) {

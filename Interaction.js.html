@@ -33,9 +33,24 @@ function createInteractionModule(app) {
         els.undoBtn.addEventListener('click', () => app.historyModule.undo());
         els.redoBtn.addEventListener('click', () => app.historyModule.redo());
         
-        app.modals.setupModalListeners(els.showClassroomManagerBtn, els.classroomManagerModal, els.classroomManagerModalClose);
-        app.modals.setupModalListeners(els.showDepartmentManagerBtn, els.departmentManagerModal, els.departmentManagerModalClose);
-        app.modals.setupModalListeners(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose, () => app.loadVersions());
+        const adminOnlyMessage = '此功能需要管理員或課表建立者權限。<br>若有需求，請聯繫系統管理員。';
+
+        const setupAdminModal = (triggerBtn, modal, closeBtn, onOpen) => {
+            app.modals.setupModalListeners(triggerBtn, modal, closeBtn, () => {
+                if (app.canManageCurrentScheduleSettings()) {
+                    if (onOpen) onOpen();
+                    return true; // Proceed to open modal
+                } else {
+                    app.modals.showAlert(adminOnlyMessage);
+                    return false; // Prevent modal from opening
+                }
+            });
+        };
+
+        setupAdminModal(els.showClassroomManagerBtn, els.classroomManagerModal, els.classroomManagerModalClose);
+        setupAdminModal(els.showDepartmentManagerBtn, els.departmentManagerModal, els.departmentManagerModalClose);
+        setupAdminModal(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose, () => app.loadVersions());
+        
         app.modals.setupModalListeners(els.showHelpBtn, els.helpModal, els.helpModalClose);
         app.modals.setupModalListeners(els.showFilterBtn, els.filterModal, els.filterModalClose, () => app.modals.populateFilterModal());
         app.modals.setupModalListeners(els.manageSchedulesBtn, els.scheduleManagerModal, els.scheduleManagerModalClose, () => app.ui.renderScheduleList());

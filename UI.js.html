@@ -161,7 +161,8 @@ function createUIModule(app) {
         allOption.value = AppConfig.ALL_SCHEDULES_ID;
         allOption.textContent = '所有課程';
         select.appendChild(allOption);
-        for (const id in app.schedules) {
+        const sortedScheduleIds = Object.keys(app.schedules).sort();
+        for (const id of sortedScheduleIds) {
             const option = document.createElement('option');
             option.value = id;
             option.textContent = app.schedules[id].name;
@@ -176,7 +177,8 @@ function createUIModule(app) {
         listElement.innerHTML = '';
         const currentUser = app.getShortUserName(typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '');
         const isAdmin = currentUser.toLowerCase() === 'cheerc';
-        for (const id in app.schedules) {
+        const sortedScheduleIds = Object.keys(app.schedules).sort();
+        for (const id of sortedScheduleIds) {
             const schedule = app.schedules[id];
             const createdBy = app.getShortUserName(schedule.createdBy || '未知');
             const canManage = isAdmin || (currentUser === createdBy);
