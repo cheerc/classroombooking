@@ -129,7 +129,8 @@ function createUIModule(app) {
         }
         const els = AppElements;
         let icon = '', text = '', subtext = '', cssClass = '';
-        const lastModifiedString = app.lastCloudModifiedTime ? `雲端版本: ${new Date(app.lastCloudModifiedTime).toLocaleString()}` : '未曾同步';
+        const lastModifiedTimestamp = app.scheduleLastModified[app.activeScheduleId];
+        const lastModifiedString = lastModifiedTimestamp ? `雲端版本: ${new Date(lastModifiedTimestamp).toLocaleString()}` : '未曾同步';
         switch (status) {
             case AppConfig.STATUS.SYNCING:
                 icon = '🔄'; text = '正在同步...'; subtext = '請稍候...'; cssClass = AppConfig.STATUS.SYNCING;
