@@ -6,7 +6,7 @@
 
 這是一個建立在 Google Apps Script 上的 Web App，提供一個視覺化的介面來管理多個教室的課程預約。使用者可以透過拖拉、點擊等方式新增、修改、刪除課程。所有資料都儲存在後端的 Google Sheet 中。
 
-- **前端**: 使用 HTML、CSS (Tailwind CSS) 和原生 JavaScript 建立互動介面。
+- **前端**: 使用 HTML、CSS (Tailwind CSS) 和原生 JavaScript 建立互動介面。樣式系統透過 **npm** 與 **Tailwind CLI** 進行建置，以達到最佳化效能。
 - **後端**: 使用 Google Apps Script (`.gs` 或 `.js` 檔案) 處理資料的讀取、儲存和版本控制。
 - **資料庫**: 使用 Google Sheet 作為資料儲存的媒介。
 
@@ -14,7 +14,7 @@
 
 ## 檔案結構
 
-專案的檔案主要分為後端邏輯和前端介面兩部分。
+專案的檔案主要分為後端邏輯、前端介面與開發工具三大部分。
 
 ### 後端 (Server-side)
 
@@ -34,12 +34,16 @@
 
 - **`Index.html`**:
   - 專案的主入口 HTML 檔案。
-  - 負責載入所有 CSS (`Stylesheet.html`) 和 JavaScript (`.js.html`) 檔案。
+  - 負責載入所有 CSS (`Tailwind.html`, `CustomStyles.html`) 和 JavaScript (`.js.html`) 檔案。
   - 包含所有主要的 UI 元素骨架，如按鈕、表格、彈出視窗 (Modal) 等。
 
-- **`Stylesheet.html`**:
-  - 包含所有的 CSS 樣式。
-  - 除了使用 CDN 載入的 Tailwind CSS 外，也包含一些客製化的樣式規則。
+- **`Tailwind.html`**:
+  - **由 Tailwind CLI 自動產生**，包含所有專案中使用到的 Tailwind CSS 樣式。
+  - **注意**: **不應手動編輯此檔案**，其內容應由 `output.css` 複製而來。
+
+- **`CustomStyles.html`**:
+  - 包含所有**手寫的客製化 CSS 樣式**。
+  - 若有 Tailwind 無法輕易實現的複雜樣式，請在此檔案中撰寫。
 
 - **`JavaScript.html`**:
   - **核心前端邏輯**。
@@ -73,11 +77,41 @@
   - 集中管理所有的事件監聽 (`addEventListeners`)。
   - 處理使用者的互動邏輯，例如點擊、雙擊、拖曳、鍵盤事件等。
 
+### 開發工具 (Development Tools)
+
+- **`package.json`**: `npm` 的設定檔，用於管理專案的開發依賴（例如 `tailwindcss`）。
+- **`tailwind.config.js`**: Tailwind CSS 的設定檔。您可以在此客製化主題，例如新增顏色、字體等。
+- **`input.css`**: Tailwind CSS 的來源檔，定義了要引入的基礎樣式。通常不需要修改。
+- **`output.css`**: **建置後的暫存檔**。執行 `npm run build-css` 後會產生此檔案。
+- **`.claspignore`**: `clasp` 的忽略清單，確保開發用的檔案（如 `node_modules`）不會被上傳到 Apps Script。
+
 ---
 
 ## 開發與維護指南
 
-### 1. 前後端溝通
+### 1. 前端樣式 (CSS) 開發流程
+
+專案已從 CDN 改為使用 Tailwind CLI 進行 CSS 建置，以獲得最佳化的效能。
+
+- **首次設定**:
+  1.  確保您已安裝 [Node.js](https://nodejs.org/) (包含 npm)。
+  2.  在專案根目錄執行 `npm install` 來安裝開發依賴。
+
+- **修改 Tailwind Class**:
+  1.  在任何 `.html` 檔案中新增、修改或刪除 Tailwind 的 utility class (例如 `bg-blue-500`, `text-lg`)。
+  2.  修改完成後，在終端機執行 `npm run build-css`。
+  3.  此指令會掃描所有 `.html` 檔案，並產生一個最佳化過的 `output.css` 檔案。
+  4.  **【關鍵步驟】**: 手動將 `output.css` 的**完整內容**複製並貼上到 `Tailwind.html` 檔案中，**完全覆蓋**舊的內容。
+
+- **新增客製化 CSS**:
+  1.  若有 Tailwind 無法輕易實現的樣式，請將手寫的 CSS 規則新增到 `CustomStyles.html` 檔案中。
+  2.  此操作**不需要**執行建置指令。
+
+- **重要原則**:
+  - **絕對不要手動編輯 `Tailwind.html`**，它的內容應永遠來自 `output.css`。
+  - **`output.css` 是一個暫存檔**，不需要提交到版本控制中。
+
+### 2. 前後端溝通
 
 - **前端呼叫後端**:
   - 統一使用 `Api.js.html` 中定義的 `ServerApi.call('後端函式名稱', ...參數)`。
@@ -87,7 +121,7 @@
   - 在 `程式碼.js` 中定義的全域函式，可以直接被前端呼叫。
   - **注意**: 函式名稱在前後端必須完全一致。
 
-### 2. 狀態管理
+### 3. 狀態管理
 
 - 前端的核心狀態都存放在 `JavaScript.html` 的 `App` 物件中。
 - 主要狀態包括：
@@ -98,7 +132,7 @@
   - `isDirty`: 一個布林值，用來追蹤目前是否有未儲存的變更。
 - **修改狀態後，務必呼叫相關的渲染函式** (如 `renderScheduleTable()`, `updateClassroomList()`) 來更新 UI。
 
-### 3. 新增功能流程
+### 4. 新增功能流程
 
 - **新增 UI 元素**:
   1. 在 `Index.html` 中加入新的 HTML 元素，並給予唯一的 `id`。
@@ -110,7 +144,7 @@
   2. 確保函式有處理錯誤的能力，並回傳包含 `success` 或 `error` 屬性的物件。
   3. 在前端的 `JavaScript.html` 中，透過 `ServerApi.call()` 呼叫此新函式。
 
-### 4. 注意事項
+### 5. 注意事項
 
 - **避免使用全域變數**: 盡量將變數和函式放在 `App` 物件內，避免污染全域命名空間。
 - **程式碼風格**: 為了確保程式碼的一致性與可維護性，請遵循以下風格指南：
@@ -124,7 +158,9 @@
     - **集中管理**: 所有代表狀態、模式的字串，都應集中定義在 `Config.js.html` 的 `AppConfig` 物件中，方便統一管理與修改。
   - **字串拼接**:
     - **使用樣板字面值**: 在拼接 HTML 或包含變數的字串時，應優先使用樣板字面值 (`` ` ``) 取代傳統的 `+` 號拼接，以提升可讀性。
-- **部署**: 此專案使用 `clasp` CLI 工具進行部署。修改完程式碼後，需透過 `clasp push` 將本地檔案推送到 Google Apps Script 平台。
+- **部署**:
+  - 此專案使用 `clasp` CLI 工具進行部署。修改完程式碼後，需透過 `clasp push` 將本地檔案推送到 Google Apps Script 平台。
+  - **重要**: 專案根目錄下的 `.claspignore` 檔案會確保 `node_modules` 等開發用檔案不會被上傳。請確保此檔案存在且內容正確。
 - **權限**: 部分功能 (如教室管理、部門管理) 在 `JavaScript.html` 的 `init` 函式中有寫死的 email 權限判斷，修改時需注意。
 
 ---

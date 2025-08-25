@@ -1,0 +1,18 @@
+# Node.js development files
+**/node_modules/**
+package.json
+package-lock.json
+tailwind.config.js
+
+# Build source/artifacts
+input.css
+output.css
+
+# Git and documentation
+.git/
+.gitignore
+gemini.md
+TestCases.md
+
+# System files
+.DS_Store

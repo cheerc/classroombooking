@@ -1,1 +1,5 @@
+node_modules
+package-lock.json
+input.css
+Tailwind.html
 .DS_Store
