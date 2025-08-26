@@ -61,9 +61,14 @@
 
             // Set up a timer to periodically check for the next upcoming class.
             setInterval(() => {
-                const updated = this.findNextUpcomingClasses();
-                // If an update happened (i.e., we are on the correct day view), re-render the table.
-                if (updated) {
+                // First, always recalculate which classes are upcoming.
+                this.findNextUpcomingClasses();
+
+                // Then, if we are in a view where the upcoming status is relevant (today's day view),
+                // always re-render the table to reflect the passage of time.
+                const today = new Date();
+                const todayIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
+                if (this.currentViewMode === AppConfig.MODES.DAY && this.currentDayIndex === todayIndex) {
                     this.ui.renderScheduleTable();
                 }
             }, 60 * 1000); // Check every minute
@@ -510,39 +515,53 @@
         },
 
         findNextUpcomingClasses: function() {
-            const originalUpcomingClassIds = new Set(this.nextUpcomingClassIds);
             this.nextUpcomingClassIds.clear();
             
             const today = new Date();
             const todayIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
 
+            // This feature is only active when viewing today in day mode.
             if (this.currentViewMode !== AppConfig.MODES.DAY || this.currentDayIndex !== todayIndex) {
-                return false;
+                return;
             }
 
             const nowInMinutes = today.getHours() * 60 + today.getMinutes();
             const thresholdInMinutes = 30;
+            let futureClasses = [];
 
+            // First, find all classes in the future for today
             for (const classroom in this.scheduleData) {
                 if (this.scheduleData[classroom]?.[todayIndex]) {
                     this.scheduleData[classroom][todayIndex].forEach(course => {
                         const startTimeInMinutes = this.timeToMinutes(course.timeStart);
-                        const timeDifference = startTimeInMinutes - nowInMinutes;
-
-                        if (timeDifference > 0 && timeDifference <= thresholdInMinutes) {
-                            this.nextUpcomingClassIds.add(course.id);
+                        if (startTimeInMinutes >= nowInMinutes) {
+                            futureClasses.push(course);
                         }
                     });
                 }
             }
 
-            // Check if the set of upcoming classes has actually changed to avoid unnecessary re-renders.
-            if (originalUpcomingClassIds.size !== this.nextUpcomingClassIds.size || 
-                ![...originalUpcomingClassIds].every(id => this.nextUpcomingClassIds.has(id))) {
-                return true; // Return true to indicate an update is needed
+            if (futureClasses.length > 0) {
+                // Rule 1: Prioritize classes within the 30-minute threshold
+                const withinThresholdClasses = futureClasses.filter(course => {
+                    const startTimeInMinutes = this.timeToMinutes(course.timeStart);
+                    const timeDifference = startTimeInMinutes - nowInMinutes;
+                    return timeDifference >= 0 && timeDifference <= thresholdInMinutes;
+                });
+
+                if (withinThresholdClasses.length > 0) {
+                    withinThresholdClasses.forEach(course => this.nextUpcomingClassIds.add(course.id));
+                } else {
+                    // Rule 2: If none in threshold, find the very next one(s)
+                    const nextStartTime = Math.min(...futureClasses.map(c => this.timeToMinutes(c.timeStart)));
+                    futureClasses.forEach(course => {
+                        if (this.timeToMinutes(course.timeStart) === nextStartTime) {
+                            this.nextUpcomingClassIds.add(course.id);
+                        }
+                    });
+                }
             }
-            
-            return false; // No change, no update needed
+            // This function no longer needs to return a value; it just updates the state.
         },
 
         // --- UTILITY ---
