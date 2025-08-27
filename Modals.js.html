@@ -161,7 +161,7 @@ function createModalModule(app) {
                     if (filterType === 'name' && course.name) {
                         items.add(course.name);
                     } else if (filterType === 'department') {
-                        title = '選擇要顯示的部門';
+                        title = '選擇要顯示的標籤';
                         (course.departments || []).forEach(dept => {
                             if (dept) items.add(dept);
                         });

@@ -238,7 +238,7 @@ function createUIModule(app) {
             }, {});
             const parts = [];
             if (counts.name) parts.push(`${counts.name} 門課程`);
-            if (counts.department) parts.push(`${counts.department} 個部門`);
+            if (counts.department) parts.push(`${counts.department} 個標籤`);
             if (counts.teacher) parts.push(`${counts.teacher} 位使用人`);
             display.textContent = `已篩選: ${parts.join(', ')}`;
         }
@@ -313,7 +313,7 @@ function createUIModule(app) {
                 <div class="editable" data-field="teacher">${classItem.teacher}</div>
             </div>
             ${notesHtml}
-            <div class="department-tags-vertical-container editable" data-field="departments" data-tooltip="部門: ${allDepartmentsTooltip}">${departmentTags}</div>
+            <div class="department-tags-vertical-container editable" data-field="departments" data-tooltip="標籤: ${allDepartmentsTooltip}">${departmentTags}</div>
             <span class="delete-btn" data-classroom="${classroom}" data-day="${day}">×</span>
             ${conflictIcon}
         `
