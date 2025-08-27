@@ -294,7 +294,7 @@
         align-items: center;
         gap: 4px;
     }
-    .inline-add-form .inline-day-selector, .inline-department-selector {
+    .inline-add-form .inline-day-selector {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
@@ -303,17 +303,94 @@
         border-bottom: 1px solid #e5e7eb; /* gray-200 */
         padding-bottom: 8px;
     }
+
     .inline-department-selector {
-        border-bottom: none;
-        padding-bottom: 0;
+        margin-top: 8px;
     }
     .inline-selector-title {
+        font-size: 0.8rem;
         font-weight: 500;
-        margin-right: 4px;
+        color: #4B5563;
+        margin-bottom: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
+    .tag-input-hint {
+        font-size: 0.75rem;
+        font-weight: 400;
+        color: #9CA3AF;
+    }
+    
+    /* Tagify custom styles */
+    .inline-add-form .tagify {
+        border: 1px solid #D1D5DB;
+        padding: 4px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .tagify__tag {
+        background-color: #F3F3F3 !important; /* Force background color */
+        color: #000000 !important; /* Force text color */
+        border: 1px solid #CCC !important; /* Force border */
+        border-radius: 3px !important; /* Force border radius */
+        padding: 1px 1px !important; /* Use precise px padding */
+        margin: 2px !important;
+        font-size: 13px !important; /* Use precise px font-size */
+    }
+    .tagify__tag > div::before {
+        display: none;
+    }
+    .tagify__tag > div {
+        display: flex;
+        align-items: center;
+    }
+    .tagify__tag-text {
+        /* Font size is now controlled by the parent .tagify__tag */
+    }
+    .tagify__tag__removeBtn {
+        margin-left: 6px;
+        font-size: 16px;
+        color: #4B5563; /* gray-600 */
+    }
+    .tagify__tag__removeBtn:hover {
+        color: #000000;
+    }
+    .tagify__input {
+        font-size: 14px;
+        margin: 4px;
+    }
+    .tagify__dropdown__item{
+        display: inline-block;
+        border-radius: 3px;
+        padding: .3em .5em;
+        border: 1px solid #CCC;
+        background: #F3F3F3;
+        margin: .2em;
+        font-size: .85em;
+        color: black;
+        transition: 0s;
+    }
+    .tagify__dropdown__item--active{
+        color: black;
+    }
+    .tagify__dropdown__item:hover{
+        background: lightyellow;
+        border-color: gold;
+    }
+
     .inline-add-form .inline-form-actions {
         display: flex;
         justify-content: flex-end;
+    }
+
+    /* Styles for the new Tagify filter */
+    #tag-filter-input {
+        min-width: 250px; /* Give it a decent default width */
+    }
+    .tagify.tagify--select::after {
+        /* Style the dropdown arrow */
+        color: #6B7280;
     }
     .inline-add-form .save-inline {
         background-color: #22c55e; /* green-500 */

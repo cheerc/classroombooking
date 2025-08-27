@@ -16,7 +16,6 @@ function createInteractionModule(app) {
             app.isConnecting = false;
         });
         els.addClassroomBtn.addEventListener('click', () => this.handleAddClassroom());
-        els.addDepartmentBtn.addEventListener('click', () => this.handleAddDepartment());
         els.saveToCloudBtn.addEventListener('click', async () => {
             if (await app.modals.showConfirm('確定要將本地資料儲存到雲端嗎？<br>這將會建立一個新的版本紀錄。')) {
                 app.saveDataToServer();
@@ -60,7 +59,6 @@ function createInteractionModule(app) {
         els.scheduleSelect.addEventListener('change', (e) => app.handleScheduleSelectChange(e));
 
         els.classroomList.addEventListener('click', (e) => this.handleItemDelete(e, 'classroom'));
-        els.departmentList.addEventListener('click', (e) => this.handleItemDelete(e, 'department'));
         els.scheduleBody.addEventListener('click', (e) => this.handleScheduleBodyClick(e));
         document.addEventListener('click', (e) => this.handleDocumentClick(e), true);
         document.addEventListener('keydown', (e) => this.handleGlobalKeydown(e));
@@ -77,11 +75,7 @@ function createInteractionModule(app) {
         els.filterDeselectAll.addEventListener('click', () => app.toggleAllFilterCheckboxes(false));
         els.filterApply.addEventListener('click', () => app.applyFilters());
         els.filterClear.addEventListener('click', () => app.clearFilters());
-        els.departmentQuickFilter.addEventListener('change', (e) => {
-            localStorage.setItem('lastQuickFilter', e.target.value);
-            app.ui.renderScheduleTable();
-        });
-
+        
         els.viewModeWeekBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.WEEK));
         els.viewModeDayBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.DAY));
         
@@ -148,16 +142,15 @@ function createInteractionModule(app) {
             <label><input type="checkbox" class="inline-day-checkbox" value="${index}" ${index === day ? 'checked' : ''}> ${dayName.replace('星期', '')}</label>
         `).join('');
 
-        const departmentCheckboxes = app.departments.map(dept => {
-            const isChecked = isEditMode && (classItemToEdit.departments || []).includes(dept);
-            return `<label><input type="checkbox" class="inline-department-checkbox" value="${dept}" ${isChecked ? 'checked' : ''}> ${dept}</label>`;
-        }).join('');
+        const tags = isEditMode ? (classItemToEdit.departments || []) : [];
         
-        const departmentSelectorHtml = app.departments.length > 0 ? `
+        const tagEditorHtml = `
             <div class="inline-department-selector">
-                <div class="inline-selector-title">部門:</div>
-                ${departmentCheckboxes}
-            </div>` : '';
+                <div class="inline-selector-title">標籤:
+                    <span class="tag-input-hint">(輸入後按 Enter 新增)</span>
+                </div>
+                <input name="tags" class="tagify-input" value='${JSON.stringify(tags)}'>
+            </div>`;
 
         return `
             <button title="取消" class="inline-add-cancel-btn">×</button>
@@ -170,7 +163,7 @@ function createInteractionModule(app) {
                 <input type="time" class="inline-input" name="timeEnd" value="${isEditMode ? classItemToEdit.timeEnd : ''}" required>
             </div>
             <input type="text" placeholder="使用人" class="inline-input" name="teacher" value="${isEditMode ? classItemToEdit.teacher : ''}">
-            ${departmentSelectorHtml}
+            ${tagEditorHtml}
             ${app.currentViewMode === 'day' ? `<textarea placeholder="備註 (僅在日檢視顯示/編輯)" class="inline-input" name="notes" style="min-height: 60px;">${isEditMode ? classItemToEdit.notes || '' : ''}</textarea>` : ''}
             <div class="inline-form-actions">
                 <button title="儲存" class="save-inline">✓</button>
@@ -184,13 +177,14 @@ function createInteractionModule(app) {
         const timeStart = formDiv.querySelector('input[name="timeStart"]').value.trim();
         const timeEnd = formDiv.querySelector('input[name="timeEnd"]').value.trim();
         const teacher = formDiv.querySelector('input[name="teacher"]').value.trim();
-        const selectedDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
+        const tagify = app.activeInlineForm.tagify;
+        const selectedDepartments = tagify ? tagify.value.map(tag => tag.value) : [];
         const selectedDays = isEditMode ? [day] : Array.from(formDiv.querySelectorAll('.inline-day-checkbox:checked')).map(cb => parseInt(cb.value));
         const notesTextarea = formDiv.querySelector('textarea[name="notes"]');
 
         if (!name) { app.ui.showNotification('課程名稱不能為空！', 'error'); return false; }
         if (!teacher) { app.ui.showNotification('使用人不能為空！', 'error'); return false; }
-        if (selectedDepartments.length === 0) { app.ui.showNotification('請至少選擇一個部門！', 'error'); return false; }
+        if (selectedDepartments.length === 0) { app.ui.showNotification('請至少設定一個標籤！', 'error'); return false; }
         if (selectedDays.length === 0) { app.ui.showNotification('請至少選擇一個星期！', 'error'); return false; }
         if (!timeStart || !timeEnd) { app.ui.showNotification('請輸入完整的開始與結束時間！', 'error'); return false; }
 
@@ -378,17 +372,17 @@ function createInteractionModule(app) {
             const timeStart = formDiv.querySelector('input[name="timeStart"]').value;
             const timeEnd = formDiv.querySelector('input[name="timeEnd"]').value;
             const teacher = formDiv.querySelector('input[name="teacher"]').value.trim();
-            const selectedDepartments = Array.from(formDiv.querySelectorAll('.inline-department-checkbox:checked')).map(cb => cb.value);
+            const currentTags = app.activeInlineForm.tagify.value.map(tag => tag.value);
 
             if (!isEditMode) {
-                return name !== '' || timeStart !== '' || timeEnd !== '' || teacher !== '';
+                return name !== '' || timeStart !== '' || timeEnd !== '' || teacher !== '' || currentTags.length > 0;
             }
             
             return name !== originalData.name ||
                    timeStart !== originalData.timeStart ||
                    timeEnd !== originalData.timeEnd ||
                    teacher !== originalData.teacher ||
-                   JSON.stringify(selectedDepartments.sort()) !== JSON.stringify((originalData.departments || []).sort());
+                   JSON.stringify(currentTags.sort()) !== JSON.stringify((originalData.departments || []).sort());
         };
 
         const closeHandler = async (forceSave = false) => {
@@ -411,6 +405,9 @@ function createInteractionModule(app) {
             }
 
             // Cleanup: remove the form from the DOM and reset state.
+            if (app.activeInlineForm.tagify) {
+                app.activeInlineForm.tagify.destroy();
+            }
             formDiv.remove();
             app.activeInlineForm = null;
             app.ui.renderScheduleTable();
@@ -422,7 +419,24 @@ function createInteractionModule(app) {
             return true;
         };
 
-        app.activeInlineForm = { close: closeHandler, isDirty: isDirty, isClosing: false };
+        const tagifyInput = formDiv.querySelector('input[name="tags"]');
+        const tagify = new Tagify(tagifyInput, {
+            whitelist: app.getAllTags(),
+            placeholder: "新增標籤 (按 , 或 Enter)",
+            dropdown: {
+                maxItems: 20,
+                classname: "tags-look",
+                enabled: 0,
+                closeOnSelect: false
+            }
+        });
+
+        app.activeInlineForm = { 
+            close: closeHandler, 
+            isDirty: isDirty, 
+            isClosing: false,
+            tagify: tagify // Store tagify instance
+        };
 
         formDiv.querySelector('.save-inline').addEventListener('click', (e) => { e.preventDefault(); closeHandler(true); });
         formDiv.querySelector('.inline-add-cancel-btn').addEventListener('click', () => closeHandler());
@@ -584,16 +598,6 @@ function createInteractionModule(app) {
         });
     },
 
-    handleAddDepartment: function() {
-        this.handleAddItem({
-            itemType: '部門',
-            name: elements.departmentNameInput.value.trim(),
-            sourceArray: app.departments,
-            inputElement: elements.departmentNameInput,
-            updateListFn: app.ui.updateDepartmentList.bind(app.ui)
-        });
-    },
-
     handleItemDelete: async function(event, itemType) {
         const config = {
             classroom: {
@@ -608,20 +612,6 @@ function createInteractionModule(app) {
                     delete app.scheduleData[name];
                     app.ui.renderScheduleTable();
                 }
-            },
-            department: {
-                btnSelector: '.delete-department',
-                dataAttribute: 'data-department',
-                typeName: '部門',
-                sourceArray: app.departments,
-                isInUse: (name) => Object.values(app.scheduleData).some(classroom => 
-                    Object.values(classroom).some(day => 
-                        day.some(course => course.departments && course.departments.includes(name))
-                    )
-                ),
-                inUseMessage: '無法刪除部門：請先從所有課程中移除此部門標籤！',
-                updateList: app.ui.updateDepartmentList.bind(app.ui),
-                postDelete: null
             }
         };
 

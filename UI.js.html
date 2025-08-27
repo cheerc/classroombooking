@@ -252,39 +252,6 @@ function createUIModule(app) {
         });
     },
 
-    updateDepartmentList: function() {
-        try {
-            this.renderManagerList({
-                listElement: AppElements.departmentList,
-                items: app.departments,
-                itemType: 'department'
-            });
-            this.populateDepartmentQuickFilter();
-        } catch (e) {
-            console.error('更新部門列表失敗:', e);
-            this.showNotification('更新部門列表失敗', 'error');
-        }
-    },
-
-    populateDepartmentQuickFilter: function() {
-        const select = AppElements.departmentQuickFilter;
-        if (!select) return;
-        const lastFilter = select.value;
-        select.innerHTML = '<option value="all">所有部門</option>';
-        const sortedDepartments = app.departments.slice().sort();
-        sortedDepartments.forEach(dept => {
-            const option = document.createElement('option');
-            option.value = dept;
-            option.textContent = dept;
-            select.appendChild(option);
-        });
-        if (lastFilter && app.departments.includes(lastFilter)) {
-            select.value = lastFilter;
-        } else {
-            select.value = 'all';
-        }
-    },
-
     updateClassroomList: function() {
         try {
             this.renderManagerList({
@@ -297,6 +264,31 @@ function createUIModule(app) {
             console.error('更新教室列表失敗:', e);
             this.showNotification('更新教室列表失敗', 'error');
         }
+    },
+
+    initializeTagFilter: function() {
+        const input = AppElements.tagFilterInput;
+        if (!input) return;
+
+        if (app.tagFilterTagify) {
+            app.tagFilterTagify.destroy();
+        }
+
+        const allTags = app.getAllTags();
+
+        app.tagFilterTagify = new Tagify(input, {
+            whitelist: allTags,
+            placeholder: "篩選標籤...",
+            enforceWhitelist: true,
+            dropdown: {
+                enabled: 0,
+                closeOnSelect: false, // Keep dropdown open for multi-select
+                classname: 'tags-look'
+            }
+        });
+
+        app.tagFilterTagify.on('add', () => app.applyTagFilters());
+        app.tagFilterTagify.on('remove', () => app.applyTagFilters());
     },
 
     createClassElement: function(classItem, classroom, day, overrideColor = null) {
@@ -431,10 +423,6 @@ function createUIModule(app) {
                 return;
             }
             let dataToRender = app.scheduleData;
-            const quickFilterDept = AppElements.departmentQuickFilter.value;
-            if (quickFilterDept && quickFilterDept !== 'all') {
-                dataToRender = app.filterDataByDepartment(dataToRender, quickFilterDept);
-            }
             if (app.activeFilters && app.activeFilters.length > 0) {
                 dataToRender = app.filterDataByActiveFilters(dataToRender);
             }
@@ -484,10 +472,6 @@ function createUIModule(app) {
         });
 
         let dataToRender = dataForFiltering;
-        const quickFilterDept = AppElements.departmentQuickFilter.value;
-        if (quickFilterDept && quickFilterDept !== 'all') {
-            dataToRender = app.filterDataByDepartment(dataToRender, quickFilterDept);
-        }
         if (app.activeFilters && app.activeFilters.length > 0) {
             dataToRender = app.filterDataByActiveFilters(dataToRender);
         }

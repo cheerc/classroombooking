@@ -8,7 +8,8 @@
         activeMetadataTimestamp: null,
         classrooms: [],
         scheduleData: {},
-        departments: [],
+        departments: [], // This is now an aggregation of all tags
+        tagFilterTagify: null, // To hold the tagify instance for the filter
         courseColorMap: {},
         lastSyncTime: null,
         scheduleLastModified: {},
@@ -136,7 +137,7 @@
                 this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
                 this.classrooms = [];
                 this.scheduleData = {};
-                this.departments = [];
+                this.departments = []; // This will be populated by the 'All Schedules' logic
                 this.ui.renderScheduleTable();
                 this.ui.updateGlobalUIForScheduleMode();
                 localStorage.setItem('activeScheduleId', scheduleId);
@@ -159,11 +160,18 @@
 
             this.classrooms = schedule.data.classrooms || [];
             this.scheduleData = this.ensureDataIds(schedule.data.scheduleData || {});
-            this.departments = schedule.data.departments || [];
+            // Deprecated: this.departments is no longer loaded directly.
+            // this.departments = schedule.data.departments || [];
+            this.departments = this.getAllTags(); // Dynamically get all tags
             
+            // Initialize the tag filter for the current schedule
+            this.ui.initializeTagFilter();
+
+            // Load and apply persisted tag filters
+            this.loadAndApplyPersistedFilters();
+
             this.buildCourseColorMap();
             this.ui.updateClassroomList();
-            this.ui.updateDepartmentList();
             this.ui.renderScheduleTable();
             this.ui.updateGlobalUIForScheduleMode();
             this.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE);
@@ -317,7 +325,6 @@
                 this.departments = Array.from(allDepartments).sort();
                 this.buildCourseColorMap(allSchedulesData);
                 
-                this.ui.updateDepartmentList();
                 this.ui.renderScheduleTable();
                 this.ui.updateGlobalUIForScheduleMode();
                 localStorage.setItem('activeScheduleId', this.activeScheduleId);
@@ -327,6 +334,69 @@
         },
 
         // --- FILTER LOGIC ---
+        loadAndApplyPersistedFilters: function() {
+            const persistedTagsJSON = localStorage.getItem('activeTagFilters');
+            if (persistedTagsJSON) {
+                try {
+                    const persistedTags = JSON.parse(persistedTagsJSON);
+                    const allCurrentTags = new Set(this.getAllTags());
+                    
+                    // Filter out tags that no longer exist
+                    const validPersistedTags = persistedTags.filter(tag => allCurrentTags.has(tag));
+                    
+                    this.activeFilters = validPersistedTags.map(tag => ({ type: 'department', value: tag }));
+                    
+                    if (persistedTags.length !== validPersistedTags.length) {
+                        // If some tags were removed, update localStorage
+                        localStorage.setItem('activeTagFilters', JSON.stringify(validPersistedTags));
+                    }
+                } catch (e) {
+                    console.error("Failed to parse persisted tag filters:", e);
+                    localStorage.removeItem('activeTagFilters');
+                    this.activeFilters = [];
+                }
+            } else {
+                this.activeFilters = [];
+            }
+            this.ui.updateActiveFilterDisplay();
+        },
+
+        toggleAllTagFilterCheckboxes: function(shouldBeChecked) {
+            AppElements.tagFilterList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = shouldBeChecked;
+            });
+        },
+
+        applyTagFilters: function() {
+            if (!this.tagFilterTagify) return;
+            const selectedTags = this.tagFilterTagify.value.map(tag => tag.value);
+            
+            this.activeFilters = selectedTags.map(item => ({ type: 'department', value: item }));
+            
+            localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
+
+            this.ui.renderScheduleTable();
+            this.ui.updateActiveFilterDisplay();
+            // No longer need to hide a modal
+            // AppElements.tagFilterModal.style.display = 'none';
+            this.historyModule.saveState();
+        },
+
+        clearTagFilters: function() {
+            this.activeFilters = this.activeFilters.filter(f => f.type !== 'department');
+            localStorage.removeItem('activeTagFilters');
+            
+            if (this.tagFilterTagify) {
+                this.tagFilterTagify.removeAllTags();
+            }
+
+            this.ui.renderScheduleTable();
+            this.ui.updateActiveFilterDisplay();
+            // No longer need to hide a modal
+            // AppElements.tagFilterModal.style.display = 'none';
+            this.historyModule.saveState();
+        },
+
         toggleAllFilterCheckboxes: function(shouldBeChecked) {
             AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                 cb.checked = shouldBeChecked;
@@ -565,6 +635,24 @@
         },
 
         // --- UTILITY ---
+        getAllTags: function() {
+            const allTags = new Set();
+            if (!this.scheduleData) return [];
+            Object.values(this.scheduleData).forEach(classroom => {
+                if (!classroom) return;
+                Object.values(classroom).forEach(daySchedule => {
+                    if (Array.isArray(daySchedule)) {
+                        daySchedule.forEach(classItem => {
+                            if (classItem.departments && Array.isArray(classItem.departments)) {
+                                classItem.departments.forEach(tag => allTags.add(tag));
+                            }
+                        });
+                    }
+                });
+            });
+            return Array.from(allTags).sort();
+        },
+
         getShortUserName: function(email) {
             if (!email || email.indexOf('@') === -1) return email;
             return email.split('@')[0];
@@ -688,26 +776,15 @@
             return '00:00';
         },
 
-        filterDataByDepartment: function(data, department) {
-            const tempData = {};
-            for (const classroom in data) {
-                tempData[classroom] = {};
-                for (const day in data[classroom]) {
-                    const filteredDay = data[classroom][day].filter(course => 
-                        course.departments && course.departments.includes(department)
-                    );
-                    if (filteredDay.length > 0) {
-                        tempData[classroom][day] = filteredDay;
-                    }
-                }
-            }
-            return tempData;
-        },
-
         filterDataByActiveFilters: function(data) {
             const nameFilters = new Set(this.activeFilters.filter(f => f.type === 'name').map(f => f.value));
             const departmentFilters = new Set(this.activeFilters.filter(f => f.type === 'department').map(f => f.value));
             const teacherFilters = new Set(this.activeFilters.filter(f => f.type === 'teacher').map(f => f.value));
+
+            // If no filters of a certain type are active, the match should be true.
+            if (nameFilters.size === 0 && departmentFilters.size === 0 && teacherFilters.size === 0) {
+                return data;
+            }
 
             const filteredData = {};
             for (const classroom in data) {
@@ -715,8 +792,14 @@
                 for (const day in data[classroom]) {
                     const filteredDay = data[classroom][day].filter(course => {
                         const nameMatch = nameFilters.size === 0 || nameFilters.has(course.name);
+                        // Logic change: for departments/tags, check if the course has AT LEAST ONE of the selected tags.
                         const departmentMatch = departmentFilters.size === 0 || (course.departments && course.departments.some(d => departmentFilters.has(d)));
                         const teacherMatch = teacherFilters.size === 0 || teacherFilters.has(course.teacher);
+                        
+                        // Logic change: Now we need to decide how filters interact.
+                        // Let's assume for now that filters of DIFFERENT types are ANDed,
+                        // but filters of the SAME type (like multiple tags) are ORed (which is handled by the .some() above).
+                        // The current logic already does this.
                         return nameMatch && departmentMatch && teacherMatch;
                     });
                     if (filteredDay.length > 0) {
