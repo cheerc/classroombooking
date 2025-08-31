@@ -324,10 +324,28 @@
     
     /* Tagify custom styles */
     .inline-add-form .tagify {
-        border: 1px solid #D1D5DB;
-        padding: 4px;
-        width: 100%;
+        /* --- Start: Styles copied from tag-filter-container for consistency --- */
+        height: 38px;
         box-sizing: border-box;
+        border-radius: 0.375rem; /* 6px */
+        font-size: 0.875rem; /* text-sm */
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        border: 1px solid #D1D5DB;
+        background-color: #FFFFFF;
+        padding: 1px;
+        display: flex;
+        align-items: center;
+        /* --- End: Copied styles --- */
+        
+        width: 100%; /* Keep original width behavior */
+    }
+    .inline-add-form .tagify__input::placeholder {
+        color: #9CA3AF; /* gray-400 */
+    }
+    .inline-add-form .tagify__input {
+        /* Override default margin and match padding for vertical alignment */
+        margin: 0 !important;
+        padding: 0.5rem 0.75rem !important;
     }
     .tagify__tag {
         background-color: #F3F3F3 !important; /* Force background color */
