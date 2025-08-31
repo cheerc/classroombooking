@@ -358,7 +358,7 @@
             } else {
                 this.activeFilters = [];
             }
-            this.ui.updateActiveFilterDisplay();
+            this.ui.updateClearFilterButtonVisibility();
         },
 
         toggleAllTagFilterCheckboxes: function(shouldBeChecked) {
@@ -371,14 +371,25 @@
             if (!this.tagFilterTagify) return;
             const selectedTags = this.tagFilterTagify.value.map(tag => tag.value);
             
-            this.activeFilters = selectedTags.map(item => ({ type: 'department', value: item }));
+            // Clear any non-department filters before applying new tag filters
+            this.activeFilters = this.activeFilters.filter(f => f.type === 'department');
+            
+            // Add the new tags to the active filters
+            const existingTags = new Set(this.activeFilters.map(f => f.value));
+            selectedTags.forEach(tag => {
+                if (!existingTags.has(tag)) {
+                    this.activeFilters.push({ type: 'department', value: tag });
+                }
+            });
+
+            // Also, remove tags from activeFilters that are no longer in selectedTags
+            const selectedTagsSet = new Set(selectedTags);
+            this.activeFilters = this.activeFilters.filter(f => f.type !== 'department' || selectedTagsSet.has(f.value));
             
             localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
 
             this.ui.renderScheduleTable();
-            this.ui.updateActiveFilterDisplay();
-            // No longer need to hide a modal
-            // AppElements.tagFilterModal.style.display = 'none';
+            this.ui.updateClearFilterButtonVisibility();
             this.historyModule.saveState();
         },
 
@@ -391,9 +402,7 @@
             }
 
             this.ui.renderScheduleTable();
-            this.ui.updateActiveFilterDisplay();
-            // No longer need to hide a modal
-            // AppElements.tagFilterModal.style.display = 'none';
+            this.ui.updateClearFilterButtonVisibility();
             this.historyModule.saveState();
         },
 
@@ -408,7 +417,7 @@
             const selectedItems = Array.from(AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
             this.activeFilters = selectedItems.map(item => ({ type: filterType, value: item }));
             this.ui.renderScheduleTable();
-            this.ui.updateActiveFilterDisplay();
+            this.ui.updateClearFilterButtonVisibility();
             AppElements.filterModal.style.display = 'none';
             this.historyModule.saveState();
         },
@@ -417,7 +426,7 @@
             this.activeFilters = [];
             this.modals.populateFilterModal();
             this.ui.renderScheduleTable();
-            this.ui.updateActiveFilterDisplay();
+            this.ui.updateClearFilterButtonVisibility();
             AppElements.filterModal.style.display = 'none';
             this.historyModule.saveState();
         },

@@ -244,6 +244,13 @@ function createUIModule(app) {
         }
     },
 
+    updateClearFilterButtonVisibility: function() {
+        const btn = AppElements.clearTagFilterBtn;
+        if (!btn) return;
+        const hasTagFilters = app.activeFilters.some(f => f.type === 'department');
+        btn.style.display = hasTagFilters ? 'block' : 'none';
+    },
+
     renderList: function(listElement, items, renderItemFn) {
         listElement.innerHTML = '';
         items.forEach(item => {
@@ -275,6 +282,10 @@ function createUIModule(app) {
         }
 
         const allTags = app.getAllTags();
+
+        // Remove loading state before initializing
+        input.disabled = false;
+        input.classList.remove('tagify-loading');
 
         app.tagFilterTagify = new Tagify(input, {
             whitelist: allTags,

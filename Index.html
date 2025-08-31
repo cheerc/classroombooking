@@ -107,8 +107,15 @@
                         </svg>
                         進階篩選
                     </button>
-                    <input id="tag-filter-input" class="bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm" placeholder="篩選標籤...">
-                    <div id="active-filter-display" class="text-sm text-gray-600 font-medium mr-auto"></div>
+                    <div class="tag-filter-container">
+                        <input id="tag-filter-input" class="tagify-loading bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm" placeholder="篩選標籤..." disabled>
+                        <button id="clear-tag-filter-btn" class="clear-filter-btn" style="display: none;" data-tooltip="清除標籤篩選">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="mr-auto"></div> <!-- This will push the rest of the items to the right -->
 
                     <div id="day-view-sort-selector" class="flex items-center p-1 bg-gray-200 rounded-lg mr-4" style="display: none;">
                         <button id="day-sort-classroom" class="px-3 py-1 text-sm font-medium rounded-md transition-colors day-sort-btn active">依教室</button>
