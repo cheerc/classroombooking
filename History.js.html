@@ -13,7 +13,7 @@ function createHistoryModule(app) {
     return {
       classrooms: JSON.parse(JSON.stringify(app.classrooms)),
       scheduleData: JSON.parse(JSON.stringify(app.scheduleData)),
-      departments: JSON.parse(JSON.stringify(app.departments)),
+      tags: JSON.parse(JSON.stringify(app.tags)),
       activeFilters: JSON.parse(JSON.stringify(app.activeFilters))
     };
   }
@@ -60,7 +60,7 @@ function createHistoryModule(app) {
     loadState: function(state) {
         app.classrooms = JSON.parse(JSON.stringify(state.classrooms));
         app.scheduleData = JSON.parse(JSON.stringify(state.scheduleData));
-        app.departments = JSON.parse(JSON.stringify(state.departments));
+        app.tags = JSON.parse(JSON.stringify(state.tags));
         app.activeFilters = JSON.parse(JSON.stringify(state.activeFilters));
         
         // These methods still live on the main app object
@@ -81,13 +81,13 @@ function createHistoryModule(app) {
         cleanStateSnapshot = JSON.stringify({
             classrooms: app.classrooms,
             scheduleData: app.scheduleData,
-            departments: app.departments
+            tags: app.tags
         });
         if (app.schedules[app.activeScheduleId]) {
             app.schedules[app.activeScheduleId].data = {
                 classrooms: JSON.parse(JSON.stringify(app.classrooms)),
                 scheduleData: JSON.parse(JSON.stringify(app.scheduleData)),
-                departments: JSON.parse(JSON.stringify(app.departments))
+                tags: JSON.parse(JSON.stringify(app.tags))
             };
             app.saveSchedulesToLocal();
         }
@@ -97,7 +97,7 @@ function createHistoryModule(app) {
         const currentStateSnapshot = JSON.stringify({
             classrooms: app.classrooms,
             scheduleData: app.scheduleData,
-            departments: app.departments
+            tags: app.tags
         });
         this.setDirty(currentStateSnapshot !== cleanStateSnapshot);
     },

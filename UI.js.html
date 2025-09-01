@@ -102,7 +102,7 @@ function createUIModule(app) {
         const els = AppElements;
         const buttonsToDisable = [
             els.saveToCloudBtn, els.loadVersionBtn, els.showClassroomManagerBtn,
-            els.showDepartmentManagerBtn, els.manageSchedulesBtn, els.undoBtn, els.redoBtn,
+            els.manageSchedulesBtn, els.undoBtn, els.redoBtn,
             els.showVersionHistoryBtn
         ];
         buttonsToDisable.forEach(btn => {
@@ -232,13 +232,13 @@ function createUIModule(app) {
         } else {
             const counts = app.activeFilters.reduce((acc, f) => {
                 if (f.type === 'name') acc.name = (acc.name || 0) + 1;
-                else if (f.type === 'department') acc.department = (acc.department || 0) + 1;
+                else if (f.type === 'tag') acc.tag = (acc.tag || 0) + 1;
                 else if (f.type === 'teacher') acc.teacher = (acc.teacher || 0) + 1;
                 return acc;
             }, {});
             const parts = [];
             if (counts.name) parts.push(`${counts.name} 門課程`);
-            if (counts.department) parts.push(`${counts.department} 個標籤`);
+            if (counts.tag) parts.push(`${counts.tag} 個標籤`);
             if (counts.teacher) parts.push(`${counts.teacher} 位使用人`);
             display.textContent = `已篩選: ${parts.join(', ')}`;
         }
@@ -247,7 +247,7 @@ function createUIModule(app) {
     updateClearFilterButtonVisibility: function() {
         const btn = AppElements.clearTagFilterBtn;
         if (!btn) return;
-        const hasTagFilters = app.activeFilters.some(f => f.type === 'department');
+        const hasTagFilters = app.activeFilters.some(f => f.type === 'tag');
         btn.style.display = hasTagFilters ? 'block' : 'none';
     },
 
@@ -307,8 +307,8 @@ function createUIModule(app) {
         const hasConflict = app.checkTimeConflict(classroom, day, classItem);
         const conflictIcon = hasConflict ? `<div class="conflict-icon" title="時間衝突"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.752a3 3 0 01-2.598 4.5H4.644a3 3 0 01-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg></div>` : '';
         const bgColor = overrideColor || app.courseColorMap[classItem.name] || '#E2E8F0';
-        const departmentTags = (classItem.departments || []).map(dept => `<span class="department-tag-vertical">${dept}</span>`).join('');
-        const allDepartmentsTooltip = (classItem.departments || []).join(', ');
+        const tagsHtml = (classItem.tags || []).map(tag => `<span class="tag-tag-vertical">${tag}</span>`).join('');
+        const allTagsTooltip = (classItem.tags || []).join(', ');
         const notesHtml = app.currentViewMode === AppConfig.MODES.DAY ? `<div class="course-notes editable" data-field="notes">${classItem.notes || ''}</div>` : '';
         const viewModeClass = app.currentViewMode === AppConfig.MODES.DAY ? 'day-view-layout' : '';
         const classDiv = document.createElement('div');
@@ -324,7 +324,7 @@ function createUIModule(app) {
                 <div class="editable" data-field="teacher">${classItem.teacher}</div>
             </div>
             ${notesHtml}
-            <div class="department-tags-vertical-container editable" data-field="departments" data-tooltip="標籤: ${allDepartmentsTooltip}">${departmentTags}</div>
+            <div class="tag-tags-vertical-container editable" data-field="tags" data-tooltip="標籤: ${allTagsTooltip}">${tagsHtml}</div>
             <span class="delete-btn" data-classroom="${classroom}" data-day="${day}">×</span>
             ${conflictIcon}
         `

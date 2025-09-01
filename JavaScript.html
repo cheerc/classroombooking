@@ -8,7 +8,7 @@
         activeMetadataTimestamp: null,
         classrooms: [],
         scheduleData: {},
-        departments: [], // This is now an aggregation of all tags
+        tags: [], // This holds all tags for the current schedule
         tagFilterTagify: null, // To hold the tagify instance for the filter
         courseColorMap: {},
         lastSyncTime: null,
@@ -137,7 +137,7 @@
                 this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
                 this.classrooms = [];
                 this.scheduleData = {};
-                this.departments = []; // This will be populated by the 'All Schedules' logic
+                this.tags = []; // This will be populated by the 'All Schedules' logic
                 this.ui.renderScheduleTable();
                 this.ui.updateGlobalUIForScheduleMode();
                 localStorage.setItem('activeScheduleId', scheduleId);
@@ -155,14 +155,14 @@
 
             if (!schedule.data) {
                 this.ui.showNotification(`課表 "${schedule.name || '未命名'}" 格式錯誤，將為其創建新的空資料。`, 'error', 5000);
-                schedule.data = { classrooms: [], scheduleData: {}, departments: [] };
+                schedule.data = { classrooms: [], scheduleData: {}, tags: [] };
             }
 
             this.classrooms = schedule.data.classrooms || [];
             this.scheduleData = this.ensureDataIds(schedule.data.scheduleData || {});
-            // Deprecated: this.departments is no longer loaded directly.
-            // this.departments = schedule.data.departments || [];
-            this.departments = this.getAllTags(); // Dynamically get all tags
+            // Deprecated: this.tags is no longer loaded directly.
+            // this.tags = schedule.data.tags || [];
+            this.tags = this.getAllTags(); // Dynamically get all tags
             
             // Initialize the tag filter for the current schedule
             this.ui.initializeTagFilter();
@@ -200,7 +200,7 @@
                 this.schedules[newId] = { 
                     name: newName, 
                     createdBy: result.createdBy, 
-                    data: { classrooms: [], scheduleData: {}, departments: [] } 
+                    data: { classrooms: [], scheduleData: {}, tags: [] } 
                 };
                 AppElements.newScheduleNameInput.value = '';
                 this.ui.renderScheduleList();
@@ -303,13 +303,13 @@
             if (newId === AppConfig.ALL_SCHEDULES_ID) {
                 this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
                 
-                const allDepartments = new Set();
+                const allTags = new Set();
                 const allSchedulesData = {};
 
                 Object.values(this.schedules).forEach(schedule => {
                     if (!schedule.data) return;
-                    if (schedule.data.departments) {
-                        schedule.data.departments.forEach(dept => allDepartments.add(dept));
+                    if (schedule.data.tags) {
+                        schedule.data.tags.forEach(tag => allTags.add(tag));
                     }
                     if (schedule.data.scheduleData) {
                         Object.entries(schedule.data.scheduleData).forEach(([classroom, days]) => {
@@ -322,7 +322,7 @@
                     }
                 });
                 
-                this.departments = Array.from(allDepartments).sort();
+                this.tags = Array.from(allTags).sort();
                 this.buildCourseColorMap(allSchedulesData);
                 
                 this.ui.renderScheduleTable();
@@ -344,7 +344,7 @@
                     // Filter out tags that no longer exist
                     const validPersistedTags = persistedTags.filter(tag => allCurrentTags.has(tag));
                     
-                    this.activeFilters = validPersistedTags.map(tag => ({ type: 'department', value: tag }));
+                    this.activeFilters = validPersistedTags.map(tag => ({ type: 'tag', value: tag }));
                     
                     if (persistedTags.length !== validPersistedTags.length) {
                         // If some tags were removed, update localStorage
@@ -371,20 +371,20 @@
             if (!this.tagFilterTagify) return;
             const selectedTags = this.tagFilterTagify.value.map(tag => tag.value);
             
-            // Clear any non-department filters before applying new tag filters
-            this.activeFilters = this.activeFilters.filter(f => f.type === 'department');
+            // Clear any non-tag filters before applying new tag filters
+            this.activeFilters = this.activeFilters.filter(f => f.type === 'tag');
             
             // Add the new tags to the active filters
             const existingTags = new Set(this.activeFilters.map(f => f.value));
             selectedTags.forEach(tag => {
                 if (!existingTags.has(tag)) {
-                    this.activeFilters.push({ type: 'department', value: tag });
+                    this.activeFilters.push({ type: 'tag', value: tag });
                 }
             });
 
             // Also, remove tags from activeFilters that are no longer in selectedTags
             const selectedTagsSet = new Set(selectedTags);
-            this.activeFilters = this.activeFilters.filter(f => f.type !== 'department' || selectedTagsSet.has(f.value));
+            this.activeFilters = this.activeFilters.filter(f => f.type !== 'tag' || selectedTagsSet.has(f.value));
             
             localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
 
@@ -394,7 +394,7 @@
         },
 
         clearTagFilters: function() {
-            this.activeFilters = this.activeFilters.filter(f => f.type !== 'department');
+            this.activeFilters = this.activeFilters.filter(f => f.type !== 'tag');
             localStorage.removeItem('activeTagFilters');
             
             if (this.tagFilterTagify) {
@@ -479,7 +479,7 @@
                 const currentSchedule = this.schedules[this.activeScheduleId];
                 currentSchedule.data.classrooms = data.classrooms || [];
                 currentSchedule.data.scheduleData = this.ensureDataIds(data.scheduleData || {});
-                currentSchedule.data.departments = data.departments || [];
+                currentSchedule.data.tags = data.tags || [];
                 
                 this.saveSchedulesToLocal();
                 this.loadSchedule(this.activeScheduleId);
@@ -563,7 +563,7 @@
                     scheduleData: {
                         classrooms: this.classrooms,
                         scheduleData: this.scheduleData,
-                        departments: this.departments
+                        tags: this.tags
                     }
                 };
 
@@ -652,8 +652,8 @@
                 Object.values(classroom).forEach(daySchedule => {
                     if (Array.isArray(daySchedule)) {
                         daySchedule.forEach(classItem => {
-                            if (classItem.departments && Array.isArray(classItem.departments)) {
-                                classItem.departments.forEach(tag => allTags.add(tag));
+                            if (classItem.tags && Array.isArray(classItem.tags)) {
+                                classItem.tags.forEach(tag => allTags.add(tag));
                             }
                         });
                     }
@@ -695,6 +695,11 @@
                         daySchedule.forEach(classItem => {
                             if (classItem && !classItem.id) {
                                 classItem.id = this.generateUniqueId();
+                            }
+                            // Compatibility fix: Rename `departments` to `tags` if it exists
+                            if (classItem && classItem.departments && !classItem.tags) {
+                                classItem.tags = classItem.departments;
+                                delete classItem.departments;
                             }
                         });
                     }
@@ -787,11 +792,11 @@
 
         filterDataByActiveFilters: function(data) {
             const nameFilters = new Set(this.activeFilters.filter(f => f.type === 'name').map(f => f.value));
-            const departmentFilters = new Set(this.activeFilters.filter(f => f.type === 'department').map(f => f.value));
+            const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
             const teacherFilters = new Set(this.activeFilters.filter(f => f.type === 'teacher').map(f => f.value));
 
             // If no filters of a certain type are active, the match should be true.
-            if (nameFilters.size === 0 && departmentFilters.size === 0 && teacherFilters.size === 0) {
+            if (nameFilters.size === 0 && tagFilters.size === 0 && teacherFilters.size === 0) {
                 return data;
             }
 
@@ -801,15 +806,15 @@
                 for (const day in data[classroom]) {
                     const filteredDay = data[classroom][day].filter(course => {
                         const nameMatch = nameFilters.size === 0 || nameFilters.has(course.name);
-                        // Logic change: for departments/tags, check if the course has AT LEAST ONE of the selected tags.
-                        const departmentMatch = departmentFilters.size === 0 || (course.departments && course.departments.some(d => departmentFilters.has(d)));
+                        // Logic change: for tags/tags, check if the course has AT LEAST ONE of the selected tags.
+                        const tagMatch = tagFilters.size === 0 || (course.tags && course.tags.some(d => tagFilters.has(d)));
                         const teacherMatch = teacherFilters.size === 0 || teacherFilters.has(course.teacher);
                         
                         // Logic change: Now we need to decide how filters interact.
                         // Let's assume for now that filters of DIFFERENT types are ANDed,
                         // but filters of the SAME type (like multiple tags) are ORed (which is handled by the .some() above).
                         // The current logic already does this.
-                        return nameMatch && departmentMatch && teacherMatch;
+                        return nameMatch && tagMatch && teacherMatch;
                     });
                     if (filteredDay.length > 0) {
                         filteredData[classroom][day] = filteredDay;

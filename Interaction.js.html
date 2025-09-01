@@ -47,7 +47,6 @@ function createInteractionModule(app) {
         };
 
         setupAdminModal(els.showClassroomManagerBtn, els.classroomManagerModal, els.classroomManagerModalClose);
-        setupAdminModal(els.showDepartmentManagerBtn, els.departmentManagerModal, els.departmentManagerModalClose);
         setupAdminModal(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose, () => app.loadVersions());
         
         app.modals.setupModalListeners(els.showHelpBtn, els.helpModal, els.helpModalClose);
@@ -125,7 +124,7 @@ function createInteractionModule(app) {
     },
 
     handleDocumentClick: function(e) {
-        if (e.target.closest('.department-editor')) {
+        if (e.target.closest('.tag-editor')) {
             return;
         }
 
@@ -143,10 +142,10 @@ function createInteractionModule(app) {
             <label><input type="checkbox" class="inline-day-checkbox" value="${index}" ${index === day ? 'checked' : ''}> ${dayName.replace('星期', '')}</label>
         `).join('');
 
-        const tags = isEditMode ? (classItemToEdit.departments || []) : [];
+        const tags = isEditMode ? (classItemToEdit.tags || []) : [];
         
         const tagEditorHtml = `
-            <div class="inline-department-selector">
+            <div class="inline-tag-selector">
                 <div class="inline-selector-title">標籤:
                     <span class="tag-input-hint">(輸入後按 Enter 新增)</span>
                 </div>
@@ -179,13 +178,13 @@ function createInteractionModule(app) {
         const timeEnd = formDiv.querySelector('input[name="timeEnd"]').value.trim();
         const teacher = formDiv.querySelector('input[name="teacher"]').value.trim();
         const tagify = app.activeInlineForm.tagify;
-        const selectedDepartments = tagify ? tagify.value.map(tag => tag.value) : [];
+        const selectedTags = tagify ? tagify.value.map(tag => tag.value) : [];
         const selectedDays = isEditMode ? [day] : Array.from(formDiv.querySelectorAll('.inline-day-checkbox:checked')).map(cb => parseInt(cb.value));
         const notesTextarea = formDiv.querySelector('textarea[name="notes"]');
 
         if (!name) { app.ui.showNotification('課程名稱不能為空！', 'error'); return false; }
         if (!teacher) { app.ui.showNotification('使用人不能為空！', 'error'); return false; }
-        if (selectedDepartments.length === 0) { app.ui.showNotification('請至少設定一個標籤！', 'error'); return false; }
+        if (selectedTags.length === 0) { app.ui.showNotification('請至少設定一個標籤！', 'error'); return false; }
         if (selectedDays.length === 0) { app.ui.showNotification('請至少選擇一個星期！', 'error'); return false; }
         if (!timeStart || !timeEnd) { app.ui.showNotification('請輸入完整的開始與結束時間！', 'error'); return false; }
 
@@ -238,7 +237,7 @@ function createInteractionModule(app) {
 
             classItem.timeStart = formattedTimeStart;
             classItem.timeEnd = formattedTimeEnd;
-            classItem.departments = selectedDepartments;
+            classItem.tags = selectedTags;
             if (notesTextarea) {
                 classItem.notes = notesTextarea.value.trim();
             }
@@ -254,7 +253,7 @@ function createInteractionModule(app) {
                     timeStart: formattedTimeStart, 
                     timeEnd: formattedTimeEnd, 
                     teacher,
-                    departments: selectedDepartments,
+                    tags: selectedTags,
                     notes: notesTextarea ? notesTextarea.value.trim() : ''
                 };
 
@@ -383,7 +382,7 @@ function createInteractionModule(app) {
                    timeStart !== originalData.timeStart ||
                    timeEnd !== originalData.timeEnd ||
                    teacher !== originalData.teacher ||
-                   JSON.stringify(currentTags.sort()) !== JSON.stringify((originalData.departments || []).sort());
+                   JSON.stringify(currentTags.sort()) !== JSON.stringify((originalData.tags || []).sort());
         };
 
         const closeHandler = async (forceSave = false) => {

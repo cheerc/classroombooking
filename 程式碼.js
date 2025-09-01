@@ -79,7 +79,7 @@ function getData() {
             name: scheduleName,
             createdBy: createdBy,
             lastModified: lastModified.toISOString(), // *** STEP 1: Add lastModified to each schedule object
-            data: { scheduleData, classrooms, departments }
+            data: { scheduleData, classrooms, tags: departments } // DEPRECATED: departments
           };
 
           if (!latestModTime || lastModified > latestModTime) {
@@ -157,9 +157,16 @@ function saveData(payload) { // Renamed to payload for clarity
     const timestamp = new Date();
     const timestampISO = timestamp.toISOString();
 
-    const scheduleDataJson = JSON.stringify(scheduleData.scheduleData || {});
-    const classroomsJson = JSON.stringify(scheduleData.classrooms || []);
-    const departmentsJson = JSON.stringify(scheduleData.departments || []);
+    // Backward compatibility: client sends `tags`, we save it as `departments`.
+    const dataToSave = {
+      scheduleData: scheduleData.scheduleData || {},
+      classrooms: scheduleData.classrooms || [],
+      departments: scheduleData.tags || [] // Rename tags to departments
+    };
+
+    const scheduleDataJson = JSON.stringify(dataToSave.scheduleData);
+    const classroomsJson = JSON.stringify(dataToSave.classrooms);
+    const departmentsJson = JSON.stringify(dataToSave.departments);
     scheduleSheet.getRange("B2:B4").setValues([
       [scheduleDataJson],
       [classroomsJson],
@@ -178,7 +185,7 @@ function saveData(payload) { // Renamed to payload for clarity
     // --- 5. 在 'History' 工作表中新增一筆版本紀錄 ---
     const historySheet = getSheet(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
-    const historyDataJson = JSON.stringify(scheduleData);
+    const historyDataJson = JSON.stringify(dataToSave);
     historySheet.getRange("A2:D2").setValues([[timestampISO, userEmail, historyDataJson, scheduleId]]);
 
     const maxHistoryRecords = 20;
@@ -441,13 +448,13 @@ function getVersionData(versionId) {
 
       const scheduleData = scheduleDataSnapshot.scheduleData || {};
       const classrooms = scheduleDataSnapshot.classrooms || [];
-      const departments = scheduleDataSnapshot.departments || [];
+      const departments = scheduleDataSnapshot.departments || []; // Read as departments
 
       return {
         success: true,
         scheduleData: scheduleData,
         classrooms: classrooms,
-        departments: departments,
+        tags: departments, // Return as tags
         versionId: versionId
       };
     }

@@ -142,7 +142,7 @@
   - `activeScheduleId`: 當前作用中的課表 ID。
   - `classrooms`: **當前課表**的教室列表。
   - `scheduleData`: **當前課表**的課程資料。
-  - `departments`: **當前課表**所有課程中，使用到的標籤列表 (由 `getAllTags()` 動態生成)。
+  - `tags`: **當前課表**所有課程中，使用到的標籤列表 (由 `getAllTags()` 動態生成)。
   - `isDirty`: 一個布林值，用來追蹤目前是否有未儲存的變更。
   - `currentViewMode`: 當前的檢視模式 (`'week'` 或 `'day'`)。
 - **修改狀態後，務必呼叫相關的渲染函式** (如 `renderScheduleTable()`, `updateClassroomList()`) 來更新 UI。
