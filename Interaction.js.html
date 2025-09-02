@@ -421,7 +421,7 @@ function createInteractionModule(app) {
 
         const tagifyInput = formDiv.querySelector('input[name="tags"]');
         const tagify = new Tagify(tagifyInput, {
-            whitelist: app.getAllTags(),
+            whitelist: app.getGlobalAllTags(),
             placeholder: "新增標籤 (按 , 或 Enter)",
             dropdown: {
                 maxItems: 20,
