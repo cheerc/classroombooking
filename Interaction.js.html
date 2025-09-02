@@ -74,7 +74,6 @@ function createInteractionModule(app) {
         els.filterDeselectAll.addEventListener('click', () => app.toggleAllFilterCheckboxes(false));
         els.filterApply.addEventListener('click', () => app.applyFilters());
         els.filterClear.addEventListener('click', () => app.clearAdvancedFilters());
-        els.clearTagFilterBtn.addEventListener('click', () => app.clearTagFilters());
         els.clearAllFiltersBtn.addEventListener('click', () => app.clearAllFilters());
         
         els.viewModeWeekBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.WEEK));

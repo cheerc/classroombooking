@@ -366,35 +366,32 @@
             this.ui.updateClearAllFiltersButtonVisibility();
         },
 
-        applyTagFilters: function() {
+        applyTagFilters: async function() {
             if (!this.tagFilterTagify) return;
+
+            const advancedFiltersExist = this.activeFilters.some(f => f.type !== 'tag');
             const selectedTags = this.tagFilterTagify.value.map(tag => tag.value);
 
-            // 1. Set activeFilters to ONLY be the new tag filters, effectively clearing advanced filters.
-            this.activeFilters = selectedTags.map(tag => ({ type: 'tag', value: tag }));
-
-            // 2. Save the tag filter state to local storage.
-            localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
-
-            // 3. Repopulate the advanced filter modal based on the new context.
-            this.modals.populateFilterModal();
-
-            // 4. Re-render the main table and update all filter-related button states.
-            this.ui.renderScheduleTable();
-            this.ui.updateAdvancedFilterButtonState();
-            this.ui.updateClearFilterButtonVisibility();
-            this.ui.updateClearAllFiltersButtonVisibility();
-        },
-
-        clearTagFilters: function() {
-            this.activeFilters = this.activeFilters.filter(f => f.type !== 'tag');
-            localStorage.removeItem('activeTagFilters');
-            
-            if (this.tagFilterTagify) {
-                this.tagFilterTagify.removeAllTags();
+            // If advanced filters are active, and the user is changing the primary tag filter, confirm first.
+            if (advancedFiltersExist && selectedTags.length > 0) {
+                const confirmed = await this.modals.showConfirm(
+                    '變更主要標籤將會重設目前的進階篩選條件，確定要繼續嗎？'
+                );
+                if (!confirmed) {
+                    // Revert the visual change in Tagify input to match the actual active filter state
+                    const currentTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
+                    this.tagFilterTagify.loadOriginalValues(currentTags);
+                    return; 
+                }
             }
 
+            // Set activeFilters to ONLY be the new tag filters, effectively clearing advanced filters.
+            this.activeFilters = selectedTags.map(tag => ({ type: 'tag', value: tag }));
+
+            localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
+            this.modals.populateFilterModal();
             this.ui.renderScheduleTable();
+            this.ui.updateAdvancedFilterButtonState();
             this.ui.updateClearFilterButtonVisibility();
             this.ui.updateClearAllFiltersButtonVisibility();
         },

@@ -100,50 +100,54 @@
                     </div>
                 </div>
 
-                <div class="flex justify-center items-center gap-4 mb-4">
-                    <button id="show-filter-btn" data-tooltip="進階篩選" class="bg-indigo-500 text-white p-3 rounded-md hover:bg-indigo-600 transition flex items-center shadow">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
-                        </svg>
-                    </button>
-                    <div class="tag-filter-container">
-                        <input id="tag-filter-input" class="tagify-loading bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm" placeholder="篩選標籤..." disabled>
-                        <button id="clear-tag-filter-btn" class="clear-filter-btn" style="display: none;" data-tooltip="清除標籤篩選">
+                <div class="flex justify-between items-end gap-4 mb-4">
+                    <!-- Filter Section -->
+                    <div class="flex items-center gap-4">
+                        <!-- Tag Filter -->
+                        <div class="tag-filter-container">
+                            <input id="tag-filter-input" class="tagify-loading bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm" placeholder="標籤篩選" disabled>
+                        </div>
+
+                        <!-- Advanced Filter Button -->
+                        <button id="show-filter-btn" data-tooltip="進階篩選" class="bg-indigo-500 text-white p-3 rounded-md hover:bg-indigo-600 transition flex items-center shadow">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                              <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+
+                        <!-- Clear All Button -->
+                        <button id="clear-all-filters-btn" data-tooltip="清除所有篩選" class="bg-red-500 text-white p-3 rounded-md hover:bg-red-600 transition flex items-center shadow" style="display: none;">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
                             </svg>
                         </button>
                     </div>
-                    <button id="clear-all-filters-btn" class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 transition flex items-center shadow-sm" style="display: none;">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                        </svg>
-                        清除所有篩選
-                    </button>
-                    <div class="mr-auto"></div> <!-- This will push the rest of the items to the right -->
 
-                    <div id="day-view-sort-selector" class="flex items-center p-1 bg-gray-200 rounded-lg mr-4" style="display: none;">
-                        <button id="day-sort-classroom" class="px-3 py-1 text-sm font-medium rounded-md transition-colors day-sort-btn active">依教室</button>
-                        <button id="day-sort-time" class="px-3 py-1 text-sm font-medium rounded-md transition-colors day-sort-btn">依時間</button>
-                    </div>
+                    <!-- View Options Section -->
+                    <div class="flex items-end gap-4">
+                        <div id="day-view-sort-selector" class="flex items-center p-1 bg-gray-200 rounded-lg" style="display: none;">
+                            <button id="day-sort-classroom" class="px-3 py-1 text-sm font-medium rounded-md transition-colors day-sort-btn active">依教室</button>
+                            <button id="day-sort-time" class="px-3 py-1 text-sm font-medium rounded-md transition-colors day-sort-btn">依時間</button>
+                        </div>
 
-                    <div id="view-mode-selector" class="flex items-center p-1 bg-gray-200 rounded-lg">
-                        <button id="view-mode-week" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn active">週檢視</button>
-                        <button id="view-mode-day" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn">日檢視</button>
-                    </div>
-                    <!-- This is now handled inside the table header -->
-                    <div id="day-view-controls" class="flex items-center gap-2" style="display: none;">
-                        <button id="prev-day-btn" class="p-2 rounded-full hover:bg-gray-200 transition">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-                            </svg>
-                        </button>
-                        <h3 id="current-day-display" class="text-lg font-semibold text-gray-700 w-24 text-center"></h3>
-                        <button id="next-day-btn" class="p-2 rounded-full hover:bg-gray-200 transition">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-                            </svg>
-                        </button>
+                        <div id="view-mode-selector" class="flex items-center p-1 bg-gray-200 rounded-lg">
+                            <button id="view-mode-week" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn active">週檢視</button>
+                            <button id="view-mode-day" class="px-3 py-1 text-sm font-medium rounded-md transition-colors view-mode-btn">日檢視</button>
+                        </div>
+                        <!-- This is now handled inside the table header -->
+                        <div id="day-view-controls" class="flex items-center gap-2" style="display: none;">
+                            <button id="prev-day-btn" class="p-2 rounded-full hover:bg-gray-200 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                                </svg>
+                            </button>
+                            <h3 id="current-day-display" class="text-lg font-semibold text-gray-700 w-24 text-center"></h3>
+                            <button id="next-day-btn" class="p-2 rounded-full hover:bg-gray-200 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -289,7 +293,7 @@
 
             <div class="flex-shrink-0">
                 <div class="flex justify-end gap-4 border-t pt-4">
-                    <button id="filter-clear" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded-md">清除篩選</button>
+                    <button id="filter-clear" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded-md">清除進階篩選</button>
                     <button id="filter-apply" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-md">套用篩選</button>
                 </div>
             </div>
