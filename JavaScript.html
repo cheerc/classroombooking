@@ -369,14 +369,19 @@
         applyTagFilters: function() {
             if (!this.tagFilterTagify) return;
             const selectedTags = this.tagFilterTagify.value.map(tag => tag.value);
-            
-            const advancedFilters = this.activeFilters.filter(f => f.type !== 'tag');
-            const newTagFilters = selectedTags.map(tag => ({ type: 'tag', value: tag }));
-            this.activeFilters = [...advancedFilters, ...newTagFilters];
-            
+
+            // 1. Set activeFilters to ONLY be the new tag filters, effectively clearing advanced filters.
+            this.activeFilters = selectedTags.map(tag => ({ type: 'tag', value: tag }));
+
+            // 2. Save the tag filter state to local storage.
             localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
 
+            // 3. Repopulate the advanced filter modal based on the new context.
+            this.modals.populateFilterModal();
+
+            // 4. Re-render the main table and update all filter-related button states.
             this.ui.renderScheduleTable();
+            this.ui.updateAdvancedFilterButtonState();
             this.ui.updateClearFilterButtonVisibility();
             this.ui.updateClearAllFiltersButtonVisibility();
         },
@@ -792,6 +797,29 @@
                 return hours.padStart(2, '0') + ':' + minutes.padStart(2, '0');
             }
             return '00:00';
+        },
+
+        filterDataByTags: function(data) {
+            const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
+
+            if (tagFilters.size === 0) {
+                return data; // No tag filters, return original data
+            }
+
+            const filteredData = {};
+            for (const classroom in data) {
+                filteredData[classroom] = {};
+                for (const day in data[classroom]) {
+                    const filteredDay = data[classroom][day].filter(course => {
+                        // Course must have at least one of the selected tags
+                        return course.tags && course.tags.some(d => tagFilters.has(d));
+                    });
+                    if (filteredDay.length > 0) {
+                        filteredData[classroom][day] = filteredDay;
+                    }
+                }
+            }
+            return filteredData;
         },
 
         filterDataByActiveFilters: function(data) {

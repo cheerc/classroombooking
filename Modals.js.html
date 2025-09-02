@@ -152,7 +152,8 @@ function createModalModule(app) {
         }
 
         // 2. Gather all items based on filter type
-        Object.values(app.scheduleData).forEach(classroom => {
+        const dataToScan = app.filterDataByTags(app.scheduleData);
+        Object.values(dataToScan).forEach(classroom => {
             if (typeof classroom !== 'object' || classroom === null) return;
             Object.values(classroom).forEach(day => {
                 if (!Array.isArray(day)) return;
