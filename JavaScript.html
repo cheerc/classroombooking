@@ -725,11 +725,6 @@
                             if (classItem && !classItem.id) {
                                 classItem.id = this.generateUniqueId();
                             }
-                            // Compatibility fix: Rename `departments` to `tags` if it exists
-                            if (classItem && classItem.departments && !classItem.tags) {
-                                classItem.tags = classItem.departments;
-                                delete classItem.departments;
-                            }
                         });
                     }
                 });

@@ -70,16 +70,16 @@ function getData() {
         const scheduleSheet = ss.getSheetByName(scheduleId);
         if (scheduleSheet) {
           const sheetDataRange = scheduleSheet.getRange("B2:B4").getValues();
-          let scheduleData = {}, classrooms = [], departments = [];
+          let scheduleData = {}, classrooms = [], tags = [];
           try { scheduleData = JSON.parse(sheetDataRange[0][0] || '{}'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 scheduleData 失敗`); }
           try { classrooms = JSON.parse(sheetDataRange[1][0] || '[]'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 classrooms 失敗`); }
-          try { departments = JSON.parse(sheetDataRange[2][0] || '[]'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 departments 失敗`); }
+          try { tags = JSON.parse(sheetDataRange[2][0] || '[]'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 tags 失敗`); }
 
           schedules[scheduleId] = {
             name: scheduleName,
             createdBy: createdBy,
             lastModified: lastModified.toISOString(), // *** STEP 1: Add lastModified to each schedule object
-            data: { scheduleData, classrooms, tags: departments } // DEPRECATED: departments
+            data: { scheduleData, classrooms, tags: tags }
           };
 
           if (!latestModTime || lastModified > latestModTime) {
@@ -157,20 +157,19 @@ function saveData(payload) { // Renamed to payload for clarity
     const timestamp = new Date();
     const timestampISO = timestamp.toISOString();
 
-    // Backward compatibility: client sends `tags`, we save it as `departments`.
     const dataToSave = {
       scheduleData: scheduleData.scheduleData || {},
       classrooms: scheduleData.classrooms || [],
-      departments: scheduleData.tags || [] // Rename tags to departments
+      tags: scheduleData.tags || []
     };
 
     const scheduleDataJson = JSON.stringify(dataToSave.scheduleData);
     const classroomsJson = JSON.stringify(dataToSave.classrooms);
-    const departmentsJson = JSON.stringify(dataToSave.departments);
+    const tagsJson = JSON.stringify(dataToSave.tags);
     scheduleSheet.getRange("B2:B4").setValues([
       [scheduleDataJson],
       [classroomsJson],
-      [departmentsJson]
+      [tagsJson]
     ]);
 
     // --- 4. 更新 'Data' 索引工作表 ---
@@ -248,7 +247,7 @@ function addSchedule(scheduleInfo) {
       ["Key", "Value"],
       ["scheduleData", "{}"],
       ["classrooms", "[]"],
-      ["departments", "[]"]
+      ["tags", "[]"]
     ]);
 
     const creatorEmail = Session.getActiveUser().getEmail();
@@ -448,13 +447,13 @@ function getVersionData(versionId) {
 
       const scheduleData = scheduleDataSnapshot.scheduleData || {};
       const classrooms = scheduleDataSnapshot.classrooms || [];
-      const departments = scheduleDataSnapshot.departments || []; // Read as departments
+      const tags = scheduleDataSnapshot.tags || [];
 
       return {
         success: true,
         scheduleData: scheduleData,
         classrooms: classrooms,
-        tags: departments, // Return as tags
+        tags: tags,
         versionId: versionId
       };
     }
@@ -465,3 +464,5 @@ function getVersionData(versionId) {
     return { success: false, error: e.toString() };
   }
 }
+
+
