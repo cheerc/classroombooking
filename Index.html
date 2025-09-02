@@ -101,11 +101,10 @@
                 </div>
 
                 <div class="flex justify-center items-center gap-4 mb-4">
-                    <button id="show-filter-btn" class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 transition flex items-center shadow">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <button id="show-filter-btn" data-tooltip="進階篩選" class="bg-indigo-500 text-white p-3 rounded-md hover:bg-indigo-600 transition flex items-center shadow">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                           <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
                         </svg>
-                        進階篩選
                     </button>
                     <div class="tag-filter-container">
                         <input id="tag-filter-input" class="tagify-loading bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm" placeholder="篩選標籤..." disabled>
@@ -254,14 +253,13 @@
 
     <div id="filter-modal" class="loading-overlay" style="display: none;">
         <div class="bg-white p-8 rounded-lg shadow-lg text-left max-w-2xl w-full relative flex flex-col max-h-[80vh]">
-            <h2 class="text-2xl font-bold mb-6 text-center text-indigo-700">課程篩選器</h2>
+            <h2 class="text-2xl font-bold mb-6 text-center text-indigo-700">進階篩選</h2>
             <button id="filter-modal-close" class="absolute top-3 right-4 text-gray-400 hover:text-gray-700 text-3xl font-light">&times;</button>
             
             <div class="mb-4 border-b pb-4">
                 <label class="block text-lg font-medium text-gray-800 mb-2">篩選依據：</label>
                 <div id="filter-type-selector" class="flex items-center gap-x-6 gap-y-2 flex-wrap">
                     <label class="inline-flex items-center"><input type="radio" name="filterType" value="name" class="form-radio text-indigo-600" checked> <span class="ml-2 text-gray-700">課程名稱</span></label>
-                    <label class="inline-flex items-center"><input type="radio" name="filterType" value="tag" class="form-radio text-indigo-600"> <span class="ml-2 text-gray-700">標籤</span></label>
                     <label class="inline-flex items-center"><input type="radio" name="filterType" value="teacher" class="form-radio text-indigo-600"> <span class="ml-2 text-gray-700">使用人</span></label>
                 </div>
             </div>
