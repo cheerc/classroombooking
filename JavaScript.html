@@ -327,6 +327,7 @@
                 
                 this.ui.renderScheduleTable();
                 this.ui.updateGlobalUIForScheduleMode();
+                this.ui.updateClearAllFiltersButtonVisibility();
                 localStorage.setItem('activeScheduleId', this.activeScheduleId);
             } else {
                 this.loadSchedule(newId);
@@ -341,13 +342,15 @@
                     const persistedTags = JSON.parse(persistedTagsJSON);
                     const allCurrentTags = new Set(this.getAllTags());
                     
-                    // Filter out tags that no longer exist
                     const validPersistedTags = persistedTags.filter(tag => allCurrentTags.has(tag));
                     
                     this.activeFilters = validPersistedTags.map(tag => ({ type: 'tag', value: tag }));
                     
+                    if (this.tagFilterTagify) {
+                        this.tagFilterTagify.loadOriginalValues(validPersistedTags);
+                    }
+
                     if (persistedTags.length !== validPersistedTags.length) {
-                        // If some tags were removed, update localStorage
                         localStorage.setItem('activeTagFilters', JSON.stringify(validPersistedTags));
                     }
                 } catch (e) {
@@ -360,38 +363,22 @@
             }
             this.ui.updateClearFilterButtonVisibility();
             this.ui.updateAdvancedFilterButtonState();
-        },
-
-        toggleAllTagFilterCheckboxes: function(shouldBeChecked) {
-            AppElements.tagFilterList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                cb.checked = shouldBeChecked;
-            });
+            this.ui.updateClearAllFiltersButtonVisibility();
         },
 
         applyTagFilters: function() {
             if (!this.tagFilterTagify) return;
             const selectedTags = this.tagFilterTagify.value.map(tag => tag.value);
             
-            // Clear any non-tag filters before applying new tag filters
-            this.activeFilters = this.activeFilters.filter(f => f.type === 'tag');
-            
-            // Add the new tags to the active filters
-            const existingTags = new Set(this.activeFilters.map(f => f.value));
-            selectedTags.forEach(tag => {
-                if (!existingTags.has(tag)) {
-                    this.activeFilters.push({ type: 'tag', value: tag });
-                }
-            });
-
-            // Also, remove tags from activeFilters that are no longer in selectedTags
-            const selectedTagsSet = new Set(selectedTags);
-            this.activeFilters = this.activeFilters.filter(f => f.type !== 'tag' || selectedTagsSet.has(f.value));
+            const advancedFilters = this.activeFilters.filter(f => f.type !== 'tag');
+            const newTagFilters = selectedTags.map(tag => ({ type: 'tag', value: tag }));
+            this.activeFilters = [...advancedFilters, ...newTagFilters];
             
             localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
 
             this.ui.renderScheduleTable();
             this.ui.updateClearFilterButtonVisibility();
-            this.historyModule.saveState();
+            this.ui.updateClearAllFiltersButtonVisibility();
         },
 
         clearTagFilters: function() {
@@ -404,7 +391,7 @@
 
             this.ui.renderScheduleTable();
             this.ui.updateClearFilterButtonVisibility();
-            this.historyModule.saveState();
+            this.ui.updateClearAllFiltersButtonVisibility();
         },
 
         toggleAllFilterCheckboxes: function(shouldBeChecked) {
@@ -416,21 +403,36 @@
         applyFilters: function() {
             const filterType = AppElements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
             const selectedItems = Array.from(AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-            this.activeFilters = selectedItems.map(item => ({ type: filterType, value: item }));
+            
+            const tagFilters = this.activeFilters.filter(f => f.type === 'tag');
+            const newAdvancedFilters = selectedItems.map(item => ({ type: filterType, value: item }));
+            this.activeFilters = [...tagFilters, ...newAdvancedFilters];
+
             this.ui.renderScheduleTable();
-            this.ui.updateClearFilterButtonVisibility();
             this.ui.updateAdvancedFilterButtonState();
+            this.ui.updateClearAllFiltersButtonVisibility();
             AppElements.filterModal.style.display = 'none';
         },
 
-        clearFilters: function() {
-            this.activeFilters = [];
+        clearAdvancedFilters: function() {
+            this.activeFilters = this.activeFilters.filter(f => f.type === 'tag');
             this.modals.populateFilterModal();
             this.ui.renderScheduleTable();
-            this.ui.updateClearFilterButtonVisibility();
             this.ui.updateAdvancedFilterButtonState();
-            AppElements.filterModal.style.display = 'none';
-            this.historyModule.saveState();
+            this.ui.updateClearAllFiltersButtonVisibility();
+        },
+
+        clearAllFilters: function() {
+            this.activeFilters = [];
+            localStorage.removeItem('activeTagFilters');
+            if (this.tagFilterTagify) {
+                this.tagFilterTagify.removeAllTags();
+            }
+            this.modals.populateFilterModal();
+            this.ui.renderScheduleTable();
+            this.ui.updateAdvancedFilterButtonState();
+            this.ui.updateClearFilterButtonVisibility();
+            this.ui.updateClearAllFiltersButtonVisibility();
         },
 
         // --- API COMMUNICATION ---

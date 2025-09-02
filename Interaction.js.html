@@ -73,8 +73,9 @@ function createInteractionModule(app) {
         els.filterSelectAll.addEventListener('click', () => app.toggleAllFilterCheckboxes(true));
         els.filterDeselectAll.addEventListener('click', () => app.toggleAllFilterCheckboxes(false));
         els.filterApply.addEventListener('click', () => app.applyFilters());
-        els.filterClear.addEventListener('click', () => app.clearFilters());
+        els.filterClear.addEventListener('click', () => app.clearAdvancedFilters());
         els.clearTagFilterBtn.addEventListener('click', () => app.clearTagFilters());
+        els.clearAllFiltersBtn.addEventListener('click', () => app.clearAllFilters());
         
         els.viewModeWeekBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.WEEK));
         els.viewModeDayBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.DAY));
@@ -653,6 +654,7 @@ function createInteractionModule(app) {
             app.schedules = {};
             app.activeScheduleId = null;
             app.activeFilters = [];
+            app.ui.updateClearAllFiltersButtonVisibility();
             app.lastSyncTime = null;
             app.scheduleLastModified = {};
             app.courseColorMap = {};

@@ -232,6 +232,12 @@ function createUIModule(app) {
         btn.style.display = hasTagFilters ? 'block' : 'none';
     },
 
+    updateClearAllFiltersButtonVisibility: function() {
+        const btn = AppElements.clearAllFiltersBtn;
+        if (!btn) return;
+        btn.style.display = app.activeFilters.length > 0 ? 'flex' : 'none';
+    },
+
     updateAdvancedFilterButtonState: function() {
         const btn = AppElements.showFilterBtn;
         if (!btn) return;
