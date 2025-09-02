@@ -225,30 +225,22 @@ function createUIModule(app) {
         });
     },
 
-    updateActiveFilterDisplay: function() {
-        const display = AppElements.activeFilterDisplay;
-        if (app.activeFilters.length === 0) {
-            display.textContent = '未套用任何篩選';
-        } else {
-            const counts = app.activeFilters.reduce((acc, f) => {
-                if (f.type === 'name') acc.name = (acc.name || 0) + 1;
-                else if (f.type === 'tag') acc.tag = (acc.tag || 0) + 1;
-                else if (f.type === 'teacher') acc.teacher = (acc.teacher || 0) + 1;
-                return acc;
-            }, {});
-            const parts = [];
-            if (counts.name) parts.push(`${counts.name} 門課程`);
-            if (counts.tag) parts.push(`${counts.tag} 個標籤`);
-            if (counts.teacher) parts.push(`${counts.teacher} 位使用人`);
-            display.textContent = `已篩選: ${parts.join(', ')}`;
-        }
-    },
-
     updateClearFilterButtonVisibility: function() {
         const btn = AppElements.clearTagFilterBtn;
         if (!btn) return;
         const hasTagFilters = app.activeFilters.some(f => f.type === 'tag');
         btn.style.display = hasTagFilters ? 'block' : 'none';
+    },
+
+    updateAdvancedFilterButtonState: function() {
+        const btn = AppElements.showFilterBtn;
+        if (!btn) return;
+        const hasAdvancedFilters = app.activeFilters.some(f => f.type === 'name' || f.type === 'teacher');
+        if (hasAdvancedFilters) {
+            btn.classList.add('filter-btn-active');
+        } else {
+            btn.classList.remove('filter-btn-active');
+        }
     },
 
     renderList: function(listElement, items, renderItemFn) {

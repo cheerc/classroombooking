@@ -359,6 +359,7 @@
                 this.activeFilters = [];
             }
             this.ui.updateClearFilterButtonVisibility();
+            this.ui.updateAdvancedFilterButtonState();
         },
 
         toggleAllTagFilterCheckboxes: function(shouldBeChecked) {
@@ -427,6 +428,7 @@
             this.modals.populateFilterModal();
             this.ui.renderScheduleTable();
             this.ui.updateClearFilterButtonVisibility();
+            this.ui.updateAdvancedFilterButtonState();
             AppElements.filterModal.style.display = 'none';
             this.historyModule.saveState();
         },

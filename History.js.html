@@ -66,7 +66,14 @@ function createHistoryModule(app) {
         // These methods still live on the main app object
         app.ui.updateClassroomList();
         app.ui.renderScheduleTable();
-        app.ui.updateActiveFilterDisplay();
+
+        // NEW: Update filter UI state after undo/redo
+        if (app.tagFilterTagify) {
+            const tagFilters = app.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
+            app.tagFilterTagify.loadOriginalValues(tagFilters);
+        }
+        app.ui.updateClearFilterButtonVisibility();
+        app.ui.updateAdvancedFilterButtonState();
 
         this.updateUndoRedoButtons();
         this.checkDirty();

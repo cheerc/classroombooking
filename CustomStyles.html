@@ -400,6 +400,21 @@
         justify-content: flex-end;
     }
 
+    .filter-btn-active {
+        background-color: #4f46e5 !important; /* indigo-600 */
+        color: white !important;
+        animation: pulse-sm 1.5s infinite;
+    }
+
+    @keyframes pulse-sm {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.7);
+        }
+        50% {
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0);
+        }
+    }
+
     /* Styles for the new Tagify filter */
     .tag-filter-container {
         position: relative;
