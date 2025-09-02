@@ -61,19 +61,10 @@ function createHistoryModule(app) {
         app.classrooms = JSON.parse(JSON.stringify(state.classrooms));
         app.scheduleData = JSON.parse(JSON.stringify(state.scheduleData));
         app.tags = JSON.parse(JSON.stringify(state.tags));
-        app.activeFilters = JSON.parse(JSON.stringify(state.activeFilters));
         
         // These methods still live on the main app object
         app.ui.updateClassroomList();
         app.ui.renderScheduleTable();
-
-        // NEW: Update filter UI state after undo/redo
-        if (app.tagFilterTagify) {
-            const tagFilters = app.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
-            app.tagFilterTagify.loadOriginalValues(tagFilters);
-        }
-        app.ui.updateClearFilterButtonVisibility();
-        app.ui.updateAdvancedFilterButtonState();
 
         this.updateUndoRedoButtons();
         this.checkDirty();
@@ -112,6 +103,19 @@ function createHistoryModule(app) {
     setDirty: function(isDirty) {
         if (app.isDirty === isDirty) return;
         app.isDirty = isDirty;
+        const saveBtn = elements.saveToCloudBtn;
+        if (isDirty) {
+            saveBtn.classList.add('animate-pulse');
+            app.ui.updateSyncStatus(AppConfig.STATUS.DIRTY);
+        } else {
+            saveBtn.classList.remove('animate-pulse');
+            app.ui.updateSyncStatus(AppConfig.STATUS.SYNCED);
+        }
+    }
+  };
+}
+</script>
+pp.isDirty = isDirty;
         const saveBtn = elements.saveToCloudBtn;
         if (isDirty) {
             saveBtn.classList.add('animate-pulse');
