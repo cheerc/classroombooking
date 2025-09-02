@@ -419,6 +419,7 @@
             this.activeFilters = selectedItems.map(item => ({ type: filterType, value: item }));
             this.ui.renderScheduleTable();
             this.ui.updateClearFilterButtonVisibility();
+            this.ui.updateAdvancedFilterButtonState();
             AppElements.filterModal.style.display = 'none';
         },
 

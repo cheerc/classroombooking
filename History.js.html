@@ -13,8 +13,7 @@ function createHistoryModule(app) {
     return {
       classrooms: JSON.parse(JSON.stringify(app.classrooms)),
       scheduleData: JSON.parse(JSON.stringify(app.scheduleData)),
-      tags: JSON.parse(JSON.stringify(app.tags)),
-      activeFilters: JSON.parse(JSON.stringify(app.activeFilters))
+      tags: JSON.parse(JSON.stringify(app.tags))
     };
   }
 
@@ -22,8 +21,13 @@ function createHistoryModule(app) {
 
   return {
     saveState: function() {
-        history = history.slice(0, historyIndex + 1);
         const currentState = getCurrentState();
+        // Do not save if the state is identical to the last one in history.
+        if (history.length > 0 && JSON.stringify(currentState) === JSON.stringify(history[historyIndex])) {
+            return;
+        }
+
+        history = history.slice(0, historyIndex + 1);
         history.push(currentState);
         historyIndex = history.length - 1;
         if (history.length > 50) { 
@@ -103,19 +107,6 @@ function createHistoryModule(app) {
     setDirty: function(isDirty) {
         if (app.isDirty === isDirty) return;
         app.isDirty = isDirty;
-        const saveBtn = elements.saveToCloudBtn;
-        if (isDirty) {
-            saveBtn.classList.add('animate-pulse');
-            app.ui.updateSyncStatus(AppConfig.STATUS.DIRTY);
-        } else {
-            saveBtn.classList.remove('animate-pulse');
-            app.ui.updateSyncStatus(AppConfig.STATUS.SYNCED);
-        }
-    }
-  };
-}
-</script>
-pp.isDirty = isDirty;
         const saveBtn = elements.saveToCloudBtn;
         if (isDirty) {
             saveBtn.classList.add('animate-pulse');
