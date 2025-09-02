@@ -184,36 +184,42 @@
             <h2 class="text-2xl font-bold mb-6 text-center text-blue-800 flex-shrink-0">使用說明</h2>
             <button id="help-modal-close" class="absolute top-4 right-5 text-gray-400 hover:text-gray-700 text-4xl font-light">&times;</button>
             
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-6 text-gray-800 overflow-y-auto pr-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 text-gray-800 overflow-y-auto pr-4">
                 
                 <!-- Core Actions -->
                 <div class="space-y-4">
                     <h3 class="font-semibold text-lg text-blue-700 border-b pb-2 mb-3">核心操作</h3>
-                    <p><strong>新增課程:</strong> 在目標儲存格上 <strong class="text-red-500">雙擊滑鼠左鍵</strong>，即可開啟新增表單。</p>
-                    <p><strong>修改課程:</strong> 直接 <strong class="text-red-500">雙擊</strong> 任何一個課程方塊，即可進入編輯模式。</p>
-                    <p><strong>刪除課程:</strong> 將滑鼠移至課程方塊上，點擊右上角出現的 <strong class="text-red-500">"×"</strong> 按鈕。</p>
-                    <p><strong>移動課程:</strong> 直接用滑鼠 <strong class="text-red-500">拖曳</strong> 課程方塊到新的儲存格即可。</p>
-                    <p><strong>儲存方式:</strong> 在表單中，必須點擊 <strong class="text-green-500">綠色打勾按鈕</strong> 才能儲存資料。<strong class="text-red-500">按下 Enter 鍵不會儲存。</strong></p>
-                    <p><strong>必填欄位:</strong> 新增或修改時，<strong class="text-blue-600">使用人</strong> 與 <strong class="text-blue-600">標籤</strong> 為必填項目。</p>
+                    <p><strong>新增課程:</strong> 在課表空格內 <strong class="text-red-500">雙擊</strong> 即可新增。</p>
+                    <p><strong>編輯/刪除:</strong> <strong class="text-red-500">雙擊</strong> 現有課程可編輯；點擊課程右上角的 <strong class="text-red-500">×</strong> 可刪除。</p>
+                    <p><strong>移動課程:</strong> 直接用滑鼠 <strong class="text-red-500">拖曳</strong> 課程方塊到新位置。</p>
+                    <p><strong>必填項目:</strong> 新增或編輯時，<strong class="text-blue-600">課程名稱</strong>、<strong class="text-blue-600">使用人</strong>、<strong class="text-blue-600">標籤</strong> 為必填。</p>
                 </div>
 
                 <!-- Filtering & Viewing -->
                 <div class="space-y-4">
                     <h3 class="font-semibold text-lg text-blue-700 border-b pb-2 mb-3">篩選與檢視</h3>
-                    <p><strong>標籤篩選:</strong> 點擊頂端的 <strong class="text-purple-600">標籤篩選框</strong>，可快速篩選出包含特定標籤的所有課程。</p>
-                    <p><strong>進階篩選:</strong> 點擊 <strong class="text-indigo-600">「進階篩選」</strong> 按鈕，可以根據 <strong class="text-blue-600">課程名稱、標籤、或使用人</strong> 進行更詳細的篩選。</p>
-                    <p><strong>互斥篩選模式:</strong> 進階篩選中的三種篩選依據<strong class="text-red-500">一次只能選擇一種</strong>。當您套用其中一種，另兩種的篩選條件將會被自動清除。</p>
-                    <p><strong>時間衝突提示:</strong> 當同一教室的課程時間重疊時，課程方塊會出現<strong class="text-red-500">紅色外框</strong>及<strong class="text-red-500">警告圖示</strong>。</p>
-                    <p><strong>標籤直書顯示:</strong> 課程方塊右側會<strong class="text-blue-600">垂直顯示</strong>所屬標籤，以節省空間。</p>
+                    <p><strong>篩選流程:</strong> 採用兩步驟篩選：</p>
+                    <ol class="list-decimal list-inside ml-4 space-y-2">
+                        <li><strong>主要標籤篩選:</strong> 從頂部「標籤篩選」框選擇標籤，快速縮小範圍。</li>
+                        <li><strong>進階篩選:</strong> 點擊 <strong class="text-indigo-600">篩選圖示</strong>，可從第一步的結果中，再依 `課程名稱` 或 `使用人` 等條件二次篩選。</li>
+                    </ol>
+                    <p><strong>清除篩選:</strong> 點擊 <strong class="text-red-500">紅色清除圖示</strong> 可清除所有篩選條件。</p>
+                    <p><strong>檢視模式:</strong> 點擊右上角可在「週檢視」與「日檢視」之間切換。</p>
                 </div>
 
                 <!-- Data & UI -->
                 <div class="space-y-4">
-                    <h3 class="font-semibold text-lg text-blue-700 border-b pb-2 mb-3">資料與介面</h3>
-                    <p><strong>同步狀態:</strong> 左上角的狀態標示顯示您與雲端資料的同步情況 (例如：已是最新、離線模式、同步中、失敗)。</p>
-                    <p><strong>未存檔提示:</strong> 當有未儲存的變更時，左側的<strong class="text-blue-600">儲存按鈕會發光</strong>提醒。此時若關閉分頁，瀏覽器會跳出提示以防資料遺失。</p>
-                    <p><strong>捨棄變更提示:</strong> 在編輯或新增時，按下 <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border-gray-200 rounded-lg">Esc</kbd> 鍵或點擊表單外部，若有未儲存的內容，系統會<strong class="text-red-500">彈出提示</strong>詢問是否捨棄。</p>
-                    <p><strong>管理者功能:</strong> 「教室管理」與「版本紀錄」等進階功能僅限<strong class="text-red-500">特定管理者</strong>可見與使用。</p>
+                    <h3 class="font-semibold text-lg text-blue-700 border-b pb-2 mb-3">資料同步</h3>
+                    <p><strong>儲存與讀取:</strong> 所有操作都先在**本地**進行。完成編輯後，請務必點擊左側的 <strong class="text-blue-600">儲存到雲端</strong> (上傳圖示) 按鈕進行存檔。</p>
+                    <p><strong>同步狀態:</strong> 左上角的文字會提示您目前的資料狀態 (如：`已同步`、`有未儲存變更` 等)。</p>
+                    <p><strong>版本衝突:</strong> 若儲存時發生版本衝突，系統會提示您先 <strong class="text-teal-600">從雲端讀取</strong> (下載圖示) 最新版本。</p>
+                </div>
+
+                <!-- Advanced Features -->
+                <div class="space-y-4">
+                    <h3 class="font-semibold text-lg text-blue-700 border-b pb-2 mb-3">其他功能</h3>
+                    <p><strong>課表管理:</strong> 點擊課表名稱旁的 <strong class="text-green-600">齒輪圖示</strong>，可新增、重新命名、複製或刪除整個課表。</p>
+                    <p><strong>管理者功能:</strong> 若您是課表管理者，左側會出現「教室管理」與「版本紀錄」等進階功能。</p>
                 </div>
             </div>
         </div>
