@@ -689,6 +689,29 @@
             return Array.from(allTags).sort();
         },
 
+        getGlobalAllTeachers: function() {
+            const allTeachers = new Set();
+            if (!this.schedules) return [];
+
+            Object.values(this.schedules).forEach(schedule => {
+                if (schedule.data && schedule.data.scheduleData) {
+                    Object.values(schedule.data.scheduleData).forEach(classroom => {
+                        if (!classroom) return;
+                        Object.values(classroom).forEach(daySchedule => {
+                            if (Array.isArray(daySchedule)) {
+                                daySchedule.forEach(classItem => {
+                                    if (classItem.teacher) {
+                                        allTeachers.add(classItem.teacher);
+                                    }
+                                });
+                            }
+                        });
+                    });
+                }
+            });
+            return Array.from(allTeachers).sort();
+        },
+
         getShortUserName: function(email) {
             if (!email || email.indexOf('@') === -1) return email;
             return email.split('@')[0];
