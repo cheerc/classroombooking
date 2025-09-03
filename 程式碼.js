@@ -13,7 +13,7 @@ function getSheet(name) {
     sheet = ss.insertSheet(name);
     Logger.log(`已創建新的工作表: ${name}`);
     if (name === SHEET_DATA) {
-      sheet.getRange("A1:E1").setValues([['Schedule ID', 'Schedule Name', 'Last Modified', 'Created By', 'Active Schedule ID']]);
+      sheet.getRange("A1:D1").setValues([['Schedule ID', 'Schedule Name', 'Last Modified', 'Created By']]);
       sheet.setFrozenRows(1);
     } else if (name === SHEET_HISTORY) {
       sheet.getRange("A1:D1").setValues([["Timestamp", "SavedBy", "ScheduleData Snapshot", "Schedule ID"]]);
@@ -88,9 +88,6 @@ function getData() {
         }
       }
     });
-    
-    const activeScheduleId = dataSheet.getRange("E2").getValue() || (indexData.length > 0 ? indexData[0][0] : null);
-    dataSheet.getRange("E1").setValue("Active Schedule ID");
 
     const result = {
       schedules: schedules,
@@ -173,14 +170,9 @@ function saveData(payload) { // Renamed to payload for clarity
     ]);
 
     // --- 4. 更新 'Data' 索引工作表 ---
-    // 4a. 更新 'Last Modified' 時間 (Column C)
+    // 更新 'Last Modified' 時間 (Column C)
     dataSheet.getRange(rowIndex + 2, 3).setValue(timestampISO);
     
-    // 4b. 不再更新全域的 'Active Schedule ID'
-    // if (activeScheduleId) {
-    //   dataSheet.getRange("E2").setValue(activeScheduleId);
-    // }
-
     // --- 5. 在 'History' 工作表中新增一筆版本紀錄 ---
     const historySheet = getSheet(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
