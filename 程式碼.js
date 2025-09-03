@@ -36,7 +36,7 @@ function doGet() {
 
 /**
  * Retrieves all schedule data. It now reads from dedicated sheets for each schedule.
- * @returns {object} An object containing schedules, activeScheduleId, and lastModified time, or an error object.
+ * @returns {object} An object containing schedules, and lastModified time, or an error object.
  */
 function getData() {
   try {
@@ -54,7 +54,7 @@ function getData() {
     Logger.log("以多工作表格式讀取資料。");
     const lastRow = dataSheet.getLastRow();
     if (lastRow < 2) {
-      return { schedules: {}, activeScheduleId: null, lastModified: null, metadataTimestamp: metadataTimestamp };
+      return { schedules: {}, metadataTimestamp: metadataTimestamp };
     }
     const indexData = dataSheet.getRange(`A2:D${lastRow}`).getValues();
     const schedules = {};
@@ -91,7 +91,6 @@ function getData() {
 
     const result = {
       schedules: schedules,
-      // activeScheduleId is no longer sent from the server. The client will decide.
       metadataTimestamp: metadataTimestamp
     };
 
@@ -120,7 +119,7 @@ function saveData(payload) { // Renamed to payload for clarity
 
   try {
     // --- 1. 解構並驗證從客戶端傳來的資料 ---
-    const { scheduleId, activeScheduleId, scheduleData, lastModified } = payload; // *** STEP 3: Add lastModified
+    const { scheduleId, scheduleData, lastModified } = payload; // *** STEP 3: Add lastModified
     if (!scheduleId || !scheduleData || !lastModified) { // *** STEP 3: Validate lastModified
       throw new Error("無效的數據格式。數據必須包含 scheduleId, scheduleData, 和 lastModified 時間戳。");
     }

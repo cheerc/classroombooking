@@ -534,7 +534,6 @@
                     }
                 }
 
-                this.activeScheduleId = result.activeScheduleId || Object.keys(this.schedules)[0];
                 this.activeMetadataTimestamp = result.metadataTimestamp;
 
                 // After fetching data, the client decides which schedule to load.
@@ -564,7 +563,6 @@
 
                 const dataToSend = {
                     scheduleId: this.activeScheduleId,
-                    activeScheduleId: this.activeScheduleId,
                     lastModified: currentScheduleTimestamp, // *** STEP 4: Attach the specific timestamp
                     scheduleData: {
                         classrooms: this.classrooms,
