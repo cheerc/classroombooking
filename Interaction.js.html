@@ -27,7 +27,6 @@ function createInteractionModule(app) {
             }
             app.loadDataFromServer();
         });
-        els.clearAllBtn.addEventListener('click', () => this.handleClearAll());
         els.loadVersionBtn.addEventListener('click', () => app.handleLoadVersion());
         els.undoBtn.addEventListener('click', () => app.historyModule.undo());
         els.redoBtn.addEventListener('click', () => app.historyModule.redo());
@@ -641,25 +640,6 @@ function createInteractionModule(app) {
             app.saveDataToLocal();
             app.ui.showNotification(`已刪除${currentConfig.typeName}: ${itemName}`);
             app.historyModule.saveState();
-        }
-    },
-
-    handleClearAll: async function() {
-        if (await app.modals.showConfirm('確定要清除所有本地暫存資料嗎？<br>這將會刪除所有課表並重置為一個預設課表。此操作不可恢復！')) {
-            localStorage.removeItem('schedules');
-            localStorage.removeItem('activeScheduleId');
-            localStorage.removeItem('lastSyncTime');
-
-            app.schedules = {};
-            app.activeScheduleId = null;
-            app.activeFilters = [];
-            app.ui.updateClearAllFiltersButtonVisibility();
-            app.lastSyncTime = null;
-            app.scheduleLastModified = {};
-            app.courseColorMap = {};
-            
-            app.loadInitialSchedules();
-            app.ui.showNotification('已清除所有本地資料');
         }
     }
   };
