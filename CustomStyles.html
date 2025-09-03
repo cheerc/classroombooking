@@ -676,4 +676,31 @@
         0%, 100% { background-color: #fed7aa; } /* orange-200 */
         50% { background-color: #fcd34d; } /* amber-300 */
     }
+
+    /* --- Add New Placeholder --- */
+    .add-new-placeholder {
+        display: none; /* Hidden by default */
+        border: 2px dashed #cbd5e1; /* gray-300 */
+        border-radius: 6px;
+        padding: 8px;
+        text-align: center;
+        color: #94a3b8; /* gray-400 */
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        margin-top: 6px; /* Space from the last class item */
+        transition: all 0.2s ease-in-out;
+    }
+
+    .schedule-cell:hover .add-new-placeholder {
+        display: block; /* Show on hover */
+        border-color: #94a3b8; /* gray-400 */
+        color: #475569; /* gray-600 */
+    }
+
+    .add-new-placeholder:hover {
+        background-color: #f1f5f9; /* gray-100 */
+        border-color: #64748b; /* gray-500 */
+        color: #1e2937; /* gray-800 */
+    }
 </style>

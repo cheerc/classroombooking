@@ -607,6 +607,15 @@ function createUIModule(app) {
                     td.appendChild(classDiv);
                     lastColor = finalColor;
                 });
+
+                // Add the placeholder for adding new courses
+                if (app.activeScheduleId !== AppConfig.ALL_SCHEDULES_ID) {
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'add-new-placeholder';
+                    placeholder.textContent = '+ 新增課程';
+                    td.appendChild(placeholder);
+                }
+
                 tr.appendChild(td);
             }
             AppElements.scheduleBody.appendChild(tr);
