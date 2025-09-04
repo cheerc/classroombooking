@@ -80,6 +80,7 @@ function createInteractionModule(app) {
         
         els.daySortClassroomBtn.addEventListener('click', () => app.ui.setDayViewSortMode('classroom'));
         els.daySortTimeBtn.addEventListener('click', () => app.ui.setDayViewSortMode('time'));
+        els.daySortTeacherBtn.addEventListener('click', () => app.ui.setDayViewSortMode('teacher'));
 
         const tableHead = AppElements.scheduleBody.previousElementSibling;
         tableHead.addEventListener('click', (e) => {
@@ -279,8 +280,8 @@ function createInteractionModule(app) {
 
         const classElement = notesDiv.closest('.class-item');
         const classId = classElement.dataset.id;
-        const classroom = classElement.closest('td').dataset.classroom;
-        const day = parseInt(classElement.closest('td').dataset.day);
+        const classroom = classElement.dataset.classroom;
+        const day = parseInt(classElement.dataset.day);
         const classItem = app.scheduleData[classroom]?.[day]?.find(c => c.id === classId);
 
         if (!classItem) return;
@@ -462,8 +463,8 @@ function createInteractionModule(app) {
         if (!document.body.contains(classElement)) return;
 
         const classId = classElement.dataset.id;
-        const classroom = classElement.closest('td').dataset.classroom;
-        const day = parseInt(classElement.closest('td').dataset.day);
+        const classroom = classElement.dataset.classroom;
+        const day = parseInt(classElement.dataset.day);
         
         const classItem = app.scheduleData[classroom]?.[day]?.find(c => c.id === classId);
         if (!classItem) return;
@@ -634,12 +635,6 @@ function createInteractionModule(app) {
             app.ui.showNotification(`已刪除${currentConfig.typeName}: ${itemName}`);
             app.historyModule.saveState();
         }
-    }
-  };
-
-  return interactionModule;
-}
-</script>     }
     }
   };
 

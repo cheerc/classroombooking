@@ -300,7 +300,8 @@ function createUIModule(app) {
         app.tagFilterTagify.on('remove', () => app.applyTagFilters());
     },
 
-    createClassElement: function(classItem, classroom, day, overrideColor = null) {
+    createClassElement: function(classItem, classroom, day, options = {}) {
+        const { overrideColor = null, viewContext = 'default' } = options;
         const isUpcoming = app.nextUpcomingClassIds.has(classItem.id);
         const hasConflict = app.checkTimeConflict(classroom, day, classItem);
         const conflictIcon = hasConflict ? `<div class="conflict-icon" title="時間衝突"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.752a3 3 0 01-2.598 4.5H4.644a3 3 0 01-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg></div>` : '';
@@ -308,18 +309,28 @@ function createUIModule(app) {
         const tagsHtml = (classItem.tags || []).map(tag => `<span class="tag-tag-vertical">${tag}</span>`).join('');
         const allTagsTooltip = (classItem.tags || []).join(', ');
         const notesHtml = app.currentViewMode === AppConfig.MODES.DAY ? `<div class="course-notes editable" data-field="notes">${classItem.notes || ''}</div>` : '';
+        
+        let contextSpecificHtml = '';
+        if (viewContext === 'teacherSort') {
+            contextSpecificHtml = `<div>教室：${classroom}</div>`;
+        } else {
+            contextSpecificHtml = `<div class="editable" data-field="teacher">${classItem.teacher}</div>`;
+        }
+
         const viewModeClass = app.currentViewMode === AppConfig.MODES.DAY ? 'day-view-layout' : '';
         const classDiv = document.createElement('div');
         classDiv.setAttribute('class', `class-item ${hasConflict ? 'conflict' : ''} ${isUpcoming ? 'upcoming-highlight' : ''} ${viewModeClass}`);
         classDiv.style.backgroundColor = bgColor;
         classDiv.dataset.id = classItem.id;
         classDiv.dataset.name = classItem.name;
+        classDiv.dataset.classroom = classroom;
+        classDiv.dataset.day = day;
         classDiv.innerHTML = (
             `
             <div class="class-item-content">
                 <div class="font-medium editable" data-field="name">${classItem.name}</div>
                 <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
-                <div class="editable" data-field="teacher">${classItem.teacher}</div>
+                ${contextSpecificHtml}
             </div>
             ${notesHtml}
             <div class="tag-tags-vertical-container editable" data-field="tags" data-tooltip="標籤: ${allTagsTooltip}">${tagsHtml}</div>
@@ -368,6 +379,7 @@ function createUIModule(app) {
     setDayViewSortMode: function(mode) {
         if (app.dayViewSortMode === mode) return;
         app.dayViewSortMode = mode;
+        // The actual button state is updated in updateViewControls
         this.renderScheduleTable();
     },
 
@@ -404,10 +416,14 @@ function createUIModule(app) {
             AppElements.viewModeWeekBtn.classList.remove('active');
             AppElements.daySortClassroomBtn.classList.toggle('active', app.dayViewSortMode === 'classroom');
             AppElements.daySortTimeBtn.classList.toggle('active', app.dayViewSortMode === 'time');
+            AppElements.daySortTeacherBtn.classList.toggle('active', app.dayViewSortMode === 'teacher');
+            
+            const dayViewHeaderLabel = app.dayViewSortMode === 'teacher' ? '老師' : '教室';
+
             tr.innerHTML = (
                 `<th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
                     <span class="diagonal-split-top">星期</span>
-                    <span class="diagonal-split-bottom">教室</span>
+                    <span class="diagonal-split-bottom">${dayViewHeaderLabel}</span>
                 </th>
                 <th class="border border-gray-300 p-2 bg-gray-200">
                     <div class="flex items-center justify-center gap-4">
@@ -436,9 +452,15 @@ function createUIModule(app) {
                 dataToRender = app.filterDataByActiveFilters(dataToRender);
             }
             AppElements.scheduleBody.innerHTML = '';
-            if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
-                this.renderDayViewByTime(dataToRender);
-            } else {
+            if (app.currentViewMode === AppConfig.MODES.DAY) {
+                if (app.dayViewSortMode === 'time') {
+                    this.renderDayViewByTime(dataToRender);
+                } else if (app.dayViewSortMode === 'teacher') {
+                    this.renderDayViewByTeacher(dataToRender);
+                } else { // classroom
+                    this.renderByClassroom(dataToRender);
+                }
+            } else { // week view
                 this.renderByClassroom(dataToRender);
             }
             this.setupDragAndDrop();
@@ -504,7 +526,7 @@ function createUIModule(app) {
                 td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top readonly-cell');
                 td.dataset.classroom = course.classroom;
                 td.dataset.day = day;
-                const classDiv = this.createClassElement(course, course.classroom, day);
+                const classDiv = this.createClassElement(course, course.classroom, day, {});
                 classDiv.classList.add('readonly');
                 classDiv.querySelector('.delete-btn').remove();
                 td.appendChild(classDiv);
@@ -526,7 +548,7 @@ function createUIModule(app) {
                     const courses = dataToRender[uniqueClassroomName]?.[day] || [];
                     courses.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
                     courses.forEach(course => {
-                        const classDiv = this.createClassElement(course, uniqueClassroomName, day);
+                        const classDiv = this.createClassElement(course, uniqueClassroomName, day, {});
                         classDiv.classList.add('readonly');
                         classDiv.querySelector('.delete-btn').remove();
                         td.appendChild(classDiv);
@@ -574,8 +596,45 @@ function createUIModule(app) {
             td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
             td.dataset.classroom = course.classroom;
             td.dataset.day = day;
-            const classDiv = this.createClassElement(course, course.classroom, day);
+            const classDiv = this.createClassElement(course, course.classroom, day, {});
             td.appendChild(classDiv);
+            tr.appendChild(td);
+            AppElements.scheduleBody.appendChild(tr);
+        });
+    },
+
+    renderDayViewByTeacher: function(dataToRender) {
+        const day = app.currentDayIndex;
+        let allCoursesForDay = [];
+        for (const classroom in dataToRender) {
+            if (dataToRender[classroom][day]) {
+                dataToRender[classroom][day].forEach(course => {
+                    allCoursesForDay.push({ ...course, classroom: classroom });
+                });
+            }
+        }
+
+        const teachers = [...new Set(allCoursesForDay.map(c => c.teacher || '未指定'))].sort();
+
+        teachers.forEach(teacher => {
+            const coursesForTeacher = allCoursesForDay
+                .filter(course => (course.teacher || '未指定') === teacher)
+                .sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
+
+            if (coursesForTeacher.length === 0) return;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${teacher}</span></td>`;
+            
+            const td = document.createElement('td');
+            td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
+            td.dataset.day = day; // No specific classroom, so we omit it
+
+            coursesForTeacher.forEach(course => {
+                const classDiv = this.createClassElement(course, course.classroom, day, { viewContext: 'teacherSort' });
+                td.appendChild(classDiv);
+            });
+
             tr.appendChild(td);
             AppElements.scheduleBody.appendChild(tr);
         });
@@ -603,7 +662,7 @@ function createUIModule(app) {
                         const nextIndex = (currentIndex + 1) % AppConfig.COURSE_COLORS.length;
                         finalColor = AppConfig.COURSE_COLORS[nextIndex];
                     }
-                    const classDiv = this.createClassElement(classItem, classroom, day, finalColor);
+                                        const classDiv = this.createClassElement(classItem, classroom, day, { overrideColor: finalColor });
                     td.appendChild(classDiv);
                     lastColor = finalColor;
                 });
