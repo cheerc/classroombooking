@@ -242,10 +242,11 @@ function addSchedule(scheduleInfo) {
     ]);
 
     const creatorEmail = Session.getActiveUser().getEmail();
-    dataSheet.appendRow([id, name, new Date().toISOString(), creatorEmail]);
+    const timestamp = new Date().toISOString();
+    dataSheet.appendRow([id, name, timestamp, creatorEmail]);
 
     Logger.log(`成功新增課表: ${name} (ID: ${id}) by ${creatorEmail}`);
-    return { success: true, createdBy: creatorEmail, newMetadataTimestamp: newMetaTimestamp };
+    return { success: true, createdBy: creatorEmail, newMetadataTimestamp: newMetaTimestamp, lastModified: timestamp };
 
   } catch (e) {
     Logger.log(`新增課表失敗: ${e.stack}`);

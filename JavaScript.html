@@ -202,6 +202,7 @@
                     createdBy: result.createdBy, 
                     data: { classrooms: [], scheduleData: {}, tags: [] } 
                 };
+                this.scheduleLastModified[newId] = result.lastModified;
                 AppElements.newScheduleNameInput.value = '';
                 this.ui.renderScheduleList();
                 this.ui.updateScheduleSelect();
