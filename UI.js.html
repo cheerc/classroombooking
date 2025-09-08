@@ -116,7 +116,7 @@ function createUIModule(app) {
         if (isAllSchedulesMode) {
             els.syncStatus.className = 'sync-status readonly-mode';
             els.syncStatusText.textContent = '👀 唯讀總覽模式';
-            els.lastSyncTimeText.textContent = '合併顯示所有課表';
+            els.syncStatus.setAttribute('data-tooltip', '合併顯示所有課表');
         } else {
             app.historyModule.checkDirty();
         }
@@ -151,7 +151,7 @@ function createUIModule(app) {
         }
         els.syncStatus.className = 'sync-status ' + cssClass;
         els.syncStatusText.textContent = `${icon} ${text}`;
-        els.lastSyncTimeText.textContent = subtext;
+        els.syncStatus.setAttribute('data-tooltip', subtext);
     },
 
     updateScheduleSelect: function() {
