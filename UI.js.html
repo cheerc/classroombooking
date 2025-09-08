@@ -399,7 +399,6 @@ function createUIModule(app) {
         tableHead.innerHTML = '';
         const tr = document.createElement('tr');
         tr.className = 'relative z-10';
-        AppElements.dayViewControls.style.display = 'none';
         if (app.currentViewMode === AppConfig.MODES.WEEK) {
             AppElements.viewModeWeekBtn.classList.add('active');
             AppElements.viewModeDayBtn.classList.remove('active');
