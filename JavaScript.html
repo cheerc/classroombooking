@@ -958,6 +958,41 @@
             this.saveDataToLocal();
             this.ui.showNotification('已移動課程');
             this.historyModule.saveState();
+        },
+
+        printScheduleToPdf: async function() {
+            this.ui.showLoading('正在生成PDF，請稍候...');
+            try {
+                const element = document.getElementById('schedule-table');
+                if (!element) {
+                    throw new Error('找不到課表表格元素。');
+                }
+
+                // Optional: Add temporary print styles or hide elements not needed in PDF
+                // For example, hide the floating action buttons or other UI elements
+                const floatingButtons = document.querySelector('.sticky.top-4');
+                if (floatingButtons) floatingButtons.style.display = 'none';
+
+                const options = {
+                    margin: 10,
+                    filename: `課表_${this.schedules[this.activeScheduleId].name || '未命名'}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2 },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+                };
+
+                await html2pdf().from(element).set(options).save();
+                this.ui.showNotification('PDF已成功生成並下載！', 'success');
+
+            } catch (error) {
+                console.error('生成PDF失敗:', error);
+                this.ui.showNotification(`生成PDF失敗: ${error.message}`, 'error');
+            } finally {
+                // Revert temporary print styles or show hidden elements
+                const floatingButtons = document.querySelector('.sticky.top-4');
+                if (floatingButtons) floatingButtons.style.display = 'flex'; // Assuming it was flex
+                this.ui.hideLoading();
+            }
         }
     };
 

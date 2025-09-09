@@ -48,7 +48,9 @@ function createInteractionModule(app) {
         setupAdminModal(els.showClassroomManagerBtn, els.classroomManagerModal, els.classroomManagerModalClose);
         setupAdminModal(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose, () => app.loadVersions());
         
-        app.modals.setupModalListeners(els.showHelpBtn, els.helpModal, els.helpModalClose);
+        elements.showHelpBtn.addEventListener('click', () => app.modals.showHelpModal());
+        elements.printToPdfBtn.addEventListener('click', () => app.printScheduleToPdf());
+
         app.modals.setupModalListeners(els.showFilterBtn, els.filterModal, els.filterModalClose, () => app.modals.populateFilterModal());
         app.modals.setupModalListeners(els.manageSchedulesBtn, els.scheduleManagerModal, els.scheduleManagerModalClose, () => app.ui.renderScheduleList());
 
