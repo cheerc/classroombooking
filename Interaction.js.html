@@ -49,7 +49,12 @@ function createInteractionModule(app) {
         setupAdminModal(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose, () => app.loadVersions());
         
         elements.showHelpBtn.addEventListener('click', () => app.modals.showHelpModal());
-        elements.printToPdfBtn.addEventListener('click', () => app.printScheduleToPdf());
+        elements.printToPdfBtn.addEventListener('click', async () => {
+            const options = await app.modals.showPdfOptions();
+            if (options) {
+                app.printScheduleToPdf(options);
+            }
+        });
 
         app.modals.setupModalListeners(els.showFilterBtn, els.filterModal, els.filterModalClose, () => app.modals.populateFilterModal());
         app.modals.setupModalListeners(els.manageSchedulesBtn, els.scheduleManagerModal, els.scheduleManagerModalClose, () => app.ui.renderScheduleList());

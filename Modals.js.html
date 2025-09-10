@@ -124,6 +124,55 @@ function createModalModule(app) {
     },
 
     /**
+     * Shows the PDF options modal.
+     */
+    showPdfOptions: function() {
+        return new Promise((resolve) => {
+            const modal = elements.pdfOptionsModal;
+            const confirmBtn = elements.pdfOptionsConfirm;
+            const cancelBtn = elements.pdfOptionsCancel;
+            const closeBtn = elements.pdfOptionsModalClose;
+            const paperSizeSelect = elements.pdfPaperSize;
+
+            modal.style.display = 'flex';
+
+            const cleanup = () => {
+                confirmBtn.removeEventListener('click', confirmHandler);
+                cancelBtn.removeEventListener('click', cancelHandler);
+                closeBtn.removeEventListener('click', cancelHandler);
+                modal.removeEventListener('click', overlayClickHandler);
+                modal.style.display = 'none';
+            };
+
+            const confirmHandler = () => {
+                const orientationInput = modal.querySelector('input[name="pdfOrientation"]:checked');
+                const options = {
+                    orientation: orientationInput ? orientationInput.value : 'landscape',
+                    format: paperSizeSelect.value
+                };
+                cleanup();
+                resolve(options);
+            };
+
+            const cancelHandler = () => {
+                cleanup();
+                resolve(null); // Resolve with null if cancelled
+            };
+            
+            const overlayClickHandler = (e) => {
+                if (e.target === modal) {
+                    cancelHandler();
+                }
+            };
+
+            confirmBtn.addEventListener('click', confirmHandler, { once: true });
+            cancelBtn.addEventListener('click', cancelHandler, { once: true });
+            closeBtn.addEventListener('click', cancelHandler, { once: true });
+            modal.addEventListener('click', overlayClickHandler);
+        });
+    },
+
+    /**
      * Populates the filter modal with checkboxes based on the selected filter type.
      */
     populateFilterModal: function() {

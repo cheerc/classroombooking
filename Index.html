@@ -13,7 +13,9 @@
     </script>
     <?!= HtmlService.createHtmlOutputFromFile('Tailwind').getContent(); ?>
     <?!= HtmlService.createHtmlOutputFromFile('CustomStyles').getContent(); ?>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <?!= HtmlService.createHtmlOutputFromFile('NotoSansTC.js.html').getContent(); ?>
 </head>
 <body class="bg-blue-50 h-screen p-4 flex flex-col">
     <div id="loading-overlay" class="loading-overlay" style="display: none;">
@@ -337,6 +339,54 @@
                 </select>
             </div>
             <button id="first-time-schedule-confirm-btn" class="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition text-lg">確定</button>
+        </div>
+    </div>
+
+    <div id="pdf-options-modal" class="loading-overlay" style="display: none;">
+        <div class="bg-white rounded-lg shadow-lg max-w-sm w-full relative">
+            <!-- Header -->
+            <div class="flex justify-between items-center p-5 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-800">PDF 列印選項</h2>
+                <button id="pdf-options-modal-close" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <!-- Body -->
+            <div class="p-6 space-y-6">
+                <!-- Paper Orientation -->
+                <fieldset>
+                    <legend class="text-sm font-medium text-gray-700 mb-2">紙張方向</legend>
+                    <div class="flex items-center gap-x-6">
+                        <label class="flex items-center gap-x-2 cursor-pointer">
+                            <input type="radio" name="pdfOrientation" value="portrait" class="h-4 w-4 text-purple-600 border-gray-300 focus:ring-purple-500" checked>
+                            <span class="text-sm text-gray-800">直式</span>
+                        </label>
+                        <label class="flex items-center gap-x-2 cursor-pointer">
+                            <input type="radio" name="pdfOrientation" value="landscape" class="h-4 w-4 text-purple-600 border-gray-300 focus:ring-purple-500">
+                            <span class="text-sm text-gray-800">橫式</span>
+                        </label>
+                    </div>
+                </fieldset>
+
+                <!-- Paper Size -->
+                <div>
+                    <label for="pdf-paper-size" class="block text-sm font-medium text-gray-700 mb-2">紙張大小</label>
+                    <select id="pdf-paper-size" class="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm">
+                        <option value="a4">A4</option>
+                        <option value="a3">A3</option>
+                        <option value="b4">B4</option>
+                        <option value="b5">B5</option>
+                        <option value="letter">Letter</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="flex justify-end items-center gap-x-3 bg-gray-50 p-4 border-t border-gray-200">
+                <button id="pdf-options-cancel" class="bg-white hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium border border-gray-300 shadow-sm">取消</button>
+                <button id="pdf-options-confirm" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm">產生 PDF</button>
+            </div>
         </div>
     </div>
 
