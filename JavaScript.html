@@ -836,6 +836,17 @@
             return '00:00';
         },
 
+        formatTimestampForFilename: function(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            const YYYY = date.getFullYear();
+            const MM = String(date.getMonth() + 1).padStart(2, '0');
+            const DD = String(date.getDate()).padStart(2, '0');
+            const HH = String(date.getHours()).padStart(2, '0');
+            const mm = String(date.getMinutes()).padStart(2, '0');
+            return `${YYYY}${MM}${DD}_${HH}${mm}`;
+        },
+
         filterDataByTags: function(data) {
             const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
 
@@ -970,7 +981,7 @@
         },
 
         printScheduleToPdf: async function(pdfOptions) {
-            this.ui.showLoading('正在生成PDF，請稍候...');
+            this.ui.showLoading('正在準備下載，請稍候...');
             try {
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF({
@@ -996,6 +1007,12 @@
                 const tbody = table.querySelector('tbody');
                 if (tbody) {
                     tbody.querySelectorAll('tr').forEach(tr => {
+                        if (!pdfOptions.includeEmpty) {
+                            const classItemsInRow = tr.querySelectorAll('.class-item');
+                            if (classItemsInRow.length === 0) {
+                                return; // Skip this empty row
+                            }
+                        }
                         const htmlRow = tr.cells;
                         let maxCoursesInRow = 0;
                         for (let i = 1; i < htmlRow.length; i++) {
@@ -1102,13 +1119,15 @@
 
                 const activeTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
                 const tagSuffix = activeTags.length > 0 ? ` (${activeTags.join(', ')})` : '';
-                const filename = `課表_${this.schedules[this.activeScheduleId].name || '未命名'}${tagSuffix}.pdf`;
+                const lastModifiedTimestamp = this.scheduleLastModified[this.activeScheduleId];
+                const timestampSuffix = lastModifiedTimestamp ? `-${this.formatTimestampForFilename(lastModifiedTimestamp)}` : '';
+                const filename = `課表_${this.schedules[this.activeScheduleId].name || '未命名'}${tagSuffix}${timestampSuffix}.pdf`;
                 doc.save(filename);
                 this.ui.showNotification('PDF已成功生成並下載！', 'success');
 
             } catch (error) {
                 console.error('生成PDF失敗:', error);
-                this.ui.showNotification(`生成PDF失敗: ${error.message}`, 'error');
+                this.ui.showNotification(`下載PDF失敗: ${error.message}`, 'error');
             } finally {
                 this.ui.hideLoading();
             }

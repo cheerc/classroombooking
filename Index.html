@@ -56,11 +56,9 @@
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9.75V16.5m0 0l3-3m-3 3l-3-3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"></path>
                 </svg>
             </button>
-            <button id="print-to-pdf-btn" data-tooltip="列印為PDF" class="bg-purple-600 text-white p-3 rounded-md hover:bg-purple-700 transition flex justify-center items-center shadow-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M14 2v6h6"></path>
+            <button id="print-to-pdf-btn" data-tooltip="下載為PDF" class="bg-purple-600 text-white p-3 rounded-md hover:bg-purple-700 transition flex justify-center items-center shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
                 </svg>
             </button>
 
@@ -343,36 +341,30 @@
     </div>
 
     <div id="pdf-options-modal" class="loading-overlay" style="display: none;">
-        <div class="bg-white rounded-lg shadow-lg max-w-sm w-full relative">
-            <!-- Header -->
-            <div class="flex justify-between items-center p-5 border-b border-gray-200">
-                <h2 class="text-lg font-semibold text-gray-800">PDF 列印選項</h2>
-                <button id="pdf-options-modal-close" class="text-gray-400 hover:text-gray-600">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-
-            <!-- Body -->
-            <div class="p-6 space-y-6">
+        <div class="bg-white p-8 rounded-lg shadow-lg text-left max-w-md w-full relative">
+            <h2 class="text-2xl font-bold mb-6 text-center text-purple-800">PDF 下載選項</h2>
+            <button id="pdf-options-modal-close" class="absolute top-3 right-4 text-gray-400 hover:text-gray-700 text-3xl font-light">&times;</button>
+            
+            <div class="space-y-6">
                 <!-- Paper Orientation -->
-                <fieldset>
-                    <legend class="text-sm font-medium text-gray-700 mb-2">紙張方向</legend>
+                <div>
+                    <label class="block text-lg font-medium text-gray-700 mb-2">紙張方向</label>
                     <div class="flex items-center gap-x-6">
-                        <label class="flex items-center gap-x-2 cursor-pointer">
-                            <input type="radio" name="pdfOrientation" value="portrait" class="h-4 w-4 text-purple-600 border-gray-300 focus:ring-purple-500" checked>
-                            <span class="text-sm text-gray-800">直式</span>
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="radio" name="pdfOrientation" value="portrait" class="form-radio text-purple-600" checked>
+                            <span class="ml-2">直式 (Portrait)</span>
                         </label>
-                        <label class="flex items-center gap-x-2 cursor-pointer">
-                            <input type="radio" name="pdfOrientation" value="landscape" class="h-4 w-4 text-purple-600 border-gray-300 focus:ring-purple-500">
-                            <span class="text-sm text-gray-800">橫式</span>
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="radio" name="pdfOrientation" value="landscape" class="form-radio text-purple-600">
+                            <span class="ml-2">橫式 (Landscape)</span>
                         </label>
                     </div>
-                </fieldset>
+                </div>
 
                 <!-- Paper Size -->
-                <div>
-                    <label for="pdf-paper-size" class="block text-sm font-medium text-gray-700 mb-2">紙張大小</label>
-                    <select id="pdf-paper-size" class="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm">
+                <div class="mt-8">
+                    <label for="pdf-paper-size" class="block text-lg font-medium text-gray-700 mb-2">紙張大小</label>
+                    <select id="pdf-paper-size" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-base">
                         <option value="a4">A4</option>
                         <option value="a3">A3</option>
                         <option value="b4">B4</option>
@@ -380,12 +372,19 @@
                         <option value="letter">Letter</option>
                     </select>
                 </div>
+
+                <!-- Include Empty Classrooms -->
+                <div class="mt-6">
+                    <label class="flex items-center gap-x-2 cursor-pointer">
+                        <input type="checkbox" id="pdf-include-empty" class="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500">
+                        <span class="text-base font-medium text-gray-700">輸出未排課的空教室</span>
+                    </label>
+                </div>
             </div>
 
-            <!-- Footer -->
-            <div class="flex justify-end items-center gap-x-3 bg-gray-50 p-4 border-t border-gray-200">
-                <button id="pdf-options-cancel" class="bg-white hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium border border-gray-300 shadow-sm">取消</button>
-                <button id="pdf-options-confirm" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm">產生 PDF</button>
+            <div class="flex justify-end gap-4 border-t pt-6 mt-8">
+                <button id="pdf-options-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded-md">取消</button>
+                <button id="pdf-options-confirm" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-md">下載 PDF</button>
             </div>
         </div>
     </div>

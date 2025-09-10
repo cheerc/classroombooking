@@ -48,7 +48,7 @@ function createInteractionModule(app) {
         setupAdminModal(els.showClassroomManagerBtn, els.classroomManagerModal, els.classroomManagerModalClose);
         setupAdminModal(els.showVersionHistoryBtn, els.versionHistoryModal, els.versionHistoryModalClose, () => app.loadVersions());
         
-        elements.showHelpBtn.addEventListener('click', () => app.modals.showHelpModal());
+        app.modals.setupModalListeners(elements.showHelpBtn, elements.helpModal, elements.helpModalClose);
         elements.printToPdfBtn.addEventListener('click', async () => {
             const options = await app.modals.showPdfOptions();
             if (options) {
