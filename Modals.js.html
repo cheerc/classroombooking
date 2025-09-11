@@ -180,7 +180,7 @@ function createModalModule(app) {
     populateFilterModal: function() {
         const filterType = elements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
         const items = new Set();
-        let title = '請選擇要顯示的課程';
+        let title = '請選擇要顯示的項目';
 
         // 1. Populate the search input for course names
         const searchContainer = elements.filterSearchContainer;
@@ -202,28 +202,48 @@ function createModalModule(app) {
             searchContainer.style.display = 'none';
         }
 
-        // 2. Gather all items based on filter type
-        const dataToScan = app.filterDataByTags(app.scheduleData);
-        Object.values(dataToScan).forEach(classroom => {
-            if (typeof classroom !== 'object' || classroom === null) return;
-            Object.values(classroom).forEach(day => {
-                if (!Array.isArray(day)) return;
-                day.forEach(course => {
-                    if (!course) return;
-                    if (filterType === 'name' && course.name) {
-                        items.add(course.name);
-                    } else if (filterType === 'tag') {
-                        title = '選擇要顯示的標籤';
-                        (course.tags || []).forEach(tag => {
-                            if (tag) items.add(tag);
-                        });
-                    } else if (filterType === 'teacher') {
-                        title = '選擇要顯示的使用人';
-                        if (course.teacher) items.add(course.teacher);
-                    }
+        // 2. Gather all items based on filter type and schedule mode
+        const isAllSchedules = app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
+
+        if (isAllSchedules) {
+            // Global mode: Use global getter functions
+            let sourceItems = [];
+            if (filterType === 'name') {
+                title = '請選擇要顯示的課程';
+                sourceItems = app.getGlobalAllCourseNames();
+            } else if (filterType === 'tag') {
+                title = '選擇要顯示的標籤';
+                sourceItems = app.getGlobalAllTags();
+            } else if (filterType === 'teacher') {
+                title = '選擇要顯示的使用人';
+                sourceItems = app.getGlobalAllTeachers();
+            }
+            sourceItems.forEach(item => items.add(item));
+        } else {
+            // Single schedule mode: Scan the current schedule's data
+            const dataToScan = app.filterDataByTags(app.scheduleData);
+            Object.values(dataToScan).forEach(classroom => {
+                if (typeof classroom !== 'object' || classroom === null) return;
+                Object.values(classroom).forEach(day => {
+                    if (!Array.isArray(day)) return;
+                    day.forEach(course => {
+                        if (!course) return;
+                        if (filterType === 'name' && course.name) {
+                            title = '請選擇要顯示的課程';
+                            items.add(course.name);
+                        } else if (filterType === 'tag') {
+                            title = '選擇要顯示的標籤';
+                            (course.tags || []).forEach(tag => {
+                                if (tag) items.add(tag);
+                            });
+                        } else if (filterType === 'teacher') {
+                            title = '選擇要顯示的使用人';
+                            if (course.teacher) items.add(course.teacher);
+                        }
+                    });
                 });
             });
-        });
+        }
 
         // 3. Render the checkbox list
         elements.filterListTitle.textContent = title;

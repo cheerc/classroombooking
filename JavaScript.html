@@ -321,6 +321,7 @@
                 this.tags = this.getGlobalAllTags();
                 this.ui.initializeTagFilter();
                 this.loadAndApplyPersistedFilters();
+                this.modals.populateFilterModal(); // Ensure filter modal is updated for global view
 
                 this.buildCourseColorMap(allSchedulesData);
                 
@@ -711,6 +712,29 @@
                 }
             });
             return Array.from(allTags).sort();
+        },
+
+        getGlobalAllCourseNames: function() {
+            const allNames = new Set();
+            if (!this.schedules) return [];
+
+            Object.values(this.schedules).forEach(schedule => {
+                if (schedule.data && schedule.data.scheduleData) {
+                    Object.values(schedule.data.scheduleData).forEach(classroom => {
+                        if (!classroom) return;
+                        Object.values(classroom).forEach(daySchedule => {
+                            if (Array.isArray(daySchedule)) {
+                                daySchedule.forEach(classItem => {
+                                    if (classItem.name) {
+                                        allNames.add(classItem.name);
+                                    }
+                                });
+                            }
+                        });
+                    });
+                }
+            });
+            return Array.from(allNames).sort();
         },
 
         getGlobalAllTeachers: function() {
