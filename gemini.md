@@ -113,7 +113,10 @@
   1.  在任何 `.html` 檔案中新增、修改或刪除 Tailwind 的 utility class (例如 `bg-blue-500`, `text-lg`)。
   2.  修改完成後，在終端機執行 `npm run build-css`。
   3.  此指令會掃描所有 `.html` 檔案，並產生一個最佳化過的 `output.css` 檔案。
-  4.  **【關鍵步驟】**: 手動將 `output.css` 的**完整內容**複製並貼上到 `Tailwind.html` 檔案中，**完全覆蓋**舊的內容。
+  4.  **【關鍵步驟】**: 執行以下指令，此指令會自動將 `output.css` 的內容包裹在 `<style>` 標籤中，並覆蓋 `Tailwind.html`：
+      ```bash
+      echo '<style>' > Tailwind.html && cat output.css >> Tailwind.html && echo '</style>' >> Tailwind.html
+      ```
 
 - **新增客製化 CSS**:
   1.  若有 Tailwind 無法輕易實現的樣式，請將手寫的 CSS 規則新增到 `CustomStyles.html` 檔案中。
