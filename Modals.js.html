@@ -147,11 +147,18 @@ function createModalModule(app) {
             const confirmHandler = () => {
                 const orientationInput = modal.querySelector('input[name="pdfOrientation"]:checked');
                 const includeEmptyCheckbox = document.getElementById('pdf-include-empty');
+                const customTitle = elements.pdfCustomTitle.value.trim();
+
                 const options = {
                     orientation: orientationInput ? orientationInput.value : 'portrait',
                     format: paperSizeSelect.value,
-                    includeEmpty: includeEmptyCheckbox ? includeEmptyCheckbox.checked : false
+                    includeEmpty: includeEmptyCheckbox ? includeEmptyCheckbox.checked : false,
+                    customTitle: customTitle
                 };
+                
+                // Clear the input for next time
+                elements.pdfCustomTitle.value = '';
+
                 cleanup();
                 resolve(options);
             };

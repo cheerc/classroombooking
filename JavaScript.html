@@ -1053,18 +1053,21 @@
                     format: pdfOptions.format
                 });
 
-                // Define schedule name based on the current view
+                // Step 3: Define titles and filenames
                 const isAllSchedules = this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
                 const scheduleNameForPdf = isAllSchedules 
                     ? '所有課表' 
                     : (this.schedules[this.activeScheduleId]?.name || '未命名');
-
-                // Step 3: Add font to the jsPDF instance.
+                
+                const hasCustomTitle = pdfOptions.customTitle && pdfOptions.customTitle.length > 0;
+                const finalTitle = hasCustomTitle ? pdfOptions.customTitle : `課表: ${scheduleNameForPdf}`;
+                
+                // Step 4: Add font to the jsPDF instance.
                 doc.addFileToVFS("NotoSansTC-Regular.ttf", this.pdfFontBase64);
                 doc.addFont("NotoSansTC-Regular.ttf", "NotoSansTC", "normal");
                 doc.setFont("NotoSansTC");
 
-                // Step 4: Build and render the table.
+                // Step 5: Build and render the table.
                 const table = document.getElementById('schedule-table');
                 if (!table) throw new Error('找不到課表表格元素。');
 
@@ -1159,42 +1162,42 @@
                         0: { fontStyle: 'bold', fillColor: [240, 240, 240], valign: 'middle' },
                     },
                     didDrawPage: (data) => {
-                        // Set font for header text, as it's drawn outside of autoTable's styling
                         doc.setFont('NotoSansTC', 'normal');
-
-                        // Page Title (Left)
                         doc.setFontSize(12);
-                        doc.text(
-                            `課表: ${scheduleNameForPdf}`,
-                            data.settings.margin.left,
-                            10
-                        );
+                        doc.text(finalTitle, data.settings.margin.left, 10);
 
-                        // Active Tags (Right)
-                        const activeTags = this.activeFilters
-                            .filter(f => f.type === 'tag')
-                            .map(f => f.value);
+                        // Only show tags if there is NO custom title
+                        if (!hasCustomTitle) {
+                            const activeTags = this.activeFilters
+                                .filter(f => f.type === 'tag')
+                                .map(f => f.value);
 
-                        if (activeTags.length > 0) {
-                            doc.setFontSize(8);
-                            const tagsText = `篩選標籤: ${activeTags.join(', ')}`;
-                            const pageWidth = doc.internal.pageSize.getWidth();
-                            const rightMargin = data.settings.margin.right;
-                            doc.text(
-                                tagsText,
-                                pageWidth - rightMargin,
-                                10,
-                                { align: 'right' }
-                            );
+                            if (activeTags.length > 0) {
+                                doc.setFontSize(8);
+                                const tagsText = `篩選標籤: ${activeTags.join(', ')}`;
+                                const pageWidth = doc.internal.pageSize.getWidth();
+                                const rightMargin = data.settings.margin.right;
+                                doc.text(
+                                    tagsText,
+                                    pageWidth - rightMargin,
+                                    10,
+                                    { align: 'right' }
+                                );
+                            }
                         }
                     }
                 });
 
+                // Step 6: Save the PDF with the correct filename
                 const activeTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
                 const tagSuffix = activeTags.length > 0 ? ` (${activeTags.join(', ')})` : '';
                 const lastModifiedTimestamp = isAllSchedules ? Date.now() : this.scheduleLastModified[this.activeScheduleId];
                 const timestampSuffix = lastModifiedTimestamp ? `-${this.formatTimestampForFilename(lastModifiedTimestamp)}` : '';
-                const filename = `課表_${scheduleNameForPdf}${tagSuffix}${timestampSuffix}.pdf`;
+                
+                const filename = hasCustomTitle
+                    ? `${pdfOptions.customTitle}${timestampSuffix}.pdf`
+                    : `課表_${scheduleNameForPdf}${tagSuffix}${timestampSuffix}.pdf`;
+
                 doc.save(filename);
                 this.ui.showNotification('PDF已成功生成並下載！', 'success');
 
