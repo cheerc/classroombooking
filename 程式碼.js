@@ -458,3 +458,32 @@ function getVersionData(versionId) {
 }
 
 
+
+/**
+ * Gets the font data from the file stored in Google Drive.
+ * @returns {string} The Base64 encoded font data.
+ */
+function getFontBase64FromDrive() {
+  try {
+    const fileId = PropertiesService.getScriptProperties().getProperty('font_drive_file_id');
+    if (!fileId) {
+      throw new Error('尚未設定字體檔案的 Google Drive ID。請先執行 _setup_saveFontFileId。');
+    }
+    
+    const file = DriveApp.getFileById(fileId);
+    const content = file.getBlob().getDataAsString();
+    
+    // Extract the Base64 string from the JS file content
+    const match = content.match(/const NotoSansTC_Base64 = '([^']+)';/);
+    
+    if (match && match[1]) {
+      return match[1];
+    } else {
+      throw new Error('無法從 Drive 檔案中提取 Base64 字體資料。請確認檔案格式是否正確。');
+    }
+  } catch (e) {
+    Logger.log(`從 Drive 獲取字體時發生錯誤: ${e.stack}`);
+    // Return the error message to be displayed on the client side.
+    return { error: e.toString() };
+  }
+}
