@@ -1029,6 +1029,12 @@
                     format: pdfOptions.format
                 });
 
+                // Define schedule name based on the current view
+                const isAllSchedules = this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
+                const scheduleNameForPdf = isAllSchedules 
+                    ? '所有課表' 
+                    : (this.schedules[this.activeScheduleId]?.name || '未命名');
+
                 // Step 3: Add font to the jsPDF instance.
                 doc.addFileToVFS("NotoSansTC-Regular.ttf", this.pdfFontBase64);
                 doc.addFont("NotoSansTC-Regular.ttf", "NotoSansTC", "normal");
@@ -1135,7 +1141,7 @@
                         // Page Title (Left)
                         doc.setFontSize(12);
                         doc.text(
-                            `課表: ${this.schedules[this.activeScheduleId].name || '未命名'}`, 
+                            `課表: ${scheduleNameForPdf}`,
                             data.settings.margin.left,
                             10
                         );
@@ -1162,9 +1168,9 @@
 
                 const activeTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
                 const tagSuffix = activeTags.length > 0 ? ` (${activeTags.join(', ')})` : '';
-                const lastModifiedTimestamp = this.scheduleLastModified[this.activeScheduleId];
+                const lastModifiedTimestamp = isAllSchedules ? Date.now() : this.scheduleLastModified[this.activeScheduleId];
                 const timestampSuffix = lastModifiedTimestamp ? `-${this.formatTimestampForFilename(lastModifiedTimestamp)}` : '';
-                const filename = `課表_${this.schedules[this.activeScheduleId].name || '未命名'}${tagSuffix}${timestampSuffix}.pdf`;
+                const filename = `課表_${scheduleNameForPdf}${tagSuffix}${timestampSuffix}.pdf`;
                 doc.save(filename);
                 this.ui.showNotification('PDF已成功生成並下載！', 'success');
 
