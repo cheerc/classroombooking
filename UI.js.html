@@ -279,7 +279,7 @@ function createUIModule(app) {
             app.tagFilterTagify.destroy();
         }
 
-        const allTags = app.getAllTags();
+        const allTags = app.tags;
 
         // Remove loading state before initializing
         input.disabled = false;

@@ -304,15 +304,9 @@
             if (newId === AppConfig.ALL_SCHEDULES_ID) {
                 this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
                 
-                const allTags = new Set();
                 const allSchedulesData = {};
-
                 Object.values(this.schedules).forEach(schedule => {
-                    if (!schedule.data) return;
-                    if (schedule.data.tags) {
-                        schedule.data.tags.forEach(tag => allTags.add(tag));
-                    }
-                    if (schedule.data.scheduleData) {
+                    if (schedule.data && schedule.data.scheduleData) {
                         Object.entries(schedule.data.scheduleData).forEach(([classroom, days]) => {
                             if (!allSchedulesData[classroom]) allSchedulesData[classroom] = {};
                             Object.entries(days).forEach(([day, courses]) => {
@@ -323,7 +317,10 @@
                     }
                 });
                 
-                this.tags = Array.from(allTags).sort();
+                this.tags = this.getGlobalAllTags();
+                this.ui.initializeTagFilter();
+                this.loadAndApplyPersistedFilters();
+
                 this.buildCourseColorMap(allSchedulesData);
                 
                 this.ui.renderScheduleTable();
@@ -502,6 +499,31 @@
 
         saveDataToLocal: function() {
             try {
+                // Sync the current working data back to the main schedules object
+                if (this.activeScheduleId && this.schedules[this.activeScheduleId]) {
+                    const activeSchedule = this.schedules[this.activeScheduleId];
+                    if (activeSchedule.data) {
+                        activeSchedule.data.scheduleData = this.scheduleData;
+                        activeSchedule.data.classrooms = this.classrooms;
+                        activeSchedule.data.tags = this.getAllTags(); // Also update the tags list for consistency
+                    }
+                }
+
+                // After saving, the list of all tags might have changed.
+                // We need to re-initialize the tag filter to get the fresh list, while preserving the current value.
+                let currentFilterValue = [];
+                if (this.tagFilterTagify) {
+                    currentFilterValue = this.tagFilterTagify.value.map(tag => tag.value);
+                }
+                
+                this.ui.initializeTagFilter(); // This will destroy and recreate the Tagify instance
+
+                if (this.tagFilterTagify && currentFilterValue.length > 0) {
+                    // Restore the previous value without triggering 'add' events.
+                    // loadOriginalValues will only add valid tags from the new whitelist.
+                    this.tagFilterTagify.loadOriginalValues(currentFilterValue);
+                }
+
                 this.saveSchedulesToLocal();
                 localStorage.setItem('activeScheduleId', this.activeScheduleId);
                 localStorage.setItem('app_version', AppConfig.APP_VERSION);
