@@ -1,5 +1,38 @@
 const SHEET_DATA = "Data";
 const SHEET_HISTORY = "History";
+const MAX_HISTORY_RECORDS = 20;
+const ADMIN_EMAIL = 'cheerc@talented.com.tw';
+
+/**
+ * Finds the 1-based row index for a given scheduleId in the Data sheet.
+ * @param {string} scheduleId The ID of the schedule to find.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} dataSheet The Data sheet object.
+ * @returns {{index: number, values: Array<any>}} An object containing the 1-based row index and the values of that row. Returns -1 if not found.
+ */
+function _findScheduleRowInfo(scheduleId, dataSheet) {
+  const lastRow = dataSheet.getLastRow();
+  if (lastRow < 2) return { index: -1, values: [] };
+  const range = dataSheet.getRange(`A2:D${lastRow}`);
+  const values = range.getValues();
+  const rowIndex = values.findIndex(row => row[0] === scheduleId);
+  return {
+    index: rowIndex === -1 ? -1 : rowIndex + 2, // +2 because it's 0-based and starts from A2
+    values: rowIndex === -1 ? [] : values[rowIndex]
+  };
+}
+
+/**
+ * Checks if the current user has permission to manage a schedule.
+ * Throws an error if permission is denied.
+ * @param {string} createdBy The email of the user who created the schedule.
+ */
+function _checkPermission(createdBy) {
+  const currentUser = Session.getActiveUser().getEmail();
+  const isAdmin = currentUser.toLowerCase() === ADMIN_EMAIL;
+  if (!isAdmin && currentUser !== createdBy) {
+    throw new Error("權限不足。只有管理員或建立者才能執行此操作。");
+  }
+}
 
 /**
  * Gets a sheet by name, creating it if it doesn't exist.
@@ -58,7 +91,6 @@ function getData() {
     }
     const indexData = dataSheet.getRange(`A2:D${lastRow}`).getValues();
     const schedules = {};
-    let latestModTime = null;
 
     indexData.forEach(row => {
       const scheduleId = row[0];
@@ -78,13 +110,9 @@ function getData() {
           schedules[scheduleId] = {
             name: scheduleName,
             createdBy: createdBy,
-            lastModified: lastModified.toISOString(), // *** STEP 1: Add lastModified to each schedule object
+            lastModified: lastModified.toISOString(),
             data: { scheduleData, classrooms, tags: tags }
           };
-
-          if (!latestModTime || lastModified > latestModTime) {
-            latestModTime = lastModified;
-          }
         }
       }
     });
@@ -105,10 +133,10 @@ function getData() {
 
 /**
  * Saves a single schedule's data to its dedicated sheet.
- * @param {object} data The data object to save, containing scheduleId and the schedule's data.
+ * @param {object} payload The data object to save, containing scheduleId and the schedule's data.
  * @returns {object} A success object with the new lastModified time, or an error object.
  */
-function saveData(payload) { // Renamed to payload for clarity
+function saveData(payload) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(30000);
@@ -118,23 +146,20 @@ function saveData(payload) { // Renamed to payload for clarity
   }
 
   try {
-    // --- 1. 解構並驗證從客戶端傳來的資料 ---
-    const { scheduleId, scheduleData, lastModified } = payload; // *** STEP 3: Add lastModified
-    if (!scheduleId || !scheduleData || !lastModified) { // *** STEP 3: Validate lastModified
+    const { scheduleId, scheduleData, lastModified } = payload;
+    if (!scheduleId || !scheduleData || !lastModified) {
       throw new Error("無效的數據格式。數據必須包含 scheduleId, scheduleData, 和 lastModified 時間戳。");
     }
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const dataSheet = getSheet(SHEET_DATA);
 
-    // --- 2. 版本衝突檢查 ---
-    const scheduleIds = dataSheet.getRange(`A2:A${dataSheet.getLastRow()}`).getValues().flat();
-    const rowIndex = scheduleIds.indexOf(scheduleId);
+    const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(scheduleId, dataSheet);
     if (rowIndex === -1) {
       throw new Error(`在索引中找不到 ID 為 "${scheduleId}" 的課表。`);
     }
-    const serverLastModified = new Date(dataSheet.getRange(rowIndex + 2, 3).getValue()).toISOString();
     
+    const serverLastModified = new Date(rowValues[2]).toISOString();
     if (serverLastModified !== lastModified) {
       return { 
         success: false, 
@@ -143,7 +168,6 @@ function saveData(payload) { // Renamed to payload for clarity
       };
     }
 
-    // --- 3. 更新指定課表ID的工作表內容 ---
     const scheduleSheet = ss.getSheetByName(scheduleId);
     if (!scheduleSheet) {
       throw new Error(`找不到 ID 為 "${scheduleId}" 的工作表。`);
@@ -159,28 +183,20 @@ function saveData(payload) { // Renamed to payload for clarity
       tags: scheduleData.tags || []
     };
 
-    const scheduleDataJson = JSON.stringify(dataToSave.scheduleData);
-    const classroomsJson = JSON.stringify(dataToSave.classrooms);
-    const tagsJson = JSON.stringify(dataToSave.tags);
     scheduleSheet.getRange("B2:B4").setValues([
-      [scheduleDataJson],
-      [classroomsJson],
-      [tagsJson]
+      [JSON.stringify(dataToSave.scheduleData)],
+      [JSON.stringify(dataToSave.classrooms)],
+      [JSON.stringify(dataToSave.tags)]
     ]);
 
-    // --- 4. 更新 'Data' 索引工作表 ---
-    // 更新 'Last Modified' 時間 (Column C)
-    dataSheet.getRange(rowIndex + 2, 3).setValue(timestampISO);
+    dataSheet.getRange(rowIndex, 3).setValue(timestampISO);
     
-    // --- 5. 在 'History' 工作表中新增一筆版本紀錄 ---
     const historySheet = getSheet(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
-    const historyDataJson = JSON.stringify(dataToSave);
-    historySheet.getRange("A2:D2").setValues([[timestampISO, userEmail, historyDataJson, scheduleId]]);
+    historySheet.getRange("A2:D2").setValues([[timestampISO, userEmail, JSON.stringify(dataToSave), scheduleId]]);
 
-    const maxHistoryRecords = 20;
-    if (historySheet.getLastRow() > maxHistoryRecords + 1) {
-      historySheet.deleteRows(maxHistoryRecords + 2, historySheet.getLastRow() - (maxHistoryRecords + 1));
+    if (historySheet.getLastRow() > MAX_HISTORY_RECORDS + 1) {
+      historySheet.deleteRows(MAX_HISTORY_RECORDS + 2, historySheet.getLastRow() - (MAX_HISTORY_RECORDS + 1));
     }
 
     Logger.log(`數據保存成功 by ${userEmail} for schedule ${scheduleId}`);
@@ -193,8 +209,6 @@ function saveData(payload) { // Renamed to payload for clarity
     lock.releaseLock();
   }
 }
-
-
 
 /**
  * A helper function to check for metadata conflicts and update the timestamp.
@@ -271,25 +285,18 @@ function renameSchedule(scheduleInfo) {
     const dataSheet = getSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
-    const indexData = dataSheet.getRange("A2:D" + dataSheet.getLastRow()).getValues();
-    const rowIndex = indexData.findIndex(row => row[0] === id);
-
+    const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(id, dataSheet);
     if (rowIndex === -1) {
       throw new Error(`在索引中找不到 ID 為 "${id}" 的課表。`);
     }
 
-    const createdBy = indexData[rowIndex][3];
-    const currentUser = Session.getActiveUser().getEmail();
-    const isAdmin = currentUser.toLowerCase() === 'cheerc@talented.com.tw';
+    const createdBy = rowValues[3];
+    _checkPermission(createdBy);
 
-    if (!isAdmin && currentUser !== createdBy) {
-      throw new Error("權限不足。只有管理員或建立者才能重新命名此課表。");
-    }
+    dataSheet.getRange(rowIndex, 2).setValue(newName);
+    dataSheet.getRange(rowIndex, 3).setValue(new Date().toISOString());
 
-    dataSheet.getRange(rowIndex + 2, 2).setValue(newName);
-    dataSheet.getRange(rowIndex + 2, 3).setValue(new Date().toISOString());
-
-    Logger.log(`成功將課表 ${id} 重新命名為: ${newName} by ${currentUser}`);
+    Logger.log(`成功將課表 ${id} 重新命名為: ${newName} by ${Session.getActiveUser().getEmail()}`);
     return { success: true, newMetadataTimestamp: newMetaTimestamp };
 
   } catch (e) {
@@ -315,32 +322,24 @@ function deleteSchedule(scheduleInfo) {
     const dataSheet = getSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const indexData = dataSheet.getRange("A2:D" + dataSheet.getLastRow()).getValues();
-    const rowIndex = indexData.findIndex(row => row[0] === id);
-
+    const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(id, dataSheet);
     if (rowIndex === -1) {
-      // If it's not in the index, maybe it was already deleted. This is not an error.
       Logger.log(`嘗試刪除一個在索引中不存在的課表: ${id}`);
       return { success: true, newMetadataTimestamp: newMetaTimestamp };
     }
 
-    const createdBy = indexData[rowIndex][3];
-    const currentUser = Session.getActiveUser().getEmail();
-    const isAdmin = currentUser.toLowerCase() === 'cheerc@talented.com.tw';
+    const createdBy = rowValues[3];
+    _checkPermission(createdBy);
 
-    if (!isAdmin && currentUser !== createdBy) {
-      throw new Error("權限不足。只有管理員或建立者才能刪除此課表。");
-    }
-
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const scheduleSheet = ss.getSheetByName(id);
     if (scheduleSheet) {
       ss.deleteSheet(scheduleSheet);
     }
 
-    dataSheet.deleteRow(rowIndex + 2);
+    dataSheet.deleteRow(rowIndex);
 
-    Logger.log(`成功刪除課表: ${id} by ${currentUser}`);
+    Logger.log(`成功刪除課表: ${id} by ${Session.getActiveUser().getEmail()}`);
     return { success: true, newMetadataTimestamp: newMetaTimestamp };
 
   } catch (e) {
@@ -402,13 +401,12 @@ function getVersions(scheduleId) {
     }
     const historySheet = getSheet(SHEET_HISTORY);
     const lastRow = historySheet.getLastRow();
-    if (lastRow < 2) return []; // No data rows
+    if (lastRow < 2) return [];
 
-    // Get all data, including the schedule ID column (D)
     const data = historySheet.getRange(`A2:D${lastRow}`).getValues();
     
     const versions = data
-      .filter(row => row[3] === scheduleId) // Filter by scheduleId in column D
+      .filter(row => row[3] === scheduleId)
       .map(row => ({ id: row[0], user: row[1] || '未知使用者' }));
       
     return versions;
@@ -430,7 +428,7 @@ function getVersionData(versionId) {
       throw new Error("未提供版本ID");
     }
     const historySheet = getSheet(SHEET_HISTORY);
-    const data = historySheet.getRange("A:C").getValues(); // A: Timestamp, B: User, C: ScheduleData JSON
+    const data = historySheet.getRange("A:C").getValues();
     
     const versionRow = data.slice(1).find(row => row[0] && new Date(row[0]).toISOString() === versionId);
 
@@ -457,8 +455,6 @@ function getVersionData(versionId) {
   }
 }
 
-
-
 /**
  * Gets the font data from the file stored in Google Drive.
  * @returns {string} The Base64 encoded font data.
@@ -473,7 +469,6 @@ function getFontBase64FromDrive() {
     const file = DriveApp.getFileById(fileId);
     const content = file.getBlob().getDataAsString();
     
-    // Extract the Base64 string from the JS file content
     const match = content.match(/const NotoSansTC_Base64 = '([^']+)';/);
     
     if (match && match[1]) {
@@ -483,7 +478,6 @@ function getFontBase64FromDrive() {
     }
   } catch (e) {
     Logger.log(`從 Drive 獲取字體時發生錯誤: ${e.stack}`);
-    // Return the error message to be displayed on the client side.
     return { error: e.toString() };
   }
 }
