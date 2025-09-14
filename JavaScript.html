@@ -1035,16 +1035,11 @@
                 if (!this.pdfFontBase64) {
                     this.ui.showLoading('首次列印，正在載入PDF專用字體...');
                     const fontData = await ServerApi.call('getFontBase64FromDrive');
-                    if (fontData && fontData.error) {
-                        throw new Error(fontData.error);
-                    }
-                    if (!fontData) {
-                        throw new Error('無法從伺服器獲取字體資料(回傳為空)。');
-                    }
+                    if (fontData && fontData.error) throw new Error(fontData.error);
+                    if (!fontData) throw new Error('無法從伺服器獲取字體資料(回傳為空)。');
                     this.pdfFontBase64 = fontData;
                 }
 
-                // Step 2: Generate the PDF.
                 this.ui.showLoading('正在生成PDF...');
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF({
@@ -1053,7 +1048,7 @@
                     format: pdfOptions.format
                 });
 
-                // Step 3: Define titles and filenames
+                // Step 2: Define titles and filenames
                 const isAllSchedules = this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
                 const scheduleNameForPdf = isAllSchedules 
                     ? '所有課表' 
@@ -1062,131 +1057,233 @@
                 const hasCustomTitle = pdfOptions.customTitle && pdfOptions.customTitle.length > 0;
                 const finalTitle = hasCustomTitle ? pdfOptions.customTitle : `課表: ${scheduleNameForPdf}`;
                 
-                // Step 4: Add font to the jsPDF instance.
+                // Step 3: Add font to the jsPDF instance.
                 doc.addFileToVFS("NotoSansTC-Regular.ttf", this.pdfFontBase64);
                 doc.addFont("NotoSansTC-Regular.ttf", "NotoSansTC", "normal");
                 doc.setFont("NotoSansTC");
 
-                // Step 5: Build and render the table.
-                const table = document.getElementById('schedule-table');
-                if (!table) throw new Error('找不到課表表格元素。');
+                // Shared function for drawing header/footer on each page
+                const didDrawPage = (data) => {
+                    doc.setFont('NotoSansTC', 'normal');
+                    doc.setFontSize(12);
+                    doc.text(finalTitle, data.settings.margin.left, 10);
 
-                const head = [];
-                const thead = table.querySelector('thead');
-                if (thead) {
-                    const headerRow = [];
-                    thead.querySelectorAll('th').forEach(th => headerRow.push(th.textContent.trim()));
-                    head.push(headerRow);
-                }
-
-                const body = [];
-                const tbody = table.querySelector('tbody');
-                if (tbody) {
-                    tbody.querySelectorAll('tr').forEach(tr => {
-                        if (!pdfOptions.includeEmpty) {
-                            const classItemsInRow = tr.querySelectorAll('.class-item');
-                            if (classItemsInRow.length === 0) {
-                                return; // Skip this empty row
-                            }
-                        }
-                        const htmlRow = tr.cells;
-                        let maxCoursesInRow = 0;
-                        for (let i = 1; i < htmlRow.length; i++) {
-                            maxCoursesInRow = Math.max(maxCoursesInRow, htmlRow[i].querySelectorAll('.class-item').length);
-                        }
-                        maxCoursesInRow = Math.max(1, maxCoursesInRow); // Ensure at least one row is created
-
-                        const pdfRowsForThisHtmlRow = [];
-                        for (let i = 0; i < maxCoursesInRow; i++) {
-                            pdfRowsForThisHtmlRow.push([]);
-                        }
-
-                        // First cell (Time/Classroom) with rowspan
-                        pdfRowsForThisHtmlRow[0].push({ 
-                            content: htmlRow[0].textContent.trim(), 
-                            rowSpan: maxCoursesInRow,
-                            styles: { valign: 'middle' } // Vertically center content
-                        });
-
-                        // Subsequent cells
-                        for (let colIndex = 1; colIndex < htmlRow.length; colIndex++) {
-                            const cell = htmlRow[colIndex];
-                            const classItems = cell.querySelectorAll('.class-item');
-                            for (let courseIndex = 0; courseIndex < maxCoursesInRow; courseIndex++) {
-                                const item = classItems[courseIndex];
-                                if (item) {
-                                    const name = item.querySelector('[data-field="name"]')?.textContent.trim() || '';
-                                    const time = item.querySelector('[data-field="time"]')?.textContent.trim() || '';
-                                    const teacher = item.querySelector('[data-field="teacher"]')?.textContent.trim() || '';
-                                    const content = `${name}\n${time}\n(${teacher})`;
-                                    const color = this.courseColorMap[name];
-                                    pdfRowsForThisHtmlRow[courseIndex].push({ 
-                                        content: content, 
-                                        styles: { fillColor: this.hexToRgb(color) } 
-                                    });
-                                } else {
-                                    pdfRowsForThisHtmlRow[courseIndex].push('');
-                                }
-                            }
-                        }
-                        body.push(...pdfRowsForThisHtmlRow);
-                    });
-                }
-
-                doc.autoTable({
-                    head: head,
-                    body: body,
-                    startY: 20,
-                    theme: 'grid',
-                    showHead: 'everyPage',
-                    headStyles: {
-                        fillColor: [240, 240, 240],
-                        textColor: [0, 0, 0],
-                        fontStyle: 'bold',
-                        halign: 'center',
-                        valign: 'middle',
-                        font: 'NotoSansTC',
-                    },
-                    styles: {
-                        fontSize: 7,
-                        cellPadding: 2,
-                        halign: 'center',
-                        valign: 'middle',
-                        font: 'NotoSansTC',
-                        fontStyle: 'bold', // Match user's font registration
-                        textColor: [0, 0, 0], // Set text to pure black for clarity
-                        lineWidth: 0.1,
-                        lineColor: [200, 200, 200],
-                    },
-                    columnStyles: {
-                        0: { fontStyle: 'bold', fillColor: [240, 240, 240], valign: 'middle' },
-                    },
-                    didDrawPage: (data) => {
-                        doc.setFont('NotoSansTC', 'normal');
-                        doc.setFontSize(12);
-                        doc.text(finalTitle, data.settings.margin.left, 10);
-
-                        // Only show tags if there is NO custom title
-                        if (!hasCustomTitle) {
-                            const activeTags = this.activeFilters
-                                .filter(f => f.type === 'tag')
-                                .map(f => f.value);
-
-                            if (activeTags.length > 0) {
-                                doc.setFontSize(8);
-                                const tagsText = `篩選標籤: ${activeTags.join(', ')}`;
-                                const pageWidth = doc.internal.pageSize.getWidth();
-                                const rightMargin = data.settings.margin.right;
-                                doc.text(
-                                    tagsText,
-                                    pageWidth - rightMargin,
-                                    10,
-                                    { align: 'right' }
-                                );
-                            }
+                    if (!hasCustomTitle) {
+                        const activeTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
+                        if (activeTags.length > 0) {
+                            doc.setFontSize(8);
+                            const tagsText = `篩選標籤: ${activeTags.join(', ')}`;
+                            const pageWidth = doc.internal.pageSize.getWidth();
+                            const rightMargin = data.settings.margin.right;
+                            doc.text(tagsText, pageWidth - rightMargin, 10, { align: 'right' });
                         }
                     }
-                });
+                };
+
+                // Step 4: Build and render the table based on view mode.
+                if (this.currentViewMode === AppConfig.MODES.DAY) {
+                    // --- DAY VIEW PDF LOGIC (WYSIWYG) ---
+                    const table = document.getElementById('schedule-table');
+                    if (!table) throw new Error('找不到課表表格元素。');
+
+                    // 1. Scrape Headers for WYSIWYG
+                    const thead = table.querySelector('thead');
+                    let head = [];
+                    if (thead) {
+                        const firstHeader = thead.querySelector('th')?.textContent.trim() || '教室/時間';
+                        const secondHeader = thead.querySelectorAll('th')[1]?.textContent.trim() || AppConfig.WEEKDAYS[this.currentDayIndex];
+                        head.push([firstHeader, secondHeader, '備註']);
+                    } else {
+                        const dayName = AppConfig.WEEKDAYS[this.currentDayIndex];
+                        head.push(['教室/時間', dayName, '備註']);
+                    }
+
+                    // 2. Scrape Body for WYSIWYG order and content lookup
+                    const body = [];
+                    const tbody = table.querySelector('tbody');
+                    if (tbody) {
+                        tbody.querySelectorAll('tr').forEach(row => {
+                            try {
+                                if (!pdfOptions.includeEmpty) {
+                                    const contentCell = row.cells[1];
+                                    if (!contentCell || contentCell.querySelectorAll('.class-item').length === 0) {
+                                        return;
+                                    }
+                                }
+
+                                const identifierCell = row.cells[0];
+                                const contentCell = row.cells[1];
+                                if (!identifierCell || !contentCell) return;
+
+                                const identifier = identifierCell.textContent.trim();
+                                const classItems = contentCell.querySelectorAll('.class-item');
+
+                                if (classItems.length === 0) {
+                                    body.push([identifier, '', '']);
+                                    return;
+                                }
+
+                                const pdfRowsForThisHtmlRow = [];
+                                for (let i = 0; i < classItems.length; i++) {
+                                    pdfRowsForThisHtmlRow.push([]);
+                                }
+
+                                pdfRowsForThisHtmlRow[0].push({
+                                    content: identifier,
+                                    rowSpan: classItems.length,
+                                    styles: { valign: 'middle' }
+                                });
+
+                                classItems.forEach((classItemEl, index) => {
+                                    const courseId = classItemEl.dataset.id;
+                                    const classroomName = classItemEl.dataset.classroom;
+                                    const dayIndex = parseInt(classItemEl.dataset.day, 10);
+                                    const course = this.scheduleData[classroomName]?.[dayIndex]?.find(c => c.id === courseId);
+
+                                    if (course) {
+                                        const timeStr = `${course.timeStart} - ${course.timeEnd}`;
+                                        const mainContent = `${course.name}\n${timeStr}\n(${course.teacher})`;
+                                        const color = this.courseColorMap[course.name];
+                                        const courseCell = {
+                                            content: mainContent,
+                                            styles: { fillColor: this.hexToRgb(color) }
+                                        };
+                                        const notes = course.notes || '';
+                                        pdfRowsForThisHtmlRow[index].push(courseCell, notes);
+                                    } else {
+                                        pdfRowsForThisHtmlRow[index].push('(資料錯誤)', '');
+                                    }
+                                });
+
+                                body.push(...pdfRowsForThisHtmlRow);
+
+                            } catch (e) {
+                                console.error("Error processing a PDF row:", e, row);
+                            }
+                        });
+                    }
+
+                    // 3. Manual width calculation
+                    const pageWidth = doc.internal.pageSize.getWidth();
+                    const margin = 15;
+                    const usableWidth = pageWidth - (margin * 2);
+                    const fixedColumnWidth = 40;
+                    const remainingWidth = usableWidth - fixedColumnWidth;
+                    const sharedWidth = remainingWidth / 2;
+
+                    doc.autoTable({
+                        head: head,
+                        body: body,
+                        startY: 20,
+                        margin: { left: margin, right: margin },
+                        theme: 'grid',
+                        showHead: 'everyPage',
+                        headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle', font: 'NotoSansTC' },
+                        styles: { fontSize: 16, cellPadding: 3, valign: 'middle', font: 'NotoSansTC', textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [180, 180, 180] },
+                        columnStyles: {
+                            0: { cellWidth: fixedColumnWidth, fontStyle: 'bold', halign: 'center' },
+                            1: { cellWidth: sharedWidth, halign: 'center' },
+                            2: { cellWidth: sharedWidth },
+                        },
+                        didDrawPage: didDrawPage
+                    });
+
+                } else {
+                    // --- WEEK VIEW PDF LOGIC (Original, untouched) ---
+                    const table = document.getElementById('schedule-table');
+                    if (!table) throw new Error('找不到課表表格元素。');
+
+                    const head = [];
+                    const thead = table.querySelector('thead');
+                    if (thead) {
+                        const headerRow = [];
+                        thead.querySelectorAll('th').forEach(th => headerRow.push(th.textContent.trim()));
+                        head.push(headerRow);
+                    }
+
+                    const body = [];
+                    const tbody = table.querySelector('tbody');
+                    if (tbody) {
+                        tbody.querySelectorAll('tr').forEach(tr => {
+                            if (!pdfOptions.includeEmpty) {
+                                const classItemsInRow = tr.querySelectorAll('.class-item');
+                                if (classItemsInRow.length === 0) {
+                                    return; // Skip this empty row
+                                }
+                            }
+                            const htmlRow = tr.cells;
+                            let maxCoursesInRow = 0;
+                            for (let i = 1; i < htmlRow.length; i++) {
+                                maxCoursesInRow = Math.max(maxCoursesInRow, htmlRow[i].querySelectorAll('.class-item').length);
+                            }
+                            maxCoursesInRow = Math.max(1, maxCoursesInRow); // Ensure at least one row is created
+
+                            const pdfRowsForThisHtmlRow = [];
+                            for (let i = 0; i < maxCoursesInRow; i++) {
+                                pdfRowsForThisHtmlRow.push([]);
+                            }
+
+                            pdfRowsForThisHtmlRow[0].push({ 
+                                content: htmlRow[0].textContent.trim(), 
+                                rowSpan: maxCoursesInRow,
+                                styles: { valign: 'middle' } 
+                            });
+
+                            for (let colIndex = 1; colIndex < htmlRow.length; colIndex++) {
+                                const cell = htmlRow[colIndex];
+                                const classItems = cell.querySelectorAll('.class-item');
+                                for (let courseIndex = 0; courseIndex < maxCoursesInRow; courseIndex++) {
+                                    const item = classItems[courseIndex];
+                                    if (item) {
+                                        const name = item.querySelector('[data-field="name"]')?.textContent.trim() || '';
+                                        const time = item.querySelector('[data-field="time"]')?.textContent.trim() || '';
+                                        const teacher = item.querySelector('[data-field="teacher"]')?.textContent.trim() || '';
+                                        const content = `${name}\n${time}\n(${teacher})`;
+                                        const color = this.courseColorMap[name];
+                                        pdfRowsForThisHtmlRow[courseIndex].push({ 
+                                            content: content, 
+                                            styles: { fillColor: this.hexToRgb(color) } 
+                                        });
+                                    } else {
+                                        pdfRowsForThisHtmlRow[courseIndex].push('');
+                                    }
+                                }
+                            }
+                            body.push(...pdfRowsForThisHtmlRow);
+                        });
+                    }
+
+                    doc.autoTable({
+                        head: head,
+                        body: body,
+                        startY: 20,
+                        theme: 'grid',
+                        showHead: 'everyPage',
+                        headStyles: {
+                            fillColor: [240, 240, 240],
+                            textColor: [0, 0, 0],
+                            fontStyle: 'bold',
+                            halign: 'center',
+                            valign: 'middle',
+                            font: 'NotoSansTC',
+                        },
+                        styles: {
+                            fontSize: 7,
+                            cellPadding: 2,
+                            halign: 'center',
+                            valign: 'middle',
+                            font: 'NotoSansTC',
+                            fontStyle: 'bold',
+                            textColor: [0, 0, 0],
+                            lineWidth: 0.1,
+                            lineColor: [200, 200, 200],
+                        },
+                        columnStyles: {
+                            0: { fontStyle: 'bold', fillColor: [240, 240, 240], valign: 'middle' },
+                        },
+                        didDrawPage: didDrawPage
+                    });
+                }
 
                 // Step 6: Save the PDF with the correct filename
                 const activeTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
