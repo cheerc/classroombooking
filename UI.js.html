@@ -368,17 +368,26 @@ function createUIModule(app) {
         if (app.currentViewMode === mode) return;
         app.currentViewMode = mode;
         localStorage.setItem('lastViewMode', mode);
+
+        // Adjust sort mode based on the new view mode
         if (mode === AppConfig.MODES.DAY) {
             const today = new Date().getDay();
             app.currentDayIndex = (today === 0) ? 6 : today - 1;
-            app.dayViewSortMode = 'time';
+            // Default sort for day view is by time
+            app.viewSortMode = 'time'; 
+        } else { // mode === AppConfig.MODES.WEEK
+            // If switching to week view and the sort mode was 'time' (which is invalid for week view),
+            // default to 'classroom' sort.
+            if (app.viewSortMode === 'time') {
+                app.viewSortMode = 'classroom';
+            }
         }
         this.renderScheduleTable();
     },
 
-    setDayViewSortMode: function(mode) {
-        if (app.dayViewSortMode === mode) return;
-        app.dayViewSortMode = mode;
+    setViewSortMode: function(mode) {
+        if (app.viewSortMode === mode) return;
+        app.viewSortMode = mode;
         // The actual button state is updated in updateViewControls
         this.renderScheduleTable();
     },
@@ -390,38 +399,33 @@ function createUIModule(app) {
     },
 
     updateViewControls: function() {
-        if (app.currentViewMode === AppConfig.MODES.DAY) {
-            AppElements.dayViewSortSelector.style.display = 'flex';
-        } else {
-            AppElements.dayViewSortSelector.style.display = 'none';
-        }
+        const isDayView = app.currentViewMode === AppConfig.MODES.DAY;
+        const isAllSchedules = app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
+
+        // --- Control visibility of sort selectors ---
+        AppElements.viewSortSelector.style.display = isAllSchedules ? 'none' : 'flex';
+        AppElements.daySortTimeBtn.style.display = isDayView ? 'block' : 'none';
+
         const tableHead = AppElements.scheduleBody.previousElementSibling;
         tableHead.innerHTML = '';
         const tr = document.createElement('tr');
         tr.className = 'relative z-10';
-        if (app.currentViewMode === AppConfig.MODES.WEEK) {
-            AppElements.viewModeWeekBtn.classList.add('active');
-            AppElements.viewModeDayBtn.classList.remove('active');
-            tr.innerHTML = (
-                `<th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
-                    <span class="diagonal-split-top">星期</span>
-                    <span class="diagonal-split-bottom">教室</span>
-                </th>
-                ${AppConfig.WEEKDAYS.map(day => `<th class="border border-gray-300 p-2 bg-gray-200 w-1/7">${day}</th>`).join('')}
-            `
-            );
-        } else {
-            AppElements.viewModeDayBtn.classList.add('active');
-            AppElements.viewModeWeekBtn.classList.remove('active');
-            AppElements.daySortClassroomBtn.classList.toggle('active', app.dayViewSortMode === 'classroom');
-            AppElements.daySortTimeBtn.classList.toggle('active', app.dayViewSortMode === 'time');
-            AppElements.daySortTeacherBtn.classList.toggle('active', app.dayViewSortMode === 'teacher');
-            
-            const dayViewHeaderLabel = app.dayViewSortMode === 'teacher' ? '老師' : '教室';
 
+        // --- Set active state for view mode buttons ---
+        AppElements.viewModeWeekBtn.classList.toggle('active', !isDayView);
+        AppElements.viewModeDayBtn.classList.toggle('active', isDayView);
+        
+        // --- Set active state for sort mode buttons ---
+        AppElements.daySortClassroomBtn.classList.toggle('active', app.viewSortMode === 'classroom');
+        AppElements.daySortTimeBtn.classList.toggle('active', app.viewSortMode === 'time');
+        AppElements.daySortTeacherBtn.classList.toggle('active', app.viewSortMode === 'teacher');
+        
+        // --- Render Table Header ---
+        if (isDayView) {
+            const dayViewHeaderLabel = app.viewSortMode === 'teacher' ? '老師' : '教室';
             tr.innerHTML = (
                 `<th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
-                    <span class="diagonal-split-top">星期</span>
+                    <span class="diagonal-split-top">${app.viewSortMode === 'time' ? '時間' : '星期'}</span>
                     <span class="diagonal-split-bottom">${dayViewHeaderLabel}</span>
                 </th>
                 <th class="border border-gray-300 p-2 bg-gray-200">
@@ -433,6 +437,16 @@ function createUIModule(app) {
                 </th>
             `
             );
+        } else { // Week View
+            const weekViewHeaderLabel = app.viewSortMode === 'teacher' ? '老師' : '教室';
+            tr.innerHTML = (
+                `<th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
+                    <span class="diagonal-split-top">星期</span>
+                    <span class="diagonal-split-bottom">${weekViewHeaderLabel}</span>
+                </th>
+                ${AppConfig.WEEKDAYS.map(day => `<th class="border border-gray-300 p-2 bg-gray-200 w-1/7">${day}</th>`).join('')}
+            `
+            );
         }
         tableHead.appendChild(tr);
     },
@@ -441,27 +455,31 @@ function createUIModule(app) {
         try {
             this.hideActiveTooltip();
             app.findNextUpcomingClasses();
-            this.updateViewControls();
+            this.updateViewControls(); // This now handles the header and button visibility
+
             if (app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
                 this.renderAllSchedulesView();
                 return;
             }
+
             let dataToRender = app.scheduleData;
             if (app.activeFilters && app.activeFilters.length > 0) {
                 dataToRender = app.filterDataByActiveFilters(dataToRender);
             }
+
             AppElements.scheduleBody.innerHTML = '';
-            if (app.currentViewMode === AppConfig.MODES.DAY) {
-                if (app.dayViewSortMode === 'time') {
-                    this.renderDayViewByTime(dataToRender);
-                } else if (app.dayViewSortMode === 'teacher') {
-                    this.renderDayViewByTeacher(dataToRender);
-                } else { // classroom
-                    this.renderByClassroom(dataToRender);
-                }
-            } else { // week view
+
+            if (app.viewSortMode === 'classroom') {
+                this.renderByClassroom(dataToRender);
+            } else if (app.viewSortMode === 'teacher') {
+                this.renderByTeacher(dataToRender);
+            } else if (app.currentViewMode === AppConfig.MODES.DAY && app.viewSortMode === 'time') {
+                this.renderDayViewByTime(dataToRender);
+            } else {
+                // Fallback for any invalid state
                 this.renderByClassroom(dataToRender);
             }
+
             this.setupDragAndDrop();
             this.initializeTooltips();
             this.addUpcomingClassIndicators();
@@ -506,7 +524,7 @@ function createUIModule(app) {
             dataToRender = app.filterDataByActiveFilters(dataToRender);
         }
 
-        if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
+        if (app.currentViewMode === AppConfig.MODES.DAY && app.viewSortMode === 'time') {
             const day = app.currentDayIndex;
             let allCoursesForDay = [];
             for (const uniqueClassroomName in dataToRender) {
@@ -602,39 +620,53 @@ function createUIModule(app) {
         });
     },
 
-    renderDayViewByTeacher: function(dataToRender) {
-        const day = app.currentDayIndex;
-        let allCoursesForDay = [];
-        for (const classroom in dataToRender) {
-            if (dataToRender[classroom][day]) {
-                dataToRender[classroom][day].forEach(course => {
-                    allCoursesForDay.push({ ...course, classroom: classroom });
+    renderByTeacher: function(dataToRender) {
+        // 1. Get all unique teachers from the data
+        const teachers = new Set();
+        Object.values(dataToRender).forEach(classroom => {
+            Object.values(classroom).forEach(day => {
+                day.forEach(course => {
+                    if (course.teacher) teachers.add(course.teacher);
                 });
-            }
-        }
+            });
+        });
+        const sortedTeachers = Array.from(teachers).sort();
 
-        const teachers = [...new Set(allCoursesForDay.map(c => c.teacher || '未指定'))].sort();
-
-        teachers.forEach(teacher => {
-            const coursesForTeacher = allCoursesForDay
-                .filter(course => (course.teacher || '未指定') === teacher)
-                .sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
-
-            if (coursesForTeacher.length === 0) return;
-
+        // 2. Iterate through teachers to create rows
+        sortedTeachers.forEach(teacher => {
             const tr = document.createElement('tr');
+            // First cell is the teacher's name
             tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${teacher}</span></td>`;
             
-            const td = document.createElement('td');
-            td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
-            td.dataset.day = day; // No specific classroom, so we omit it
+            const daysToRender = app.currentViewMode === AppConfig.MODES.WEEK ? [0, 1, 2, 3, 4, 5, 6] : [app.currentDayIndex];
 
-            coursesForTeacher.forEach(course => {
-                const classDiv = this.createClassElement(course, course.classroom, day, { viewContext: 'teacherSort' });
-                td.appendChild(classDiv);
-            });
+            // 3. Iterate through the days to create cells
+            for (const day of daysToRender) {
+                const td = document.createElement('td');
+                td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
+                td.dataset.teacher = teacher; // For context
+                td.dataset.day = day;
 
-            tr.appendChild(td);
+                // 4. Find all courses for this teacher on this day
+                let coursesForDay = [];
+                for (const classroom in dataToRender) {
+                    if (dataToRender[classroom][day]) {
+                        dataToRender[classroom][day].forEach(course => {
+                            if (course.teacher === teacher) {
+                                coursesForDay.push({ ...course, classroom: classroom }); // Add classroom info
+                            }
+                        });
+                    }
+                }
+
+                // 5. Sort and render the courses into the cell
+                coursesForDay.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
+                coursesForDay.forEach(course => {
+                    const classDiv = this.createClassElement(course, course.classroom, day, { viewContext: 'teacherSort' });
+                    td.appendChild(classDiv);
+                });
+                tr.appendChild(td);
+            }
             AppElements.scheduleBody.appendChild(tr);
         });
     },
@@ -682,34 +714,27 @@ function createUIModule(app) {
 
     setupDragAndDrop: function() {
         try {
-            const isReadOnly = app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
+            const isDraggable = app.viewSortMode === 'classroom' && app.activeScheduleId !== AppConfig.ALL_SCHEDULES_ID;
+
             document.querySelectorAll('.schedule-cell').forEach(cell => {
                 if (cell.sortable) cell.sortable.destroy();
                 cell.sortable = new Sortable(cell, {
                     group: {
                         name: 'classes',
-                        pull: !isReadOnly,
-                        put: !isReadOnly
+                        pull: isDraggable,
+                        put: isDraggable
                     },
                     animation: 150,
-                    disabled: isReadOnly,
+                    disabled: !isDraggable,
                     onStart: (evt) => {
-                        if (isReadOnly) return;
+                        if (!isDraggable) return;
                         app.originalSourceListElement = evt.from;
                     },
                     onMove: (evt) => {
-                        if (isReadOnly) return false;
-                        if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
-                            return false;
-                        }
-                        return evt.from !== evt.to;
+                        return isDraggable && evt.from !== evt.to;
                     },
                     onEnd: (evt) => {
-                        if (isReadOnly) return;
-                        if (app.currentViewMode === AppConfig.MODES.DAY && app.dayViewSortMode === 'time') {
-                            this.renderScheduleTable();
-                            return;
-                        }
+                        if (!isDraggable) return;
                         app.handleDrop(evt);
                     }
                 });

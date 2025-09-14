@@ -85,9 +85,9 @@ function createInteractionModule(app) {
         els.viewModeWeekBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.WEEK));
         els.viewModeDayBtn.addEventListener('click', () => app.ui.setViewMode(AppConfig.MODES.DAY));
         
-        els.daySortClassroomBtn.addEventListener('click', () => app.ui.setDayViewSortMode('classroom'));
-        els.daySortTimeBtn.addEventListener('click', () => app.ui.setDayViewSortMode('time'));
-        els.daySortTeacherBtn.addEventListener('click', () => app.ui.setDayViewSortMode('teacher'));
+        els.daySortClassroomBtn.addEventListener('click', () => app.ui.setViewSortMode('classroom'));
+        els.daySortTimeBtn.addEventListener('click', () => app.ui.setViewSortMode('time'));
+        els.daySortTeacherBtn.addEventListener('click', () => app.ui.setViewSortMode('teacher'));
 
         const tableHead = AppElements.scheduleBody.previousElementSibling;
         tableHead.addEventListener('click', (e) => {
