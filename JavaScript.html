@@ -22,7 +22,7 @@
         activeFilters: [],
         currentUserEmail: '',
         currentViewMode: localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK,
-        viewSortMode: 'time',
+        viewSortMode: (localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK) === AppConfig.MODES.DAY ? 'time' : 'classroom',
         currentDayIndex: (() => {
             // If the initial view mode is 'day', set the index to today. Otherwise, default to Monday (0).
             if ((localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK) === AppConfig.MODES.DAY) {
