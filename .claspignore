@@ -15,4 +15,4 @@ gemini.md
 TestCases.md
 
 # System files
-.DS_Store
+.DS_Store\nphp_scripts/

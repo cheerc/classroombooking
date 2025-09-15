@@ -303,6 +303,9 @@ function createInteractionModule(app) {
         textarea.select();
 
         const closeEditor = (shouldSave) => {
+            const wasSelected = classElement.classList.contains('primary-selection');
+            const selectedCourseId = wasSelected ? classItem.id : null;
+
             if (shouldSave) {
                 const newNotes = textarea.value.trim();
                 if (newNotes !== originalNotes) {
@@ -313,6 +316,13 @@ function createInteractionModule(app) {
             }
             app.activeInlineForm = null;
             app.ui.renderScheduleTable();
+
+            if (selectedCourseId) {
+                const newElement = document.querySelector(`.class-item[data-id='${selectedCourseId}']`);
+                if (newElement) {
+                    app.ui.toggleSelection(newElement);
+                }
+            }
         };
 
         app.activeInlineForm = { close: () => closeEditor(false) };
@@ -531,6 +541,11 @@ function createInteractionModule(app) {
                 
                 const notesElement = event.target.closest('.course-notes');
                 if (notesElement && app.currentViewMode === 'day') {
+                    const isSelectionActive = document.body.classList.contains('has-selection');
+                    const isElementInSelection = classElement.classList.contains('primary-selection') || classElement.classList.contains('secondary-selection');
+                    if (isSelectionActive && !isElementInSelection) {
+                        return; // Do nothing if a selection is active on other elements
+                    }
                     this.createInlineNotesEditor(notesElement);
                 } else {
                     this.handleEditFieldClick(event, event.target.closest('.editable') || classElement);
