@@ -293,5 +293,44 @@ header('Content-Type: text/html; charset=utf-8');
     <div class="container">
         <?php echo render_schedule_table($classroomsToShow, $finalSchedule, $weekdays, $courseColorMap); ?>
     </div>
+<script>
+    function sendHeight() {
+        // Use a more robust way to get the full document height
+        const height = Math.max(
+            document.body.scrollHeight,
+            document.body.offsetHeight,
+            document.documentElement.clientHeight,
+            document.documentElement.scrollHeight,
+            document.documentElement.offsetHeight
+        );
+
+        if (window.parent) {
+            const message = {
+                type: 'iframe-resize',
+                height: height
+            };
+            // The targetOrigin '*' is insecure but flexible. For production,
+            // replace with the parent page's origin, e.g., 'https://your-website.com'.
+            window.parent.postMessage(message, '*');
+        }
+    }
+
+    // Send height at different stages to ensure accuracy
+    window.addEventListener('load', () => {
+        sendHeight();
+        // Call a few more times to handle slow-loading content or fonts
+        setTimeout(sendHeight, 150);
+        setTimeout(sendHeight, 500);
+    });
+
+    // Use ResizeObserver for dynamic content changes
+    if (window.ResizeObserver) {
+        const resizeObserver = new ResizeObserver(sendHeight);
+        resizeObserver.observe(document.body);
+    } else {
+        // Fallback for older browsers
+        window.addEventListener('resize', sendHeight);
+    }
+</script>
 </body>
 </html>
