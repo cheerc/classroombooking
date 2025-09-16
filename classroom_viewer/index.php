@@ -116,7 +116,8 @@ function render_schedule_table($classrooms, $schedule, $weekdays, $colorMap) {
         return '<div style="text-align: center; padding: 2em;">沒有符合條件的課程。</div>';
     }
 
-    $html = '<table class="schedule-table"><thead><tr>';
+    $html = '<div class="table-container">';
+    $html .= '<table class="schedule-table"><thead><tr>';
     foreach ($activeDays as $dayName) {
         $html .= "<th>{$dayName}</th>";
     }
@@ -133,6 +134,8 @@ function render_schedule_table($classrooms, $schedule, $weekdays, $colorMap) {
     }
     $html .= '</tr>';
     $html .= '</tbody></table>';
+    $html .= '</div>';
+
     return $html;
 }
 
@@ -257,13 +260,13 @@ header('Content-Type: text/html; charset=utf-8');
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>課表檢視: <?php echo htmlspecialchars($targetScheduleName); ?></title>
+    <meta name="viewport" content="width=1280">
+    <title>課表檢視</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; color: #212529; }
         .container { padding: 1.5em; max-width: 1600px; margin: auto; }
         h1 { color: #343a40; text-align: center; }
-        .schedule-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .schedule-table { width: 100%; min-width: 1200px; border-collapse: collapse; table-layout: fixed; }
         .schedule-table th, .schedule-table td { border: 1px solid #dee2e6; padding: 0.5em; text-align: left; vertical-align: top; }
         .schedule-table thead { background-color: #e9ecef; }
         .schedule-table th { font-weight: 600; }
@@ -285,6 +288,29 @@ header('Content-Type: text/html; charset=utf-8');
             font-size: 1em;
             color: #495057;
             margin-bottom: 0.6em;
+        }
+        .table-container {
+            overflow-x: auto; /* Enable horizontal scrolling */
+            -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+        }
+
+        /* Style the scrollbar to be visible but subtle */
+        .table-container::-webkit-scrollbar {
+            height: 8px; /* Height of the horizontal scrollbar */
+        }
+
+        .table-container::-webkit-scrollbar-track {
+            background: #f1f1f1; /* Track color */
+            border-radius: 10px;
+        }
+
+        .table-container::-webkit-scrollbar-thumb {
+            background: #ccc; /* Handle color */
+            border-radius: 10px;
+        }
+
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: #aaa; /* Handle color on hover */
         }
         
     </style>
