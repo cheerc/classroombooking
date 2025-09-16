@@ -1,0 +1,297 @@
+<?php
+
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+require __DIR__ . '/vendor/autoload.php';
+
+// --- Configuration ---
+$spreadsheetId = '1lWqXsLYhGQiq3vOa55rWw527M2jOfNks0UdtOjGB8Ck';
+$keyFilePath = __DIR__ . '/credentials/service-account-key.json';
+$weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+$courseColors = ['#93c5fd', '#73EEDC', '#DBF4A7', '#fca5a5', '#92DBFA', '#C5D8D1', '#B5EBCC', '#FDE74C', '#F5AE80', '#D6D1CD'];
+
+// --- Helper Functions ---
+function showError($message) {
+    header('Content-Type: text/html; charset=utf-8');
+    $errorHtml = '<!DOCTYPE html><html lang="zh-TW"><head><title>Error</title><style>body{font-family:sans-serif;padding:2em;background-color:#fbe9e7;color:#c62828;}.container{max-width:800px;margin:auto;background:white;padding:2em;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);}</style></head><body><div class="container"><h1>發生錯誤</h1><p>' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</p></div></body></html>';
+    echo $errorHtml;
+    exit;
+}
+
+function sortClassrooms($classrooms) {
+    usort($classrooms, function($a, $b) {
+        preg_match('/\d+/', $a, $numA);
+        preg_match('/\d+/', $b, $numB);
+        $numA = isset($numA[0]) ? (int)$numA[0] : 0;
+        $numB = isset($numB[0]) ? (int)$numB[0] : 0;
+        $hundredsA = floor($numA / 100);
+        $hundredsB = floor($numB / 100);
+        if ($hundredsA !== $hundredsB) {
+            return $hundredsB - $hundredsA;
+        }
+        return ($numA % 100) - ($numB % 100);
+    });
+    return $classrooms;
+}
+
+function stringToHashCode($str) {
+    $hash = 5381;
+    $length = strlen($str);
+    for ($i = 0; $i < $length; $i++) {
+        $hash = ($hash * 33) + ord($str[$i]);
+    }
+    return $hash;
+}
+
+function buildCourseColorMap($scheduleData, $colorPalette) {
+    $colorMap = [];
+    $uniqueNames = [];
+    if (empty($scheduleData)) return [];
+
+    foreach ($scheduleData as $days) {
+        if (!is_array($days)) continue;
+        foreach ($days as $courses) {
+            if (!is_array($courses)) continue;
+            foreach ($courses as $course) {
+                if (isset($course['name']) && is_string($course['name']) && !in_array($course['name'], $uniqueNames)) {
+                    $uniqueNames[] = $course['name'];
+                }
+            }
+        }
+    }
+    sort($uniqueNames);
+    foreach ($uniqueNames as $name) {
+        $hash = stringToHashCode($name);
+        // Use fmod() for modulo on large numbers (floats) to avoid precision loss
+        $colorIndex = (int) fmod(abs($hash), count($colorPalette));
+        $colorMap[$name] = $colorPalette[$colorIndex];
+    }
+    return $colorMap;
+}
+
+// --- Rendering Functions ---
+function render_course_item($course, $colorMap) {
+    if (!isset($course['name']) || !is_string($course['name'])) {
+        return '<div class="course-item" style="border-left-color: red;">資料錯誤</div>';
+    }
+
+    $name = htmlspecialchars($course['name']);
+    $time = htmlspecialchars(($course['timeStart'] ?? '') . ' - ' . ($course['timeEnd'] ?? ''));
+
+    $color = $colorMap[$course['name']] ?? '#ccc';
+
+    return <<<HTML
+        <div class="course-item" style="border-left-color: {$color}">
+            <div class="name">{$name}</div>
+            <div class="time">{$time}</div>
+        </div>
+HTML;
+}
+
+function render_schedule_table($classrooms, $schedule, $weekdays, $colorMap) {
+    // 1. Aggregate all courses into a daily structure
+    $coursesByDay = array_fill(0, 7, []);
+    foreach ($schedule as $classroomName => $days) {
+        foreach ($days as $dayIndex => $courses) {
+            if (!isset($coursesByDay[$dayIndex])) {
+                $coursesByDay[$dayIndex] = [];
+            }
+            $coursesByDay[$dayIndex] = array_merge($coursesByDay[$dayIndex], $courses);
+        }
+    }
+
+    // 2. Identify which days have courses
+    $activeDays = [];
+    foreach ($weekdays as $dayIndex => $dayName) {
+        if (!empty($coursesByDay[$dayIndex])) {
+            $activeDays[$dayIndex] = $dayName;
+        }
+    }
+
+    // 3. Build HTML
+    $totalCourses = array_reduce($coursesByDay, fn($carry, $day) => $carry + count($day), 0);
+
+    if ($totalCourses === 0) {
+        return '<div style="text-align: center; padding: 2em;">沒有符合條件的課程。</div>';
+    }
+
+    $html = '<table class="schedule-table"><thead><tr>';
+    foreach ($activeDays as $dayName) {
+        $html .= "<th>{$dayName}</th>";
+    }
+    $html .= '</tr></thead><tbody>';
+    $html .= '<tr>';
+    foreach ($activeDays as $dayIndex => $dayName) {
+        $html .= '<td>';
+        $courses = $coursesByDay[$dayIndex];
+        usort($courses, fn($a, $b) => strcmp($a['timeStart'] ?? '', $b['timeStart'] ?? ''));
+        foreach ($courses as $course) {
+            $html .= render_course_item($course, $colorMap);
+        }
+        $html .= '</td>';
+    }
+    $html .= '</tr>';
+    $html .= '</tbody></table>';
+    return $html;
+}
+
+// --- Main Logic ---
+try {
+    // --- 1. Get Parameters & Authenticate ---
+    $targetScheduleNames = isset($_GET['schedule_name']) ? array_map('trim', explode(',', $_GET['schedule_name'])) : [];
+    $filterTags = isset($_GET['tags']) ? array_map('trim', explode(',', $_GET['tags'])) : [];
+    $excludeTags = isset($_GET['exclude_tags']) ? array_map('trim', explode(',', $_GET['exclude_tags'])) : [];
+
+    if (empty($targetScheduleNames)) {
+        showError('請在網址中提供至少一個 schedule_name 參數 (可使用逗號分隔多個名稱)');
+    }
+    if (!file_exists($keyFilePath)) {
+        throw new Exception('Service account key file not found');
+    }
+
+    $client = new Google\Client();
+    $client->setApplicationName('PHP Sheets Reader');
+    $client->setScopes([Google\Service\Sheets::SPREADSHEETS_READONLY]);
+    $client->setAuthConfig($keyFilePath);
+    $service = new Google\Service\Sheets($client);
+
+    // --- 2. Find Target Sheet IDs ---
+    $indexRange = 'Data!A:B';
+    $indexResponse = $service->spreadsheets_values->get($spreadsheetId, $indexRange);
+    $indexValues = $indexResponse->getValues();
+    $targetSheetIds = [];
+    if (!empty($indexValues)) {
+        $scheduleNameMap = array_column($indexValues, 0, 1); // Map: name => id
+        foreach ($targetScheduleNames as $nameToFind) {
+            if (isset($scheduleNameMap[$nameToFind])) {
+                $targetSheetIds[] = $scheduleNameMap[$nameToFind];
+            }
+        }
+    }
+
+    if (empty($targetSheetIds)) {
+        throw new Exception('找不到任何指定的課表: ' . htmlspecialchars(implode(', ', $targetScheduleNames)));
+    }
+
+    // --- 3. Fetch and Combine Data ---
+    $ranges = [];
+    foreach ($targetSheetIds as $sheetId) {
+        $ranges[] = $sheetId . '!B2:B4';
+    }
+
+    $batchGetResponse = $service->spreadsheets_values->batchGet($spreadsheetId, ['ranges' => $ranges, 'valueRenderOption' => 'UNFORMATTED_VALUE']);
+    $valueRanges = $batchGetResponse->getValueRanges();
+
+    $scheduleData = [];
+    $classrooms = [];
+
+    foreach ($valueRanges as $valueRange) {
+        $dataValues = $valueRange->getValues();
+        if (empty($dataValues)) continue;
+
+        $singleScheduleData = json_decode($dataValues[0][0] ?? '{}', true);
+        $singleClassrooms = json_decode($dataValues[1][0] ?? '[]', true);
+
+        $classrooms = array_merge($classrooms, $singleClassrooms);
+
+        foreach ($singleScheduleData as $classroomName => $days) {
+            if (!isset($scheduleData[$classroomName])) {
+                $scheduleData[$classroomName] = $days;
+            } else {
+                foreach ($days as $dayIndex => $courses) {
+                    if (!isset($scheduleData[$classroomName][$dayIndex])) {
+                        $scheduleData[$classroomName][$dayIndex] = [];
+                    }
+                    $scheduleData[$classroomName][$dayIndex] = array_merge($scheduleData[$classroomName][$dayIndex], $courses);
+                }
+            }
+        }
+    }
+    $classrooms = array_values(array_unique($classrooms));
+
+    
+
+    // --- 4. Filter Data ---
+    $finalSchedule = [];
+
+    if (!empty($filterTags) || !empty($excludeTags)) {
+        foreach ($scheduleData as $classroomName => $days) {
+            $filteredDays = [];
+            foreach ($days as $dayIndex => $courses) {
+                $filteredCourses = array_filter($courses, function($course) use ($filterTags, $excludeTags) {
+                    $courseTags = $course['tags'] ?? [];
+                    // Ensure all tags are strings to prevent 'Array to string conversion' warning in array_intersect
+                    $courseTags = array_filter($courseTags, 'is_string');
+                    if (!empty($excludeTags) && !empty(array_intersect($excludeTags, $courseTags))) {
+                        return false;
+                    }
+                    if (!empty($filterTags) && empty(array_intersect($filterTags, $courseTags))) {
+                        return false;
+                    }
+                    return true;
+                });
+                if (!empty($filteredCourses)) {
+                    $filteredDays[$dayIndex] = array_values($filteredCourses);
+                }
+            }
+            if (!empty($filteredDays)) {
+                $finalSchedule[$classroomName] = $filteredDays;
+            }
+        }
+    } else {
+        $finalSchedule = $scheduleData;
+    }
+
+    $classroomsToShow = sortClassrooms(array_keys($finalSchedule));
+    $courseColorMap = buildCourseColorMap($finalSchedule, $courseColors);
+
+} catch (Exception $e) {
+    showError($e->getMessage());
+}
+
+// --- 5. Render HTML Page ---
+header('Content-Type: text/html; charset=utf-8');
+?>
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>課表檢視: <?php echo htmlspecialchars($targetScheduleName); ?></title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f8f9fa; color: #212529; }
+        .container { padding: 1.5em; max-width: 1600px; margin: auto; }
+        h1 { color: #343a40; text-align: center; }
+        .schedule-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .schedule-table th, .schedule-table td { border: 1px solid #dee2e6; padding: 0.5em; text-align: left; vertical-align: top; }
+        .schedule-table thead { background-color: #e9ecef; }
+        .schedule-table th { font-weight: 600; }
+        .course-item {
+            background-color: #fff;
+            border-left: 5px solid #ccc;
+            padding: 0.8em;
+            margin-bottom: 0.6em;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+        }
+        .course-item .name {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #343a40;
+            margin-bottom: 0.25em;
+        }
+        .course-item .time {
+            font-size: 1em;
+            color: #495057;
+            margin-bottom: 0.6em;
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="container">
+        <?php echo render_schedule_table($classroomsToShow, $finalSchedule, $weekdays, $courseColorMap); ?>
+    </div>
+</body>
+</html>

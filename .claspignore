@@ -15,4 +15,5 @@ gemini.md
 TestCases.md
 
 # System files
-.DS_Store\nphp_scripts/
+.DS_Store
+classroom_viewer/

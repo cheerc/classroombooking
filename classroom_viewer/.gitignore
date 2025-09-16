@@ -1,0 +1,5 @@
+# Ignore Composer dependencies
+/vendor/
+
+# Ignore sensitive credentials
+service-account-key.json
