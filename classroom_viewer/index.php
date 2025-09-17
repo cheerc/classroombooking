@@ -323,23 +323,13 @@ header('Content-Type: text/html; charset=utf-8');
     </div>
 <script>
     function sendHeight() {
-        // Use a more robust way to get the full document height
-        const height = Math.max(
-            document.body.scrollHeight,
-            document.body.offsetHeight,
-            document.documentElement.clientHeight,
-            document.documentElement.scrollHeight,
-            document.documentElement.offsetHeight
-        );
-
-        if (window.parent) {
-            const message = {
-                type: 'iframe-resize',
-                height: height
-            };
-            // The targetOrigin '*' is insecure but flexible. For production,
-            // replace with the parent page's origin, e.g., 'https://your-website.com'.
-            window.parent.postMessage(message, '*');
+        const contentWrapper = document.querySelector('.container');
+        if (contentWrapper) {
+            const height = contentWrapper.scrollHeight;
+            if (window.parent) {
+                const message = { type: 'iframe-resize', height: height };
+                window.parent.postMessage(message, '*');
+            }
         }
     }
 
