@@ -1,4 +1,6 @@
 <?php
+// Allow embedding only by specific origins for security
+header("Content-Security-Policy: frame-ancestors https://talented.mido-9.com;");
 
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
