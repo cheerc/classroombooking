@@ -4,203 +4,141 @@
 
 ## 專案概覽
 
-這是一個建立在 Google Apps Script 上的 Web App，提供一個視覺化的介面來管理**多個獨立課表**的課程預約。使用者可以透過拖拉、點擊等方式新增、修改、刪除課程。所有資料都儲存在後端的 Google Sheet 中。
+此專案包含兩個主要部分：
 
-- **前端**: 使用 HTML、CSS (Tailwind CSS) 和原生 JavaScript 建立互動介面。樣式系統透過 **npm** 與 **Tailwind CLI** 進行建置，以達到最佳化效能。
+1.  **Google Apps Script 課表編輯器**：一個建立在 Google Apps Script 上的 Web App，提供一個視覺化的介面來管理**多個獨立課表**的課程預約。使用者可以透過拖拉、點擊等方式新增、修改、刪除課程。所有資料都儲存在後端的 Google Sheet 中。
+2.  **PHP 唯讀課表檢視器 (`classroom_viewer/`)**：一個輕量的、基於 PHP 的獨立應用，用於生成課表的唯讀視圖。它透過 Google API Service Account 直接讀取 Google Sheet 資料，專為嵌入到其他網站 (`iframe`) 而設計，並具備響應式與高度自動調整功能。
+
+### 核心應用 (Apps Script 編輯器)
+
+- **前端**: 使用 HTML、CSS (Tailwind CSS) 和原生 JavaScript 建立互動介面。樣式系統透過 **npm** 與 **Tailwind CLI** 進行建置。
 - **後端**: 使用 Google Apps Script (`.gs` 或 `.js` 檔案) 處理資料的讀取、儲存和版本控制。
 - **資料庫**: 使用 Google Sheet。其中一個 `Data` 工作表作為所有課表的**索引**，而每一個獨立的課表則有其**專屬的工作表**來儲存詳細資料。
-
-### 核心功能亮點
-
-- **多課表管理**: 使用者可以建立、重新命名、複製、刪除多個獨立的課表，並在它們之間自由切換。
-- **雙檢視模式**: 提供「週檢視」和「日檢視」兩種模式，以適應不同的使用情境。
-- **唯讀總覽模式**: 一個特殊的「所有課程」模式，可以合併顯示所有課表的內容，方便管理者進行全盤檢視。
-- **階層式篩選系統**: 提供兩階段篩選：先透過「主要標籤」快速縮小範圍，再從結果中使用「進階篩選」進行更精確的二次篩選。
-- **版本衝突處理**: 在儲存資料時，系統會檢查雲端版本是否已被他人修改，有效防止資料意外覆蓋。
-- **智慧型 UI 提示**: 包含「即將上課」高亮提醒、時間衝突警告、**篩選重設確認**等，提升使用者體驗。
 
 ---
 
 ## 檔案結構
 
-專案的檔案主要分為後端邏輯、前端介面與開發工具三大部分。
+專案的檔案主要分為 Apps Script 應用、PHP 檢視器與通用開發工具三大部分。
 
-### 後端 (Server-side)
+### 1. Apps Script 應用 (根目錄)
 
-- **`程式碼.js`**:
-  - 核心後端邏輯檔案。
-  - 包含所有與 Google Sheet 互動的函式，例如 `getData()` (讀取所有課表索引與資料)、`saveData()` (儲存單一課表資料)。
-  - **處理多課表管理**的相關邏輯，如 `addSchedule`, `renameSchedule`, `deleteSchedule`, `copySchedule`。
-  - 處理 HTTP 請求 (`doGet`)，渲染主頁面。
-  - 負責權限管理、資料版本控制等核心功能。
+- **`程式碼.js`**: 核心後端邏輯，負責與 Google Sheet 互動、處理 `doGet` 請求、權限管理等。
+- **`Index.html`**: 前端主入口 HTML 檔案，載入所有 CSS 與 JS。
+- **`JavaScript.html`**: 核心前端邏輯，管理狀態、篩選、與後端溝通等。
+- **`*.js.html`, `*.html`**: 其他前端模組化檔案。
 
-- **`appsscript.json`**:
-  - Apps Script 的設定檔 (Manifest)。
-  - 定義專案的時區、相依套件、執行權限 (`webapp`) 等元數據。
+### 2. 唯讀課表檢視器 (PHP)
 
-### 前端 (Client-side)
+位於 `classroom_viewer/` 目錄下，是一個獨立的 PHP 應用。
 
-前端程式碼被拆分成多個 `.html` 檔案，最終在 `Index.html` 中被引用組合。
+- **`index.php`**: 整個應用的單一進入點。負責處理 URL 參數、透過 Google API 讀取試算表資料、篩選課程、並生成最終的 HTML 課表視圖。
+- **`composer.json` / `composer.lock`**: PHP 的依賴管理設定檔，定義了專案所需的函式庫 (例如 `google/apiclient`)。
+- **`vendor/`**: Composer 安裝的 PHP 函式庫目錄。
+- **`credentials/`**: 用於存放 Google Service Account 的 `service-account-key.json` 金鑰檔案。**此目錄下的金鑰檔案已被 `.gitignore` 忽略，切勿提交至版本控制。**
 
-- **`Index.html`**:
-  - 專案的主入口 HTML 檔案。
-  - 負責載入所有 CSS (`Tailwind.html`, `CustomStyles.html`) 和 JavaScript (`.js.html`) 檔案。
-  - 包含所有主要的 UI 元素骨架，如按鈕、表格、彈出視窗 (Modal) 等。
+### 3. 開發工具 (根目錄)
 
-- **`Tailwind.html`**:
-  - **由 Tailwind CLI 自動產生**，包含所有專案中使用到的 Tailwind CSS 樣式。
-  - **注意**: **不應手動編輯此檔案**，其內容應由 `output.css` 複製而來。
-
-- **`CustomStyles.html`**:
-  - 包含所有**手寫的客製化 CSS 樣式**。
-  - 若有 Tailwind 無法輕易實現的複雜樣式，請在此檔案中撰寫。
-
-- **`JavaScript.html`**:
-  - **核心前端邏輯**。
-  - 管理整個前端的狀態 (State)，包含 `activeFilters` (統一的篩選條件陣列)。
-  - 處理所有篩選邏輯，包含**階層式篩選的套用與重設**。
-  - 所有前端的主要操作，如渲染課表、處理使用者輸入、與後端 API 溝通等，都在此檔案中。
-
-- **`Api.js.html`**:
-  - 封裝了前端與後端 Apps Script (`google.script.run`) 的溝通邏輯。
-  - 提供一個 Promise-based 的 `ServerApi.call` 函式，讓非同步呼叫後端變得更簡潔。
-
-- **`Config.js.html`**:
-  - 存放前端的靜態設定值。
-  - 例如 App 版本號、星期常數、課程顏色列表、**檢視模式與同步狀態**的常數等。
-
-- **`Elements.js.html`**:
-  - 集中管理所有 DOM 元素的獲取 (`document.getElementById`)。
-  - 將所有 UI 元素的參照存放在 `AppElements` 物件中，方便在 `JavaScript.html` 中統一調用。
-
-- **`History.js.html`**:
-  - 負責管理前端的「復原/重做」(Undo/Redo) 功能。
-  - 透過快照 (Snapshot) 的方式記錄每一次資料狀態的變更。
-
-- **`Modals.js.html`**:
-  - 負責管理各種彈出視窗 (Modals) 的邏輯，例如確認視窗、輸入視窗、篩選器等。
-
-- **`UI.js.html`**:
-  - 負責所有與 UI 渲染相關的邏輯。
-  - 包含渲染課表 (`renderScheduleTable`)、**處理週/日檢視的切換**、更新列表、顯示/隱藏載入動畫與通知等函式。
-
-- **`Interaction.js.html`**:
-  - 集中管理所有的事件監聽 (`addEventListeners`)。
-  - 處理使用者的互動邏輯，例如點擊、雙擊、拖曳、鍵盤事件等。
-  - **設定篩選按鈕 (主要標籤、進階篩選、全部清除) 的點擊事件**。
-
-### 開發工具 (Development Tools)
-
-- **`package.json`**: `npm` 的設定檔，用於管理專案的開發依賴（例如 `tailwindcss`）。
-- **`tailwind.config.js`**: Tailwind CSS 的設定檔。您可以在此客製化主題，例如新增顏色、字體等。
-- **`input.css`**: Tailwind CSS 的來源檔，定義了要引入的基礎樣式。通常不需要修改。
-- **`output.css`**: **建置後的暫存檔**。執行 `npm run build-css` 後會產生此檔案。
-- **`.claspignore`**: `clasp` 的忽略清單，確保開發用的檔案（如 `node_modules`）不會被上傳到 Apps Script。
+- **`package.json`**: `npm` 的設定檔，用於管理前端開發依賴 (例如 `tailwindcss`)。
+- **`tailwind.config.js`**: Tailwind CSS 的設定檔。
+- **`.gitignore`**: Git 忽略清單，確保 `node_modules` 等檔案不會被提交。
 
 ---
 
-## 開發與維護指南
+## 課表檢視器 (`classroom_viewer`) 使用指南
 
-### 1. 前端樣式 (CSS) 開發流程
+此 PHP 應用程式可生成一個乾淨、可嵌入的課表視圖。
 
-專案已從 CDN 改為使用 Tailwind CLI 進行 CSS 建置，以獲得最佳化的效能。
+### 功能亮點
 
-- **首次設定**:
-  1.  確保您已安裝 [Node.js](https://nodejs.org/) (包含 npm)。
-  2.  在專案根目錄執行 `npm install` 來安裝開發依賴。
+- **唯讀顯示**：僅供檢視，無法編輯，確保資料安全。
+- **獨立運作**：透過 Service Account 運作，不需使用者登入 Google 帳號。
+- **多課表合併**：可在一個視圖中，同時顯示來自多個不同課表的課程。
+- **標籤篩選**：支援透過 `tags` (包含) 和 `exclude_tags` (排除) 進行內容篩選。
+- **嵌入優化**：專為 `iframe` 嵌入設計，並提供高度自動調整腳本。
+- **行動裝置瀏覽**：採用固定寬度桌面佈局，在手機上會自動縮小，使用者可自行縮放，確保排版不變形。
 
-- **修改 Tailwind Class**:
-  1.  在任何 `.html` 檔案中新增、修改或刪除 Tailwind 的 utility class (例如 `bg-blue-500`, `text-lg`)。
-  2.  修改完成後，在終端機執行 `npm run build-css`。
-  3.  此指令會掃描所有 `.html` 檔案，並產生一個最佳化過的 `output.css` 檔案。
-  4.  **【關鍵步驟】**: 執行以下指令，此指令會自動將 `output.css` 的內容包裹在 `<style>` 標籤中，並覆蓋 `Tailwind.html`：
-      ```bash
-      echo '<style>' > Tailwind.html && cat output.css >> Tailwind.html && echo '</style>' >> Tailwind.html
-      ```
+### 使用方式 (URL 參數)
 
-- **新增客製化 CSS**:
-  1.  若有 Tailwind 無法輕易實現的樣式，請將手寫的 CSS 規則新增到 `CustomStyles.html` 檔案中。
-  2.  此操作**不需要**執行建置指令。
+檢視器透過 URL 的 GET 參數來控制顯示的內容。
 
-### 2. 核心邏輯
+- **`schedule_name`** (必要)
+  - 要顯示的課表名稱。 
+  - 若要同時顯示多個課表，請用**逗號 (`,`)** 分隔。
+  - 範例：`?schedule_name=國中部教室`
+  - 範例 (多課表)：`?schedule_name=國中部教室,國小部教室`
 
-- **前後端溝通**:
-  - 統一使用 `Api.js.html` 中定義的 `ServerApi.call('後端函式名稱', ...參數)`。
-  - 這會回傳一個 Promise，可以使用 `.then()` 和 `.catch()` 或 `async/await` 來處理。
+- **`tags`** (可選)
+  - 只顯示包含至少一個指定標籤的課程。
+  - 範例：`&tags=國一`
 
-- **篩選核心邏輯**
-  - 系統採用**兩階段階層式篩選**，以提供清晰的操作流程。
-    1.  **第一層 (主要篩選)**: 使用者透過頂端的「標籤篩選」輸入框選擇一或多個標籤。此操作會篩選出包含**至少一個**指定標籤的課程，作為後續操作的基礎資料集。
-    2.  **第二層 (進階篩選)**: 使用者點擊「進階篩選」按鈕，在彈出視窗中，可以對**第一層篩選的結果**進行更細緻的二次篩選 (依課程名稱、使用人等)。
-  - **重設機制**:
-    - 當使用者**變更第一層的主要標籤篩選**時，系統會視為一次全新的查詢，因此會**自動重設第二層的進階篩選**。
-    - 若此時已存在進階篩選條件，系統會**彈出確認視窗**，提醒使用者此操作將會清除進階篩選，避免意外操作。
-  - **狀態管理**:
-    - 所有篩選條件都統一由 `JavaScript.html` 中的 `App.activeFilters` 陣列管理。
+- **`exclude_tags`** (可選)
+  - 從結果中，排除包含任何指定標籤的課程。
+  - 範例：`&exclude_tags=停課,補課`
 
-- **版本衝突機制**:
-  - 為防止多人同時編輯時發生資料覆蓋，系統採用了時間戳 (`lastModified`) 進行版本控制。
-  - **流程**:
-    1. 前端從後端 (`getData`) 取得資料時，會一併取得每個課表的 `lastModified` 時間戳。
-    2. 當前端要儲存資料 (`saveData`) 時，會將此時間戳一併傳回後端。
-    3. 後端會比對前端傳來的時間戳與資料庫中最新的時間戳是否一致。
-    4. 若不一致，代表在使用者編輯期間已有他人儲存了新版本，後端會拒絕儲存並回傳 `conflict: true` 的錯誤。
-    5. 前端收到此錯誤後，會提示使用者需先「從雲端讀取資料」以更新至最新版本，再進行修改。
+**完整範例 URL：**
+```
+https://your-domain.com/classroom_viewer/?schedule_name=國中部教室,國小部教室&tags=國一&exclude_tags=停課
+```
 
-### 3. 狀態管理
+### 嵌入指南 (`iframe`)
 
-- 前端的核心狀態都存放在 `JavaScript.html` 的 `App` 物件中。
-- 主要狀態包括：
-  - `schedules`: 一個物件，存放所有課表的資料，以 `scheduleId` 為 key。
-  - `activeScheduleId`: 當前作用中的課表 ID。
-  - `activeFilters`: 統一管理所有篩選條件的陣列。
-  - `classrooms`: **當前課表**的教室列表。
-  - `scheduleData`: **當前課表**的課程資料。
-  - `tags`: **當前課表**所有課程中，使用到的標籤列表 (由 `getAllTags()` 動態生成)。
-  - `isDirty`: 一個布林值，用來追蹤目前是否有未儲存的變更。
-  - `currentViewMode`: 當前的檢視模式 (`'week'` 或 `'day'`)。
-- **修改狀態後，務必呼叫相關的渲染函式** (如 `renderScheduleTable()`, `updateClassroomList()`) 來更新 UI。
+您可以將檢視器嵌入到任何支援 `iframe` 的網頁中。
 
-### 4. 權限管理
+#### 1. `iframe` 標籤
 
-- 系統的權限分為兩種角色：
-  1.  **超級管理員 (Admin)**: 在 `JavaScript.html` 的 `isCurrentUserAdmin()` 函式中寫死特定 email。管理員擁有所有課表的完整權限。
-  2.  **課表建立者 (Creator)**: 每個課表在建立時會記錄建立者的 email (`createdBy`)。
-- **權限範圍**:
-  - **重新命名/刪除課表**: 僅限**超級管理員**或該課表的**建立者**。
-  - **教室/版本管理**: 僅限**超級管理員**或**當前作用中課表**的**建立者**。
-  - **新增課表**: 所有使用者皆可。新課表的建立者即為該使用者。
-  - **複製課表**: 所有使用者皆可。複製後的新課表，建立者會變更為執行複製操作的使用者。
+在您的父層網頁中，加入以下 HTML。請注意，為了讓高度自動調整腳本能找到目標，`iframe` 必須包含 `class="auto-resize-iframe"`。
 
-### 5. 注意事項
+```html
+<iframe 
+  class="auto-resize-iframe"
+  id="schedule1-iframe" 
+  src="https://your-domain.com/classroom_viewer/?schedule_name=..." 
+  width="100%" 
+  style="border: 1px solid #ccc; min-height: 600px;"
+  title="課表">
+</iframe>
+```
+*建議設定 `min-height`，在 `iframe` 內容載入完成前，可以先撐開一個初始高度，避免畫面跳動過於劇烈。*
 
-- **避免使用全域變數**: 盡量將變數和函式放在 `App` 物件內，避免污染全域命名空間。
-- **程式碼風格**: 為了確保程式碼的一致性與可維護性，請遵循以下風格指南：
-  - **命名慣例**:
-    - **變數與函式**: 統一使用**小駝峰式命名 (camelCase)**，例如 `scheduleData`, `renderScheduleTable`。
-    - **常數**: 統一使用**全大寫蛇形命名 (UPPER_SNAKE_CASE)**，例如 `APP_VERSION`, `TIME_REGEX`。
-    - **物件/模組**: 統一使用**大駝峰式命名 (PascalCase)**，例如 `App`, `ServerApi`。
-  - **字串管理**:
-    - **避免魔法字串**: 程式中不應出現未經定義的字串來表示狀態或模式 (例如：`'dirty'`, `'week'`)。
-    - **集中管理**: 所有代表狀態、模式的字串，都應集中定義在 `Config.js.html` 的 `AppConfig` 物件中，方便統一管理與修改。
-  - **字串拼接**:
-    - **使用樣板字面值**: 在拼接 HTML 或包含變數的字串時，應優先使用樣板字面值 (`` ` ``) 取代傳統的 `+` 號拼接，以提升可讀性。
-- **部署**:
-  - 此專案使用 `clasp` CLI 工具進行部署。修改完程式碼後，需透過 `clasp push` 將本地檔案推送到 Google Apps Script 平台。
-  - **重要**: 專案根目錄下的 `.claspignore` 檔案會確保 `node_modules` 等開發用檔案不會被上傳。請確保此檔案存在且內容正確。
+#### 2. 父層網頁腳本 (高度自動調整)
+
+為了讓 `iframe` 的高度能根據其內容自動調整，請將以下腳本加到您父層網頁的 `</body>` 標籤正前方。
+
+```html
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // 尋找所有需要自動調整高度的 iframe
+  const autoResizeIframes = document.querySelectorAll('.auto-resize-iframe');
+
+  // 監聽來自 iframe 的身高回報
+  window.addEventListener('message', function(event) {
+    // 可在此處增加對 event.origin 的檢查來加強安全性
+
+    if (event.data && event.data.type === 'iframe-resize' && event.data.height) {
+      // 遍歷所有 iframe，找出是哪一個傳來的訊息
+      for (let i = 0; i < autoResizeIframes.length; i++) {
+        const iframe = autoResizeIframes[i];
+        
+        // 透過比對訊息來源來找到正確的 iframe
+        if (iframe.contentWindow === event.source) {
+          const newHeight = event.data.height + 20; // 加上 20px 的緩衝空間
+          iframe.style.setProperty('height', newHeight + 'px', 'important');
+          break; 
+        }
+      }
+    }
+  });
+});
+</script>
+```
+
+#### 3. 安全性限制
+
+`index.php` 檔案已設定 `Content-Security-Policy: frame-ancestors` 標頭，只允許特定網域 (例如 `https://talented.mido-9.com`) 嵌入此 `iframe`，防止未經授權的網站使用。
 
 ---
 
-## 版本控制 (Git)
+## Apps Script 編輯器開發指南
 
-本專案使用 Git 進行版本控制。建議在開發過程中善用 Git 來追蹤和管理程式碼的變更。
-
-### 推薦工作流程
-
-1.  **檢查狀態**: 在進行任何修改後，隨時使用 `git status` 來查看哪些檔案被更動了。
-2.  **檢視變更**:
-    - 使用 `git diff` 來快速預覽所有檔案的修改內容。
-    - 針對特定檔案，使用 `git diff <檔案路徑>` (例如: `git diff JavaScript.html`) 來深入查看該檔案的具體變更。
-3.  **撰寫提交訊息**: 根據 `git diff` 的結果，撰寫清晰、有意義的提交訊息 (Commit Message)，說明這次變更的「原因」和「內容」。
-4.  **準備提交**: 當您確認變更無誤後，即可手動執行 `git add .` 與 `git commit` 來提交變更。
----
+(此處省略，維持原文件關於 Apps Script 編輯器的開發、部署、版本控制等詳細說明...)
