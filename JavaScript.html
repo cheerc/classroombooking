@@ -245,6 +245,10 @@
                             this.activeMetadataTimestamp = backendResult.newMetadataTimestamp;
                             this.schedules[id].name = result.name;
                             this.schedules[id].isDraft = result.isDraft;
+                            // CRITICAL FIX: Update the lastModified timestamp after a metadata change
+                            if (backendResult.lastModified) {
+                                this.scheduleLastModified[id] = backendResult.lastModified;
+                            }
                             this.ui.renderScheduleList();
                             this.ui.updateScheduleSelect();
                             this.ui.showNotification('課表已更新');
@@ -295,8 +299,11 @@
                         this.schedules[newId] = {
                             name: newName.trim(),
                             createdBy: result.createdBy,
+                            isDraft: result.isDraft, // Also copy the draft status
                             data: JSON.parse(JSON.stringify(this.schedules[sourceId].data))
                         };
+                        // CRITICAL FIX: Set the lastModified timestamp for the new schedule
+                        this.scheduleLastModified[newId] = result.lastModified;
                         this.ui.renderScheduleList();
                         this.ui.updateScheduleSelect();
                         this.ui.showNotification('課表複製成功！');

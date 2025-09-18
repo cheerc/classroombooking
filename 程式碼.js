@@ -305,10 +305,11 @@ function renameSchedule(scheduleInfo) { // Now also handles isDraft changes
       dataSheet.getRange(rowIndex, 5).setValue(isDraft); // Column E is the 5th column
     }
 
-    dataSheet.getRange(rowIndex, 3).setValue(new Date().toISOString()); // Always update last modified timestamp
+    const newTimestamp = new Date().toISOString();
+    dataSheet.getRange(rowIndex, 3).setValue(newTimestamp); // Always update last modified timestamp
 
     Logger.log(`成功更新課表 ${id} 的元數據 by ${Session.getActiveUser().getEmail()}`);
-    return { success: true, newMetadataTimestamp: newMetaTimestamp };
+    return { success: true, newMetadataTimestamp: newMetaTimestamp, lastModified: newTimestamp };
 
   } catch (e) {
     Logger.log(`更新課表元數據失敗: ${e.stack}`);
@@ -376,6 +377,12 @@ function copySchedule(copyInfo) {
     const dataSheet = getSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
+    const { index: sourceRowIndex, values: sourceRowValues } = _findScheduleRowInfo(sourceId, dataSheet);
+    if (sourceRowIndex === -1) {
+      throw new Error(`在索引中找不到來源課表 (ID: ${sourceId})。`);
+    }
+    const sourceIsDraft = sourceRowValues[4] === true;
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sourceSheet = ss.getSheetByName(sourceId);
     if (!sourceSheet) {
@@ -387,10 +394,18 @@ function copySchedule(copyInfo) {
     newSheet.setName(newId);
 
     const creatorEmail = Session.getActiveUser().getEmail();
-    dataSheet.appendRow([newId, newName, new Date().toISOString(), creatorEmail]);
+    const timestamp = new Date().toISOString();
+    dataSheet.appendRow([newId, newName, timestamp, creatorEmail, sourceIsDraft]);
 
     Logger.log(`成功複製課表 ${sourceId} 到 ${newName} (ID: ${newId}) by ${creatorEmail}`);
-    return { success: true, newId: newId, createdBy: creatorEmail, newMetadataTimestamp: newMetaTimestamp };
+    return { 
+      success: true, 
+      newId: newId, 
+      createdBy: creatorEmail, 
+      newMetadataTimestamp: newMetaTimestamp,
+      lastModified: timestamp,
+      isDraft: sourceIsDraft
+    };
 
   } catch (e) {
     Logger.log(`複製課表失敗: ${e.stack}`);
