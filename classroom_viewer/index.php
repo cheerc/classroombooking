@@ -141,12 +141,37 @@ function render_schedule_table($classrooms, $schedule, $weekdays, $colorMap) {
     return $html;
 }
 
+// --- Security & Encryption Configuration ---
+define('ENCRYPTION_KEY', 'def000006a78468f258197313832a43f85469991a3294542e93018151994b8f494334a7ac6a78468f258197313832a43f85469991a3294542e93018151994b8f494334a7a'); // 256-bit key
+define('ENCRYPTION_CIPHER', 'aes-256-cbc');
+
 // --- Main Logic ---
 try {
-    // --- 1. Get Parameters & Authenticate ---
-    $targetScheduleNames = isset($_GET['schedule_name']) ? array_map('trim', explode(',', $_GET['schedule_name'])) : [];
-    $filterTags = isset($_GET['tags']) ? array_map('trim', explode(',', $_GET['tags'])) : [];
-    $excludeTags = isset($_GET['exclude_tags']) ? array_map('trim', explode(',', $_GET['exclude_tags'])) : [];
+    // --- 1. Decrypt Parameters & Authenticate ---
+    if (!isset($_GET['data'])) {
+        showError('請求無效，缺少必要的加密參數。');
+    }
+
+    $encryptedData = $_GET['data'];
+    $decodedData = base64_decode($encryptedData);
+    $ivLength = openssl_cipher_iv_length(ENCRYPTION_CIPHER);
+    $iv = substr($decodedData, 0, $ivLength);
+    $encryptedJson = substr($decodedData, $ivLength);
+
+    $decryptedJson = openssl_decrypt($encryptedJson, ENCRYPTION_CIPHER, ENCRYPTION_KEY, 0, $iv);
+
+    if ($decryptedJson === false) {
+        showError('參數解密失敗，請確認您的請求來源是否正確。');
+    }
+
+    $params = json_decode($decryptedJson, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        showError('解析參數失敗。');
+    }
+
+    $targetScheduleNames = $params['schedule_name'] ?? [];
+    $filterTags = $params['tags'] ?? [];
+    $excludeTags = $params['exclude_tags'] ?? [];
 
     if (empty($targetScheduleNames)) {
         showError('請在網址中提供至少一個 schedule_name 參數 (可使用逗號分隔多個名稱)');
