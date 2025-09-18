@@ -46,7 +46,7 @@ function getSheet(name) {
     sheet = ss.insertSheet(name);
     Logger.log(`已創建新的工作表: ${name}`);
     if (name === SHEET_DATA) {
-      sheet.getRange("A1:D1").setValues([['Schedule ID', 'Schedule Name', 'Last Modified', 'Created By']]);
+      sheet.getRange("A1:E1").setValues([['Schedule ID', 'Schedule Name', 'Last Modified', 'Created By', 'Is Draft']]);
       sheet.setFrozenRows(1);
     } else if (name === SHEET_HISTORY) {
       sheet.getRange("A1:D1").setValues([["Timestamp", "SavedBy", "ScheduleData Snapshot", "Schedule ID"]]);
@@ -89,7 +89,7 @@ function getData() {
     if (lastRow < 2) {
       return { schedules: {}, metadataTimestamp: metadataTimestamp };
     }
-    const indexData = dataSheet.getRange(`A2:D${lastRow}`).getValues();
+    const indexData = dataSheet.getRange(`A2:E${lastRow}`).getValues();
     const schedules = {};
 
     indexData.forEach(row => {
@@ -97,6 +97,7 @@ function getData() {
       const scheduleName = row[1];
       const lastModified = new Date(row[2]);
       const createdBy = row[3];
+      const isDraft = row[4] === true;
 
       if (scheduleId && scheduleName) {
         const scheduleSheet = ss.getSheetByName(scheduleId);
@@ -110,6 +111,7 @@ function getData() {
           schedules[scheduleId] = {
             name: scheduleName,
             createdBy: createdBy,
+            isDraft: isDraft,
             lastModified: lastModified.toISOString(),
             data: { scheduleData, classrooms, tags: tags }
           };
@@ -236,7 +238,7 @@ function addSchedule(scheduleInfo) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(30000);
-    const { id, name, metadataTimestamp } = scheduleInfo;
+    const { id, name, isDraft, metadataTimestamp } = scheduleInfo; // Added isDraft
     if (!id || !name) throw new Error("必須提供課表 ID 和名稱。");
 
     const dataSheet = getSheet(SHEET_DATA);
@@ -244,7 +246,7 @@ function addSchedule(scheduleInfo) {
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     if (ss.getSheetByName(id)) {
-      throw new Error(`ID 為 "${id}" 的工作表已存在。`);
+      throw new Error(`ID 為 \"${id}\" 的工作表已存在。`);
     }
 
     const newSheet = ss.insertSheet(id);
@@ -257,7 +259,7 @@ function addSchedule(scheduleInfo) {
 
     const creatorEmail = Session.getActiveUser().getEmail();
     const timestamp = new Date().toISOString();
-    dataSheet.appendRow([id, name, timestamp, creatorEmail]);
+    dataSheet.appendRow([id, name, timestamp, creatorEmail, isDraft || false]); // Add isDraft to the row
 
     Logger.log(`成功新增課表: ${name} (ID: ${id}) by ${creatorEmail}`);
     return { success: true, createdBy: creatorEmail, newMetadataTimestamp: newMetaTimestamp, lastModified: timestamp };
@@ -275,32 +277,41 @@ function addSchedule(scheduleInfo) {
  * @param {object} scheduleInfo Object containing id, newName, and metadataTimestamp.
  * @returns {object} A success object or an error object.
  */
-function renameSchedule(scheduleInfo) {
+function renameSchedule(scheduleInfo) { // Now also handles isDraft changes
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(30000);
-    const { id, newName, metadataTimestamp } = scheduleInfo;
-    if (!id || !newName) throw new Error("必須提供課表 ID 和新名稱。");
+    const { id, newName, isDraft, metadataTimestamp } = scheduleInfo; // Added isDraft
+    if (!id) throw new Error("必須提供課表 ID。");
 
     const dataSheet = getSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
     const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(id, dataSheet);
     if (rowIndex === -1) {
-      throw new Error(`在索引中找不到 ID 為 "${id}" 的課表。`);
+      throw new Error(`在索引中找不到 ID 為 \"${id}\" 的課表。`);
     }
 
     const createdBy = rowValues[3];
     _checkPermission(createdBy);
 
-    dataSheet.getRange(rowIndex, 2).setValue(newName);
-    dataSheet.getRange(rowIndex, 3).setValue(new Date().toISOString());
+    // Update name if provided
+    if (newName) {
+      dataSheet.getRange(rowIndex, 2).setValue(newName);
+    }
+    
+    // Update isDraft status if provided (isDraft can be true or false, so check if it's defined)
+    if (typeof isDraft !== 'undefined') {
+      dataSheet.getRange(rowIndex, 5).setValue(isDraft); // Column E is the 5th column
+    }
 
-    Logger.log(`成功將課表 ${id} 重新命名為: ${newName} by ${Session.getActiveUser().getEmail()}`);
+    dataSheet.getRange(rowIndex, 3).setValue(new Date().toISOString()); // Always update last modified timestamp
+
+    Logger.log(`成功更新課表 ${id} 的元數據 by ${Session.getActiveUser().getEmail()}`);
     return { success: true, newMetadataTimestamp: newMetaTimestamp };
 
   } catch (e) {
-    Logger.log(`重新命名課表失敗: ${e.stack}`);
+    Logger.log(`更新課表元數據失敗: ${e.stack}`);
     return { error: e.toString(), success: false };
   } finally {
     lock.releaseLock();

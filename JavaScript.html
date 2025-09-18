@@ -184,30 +184,31 @@
             localStorage.setItem('schedules', JSON.stringify(this.schedules));
         },
 
-        handleAddSchedule: async function() {
-            const newName = AppElements.newScheduleNameInput.value.trim();
-            if (!newName) {
-                this.ui.showNotification('課表名稱不能為空', 'error');
-                return;
-            }
+        handleAddSchedule: async function(scheduleDetails) {
+            const { name, isDraft } = scheduleDetails;
             this.ui.showLoading('正在新增課表...');
             const newId = `schedule_${Date.now()}`;
             try {
-                const result = await ServerApi.call('addSchedule', { id: newId, name: newName, metadataTimestamp: this.activeMetadataTimestamp });
+                const result = await ServerApi.call('addSchedule', { 
+                    id: newId, 
+                    name: name, 
+                    isDraft: isDraft, 
+                    metadataTimestamp: this.activeMetadataTimestamp 
+                });
                 if (result.error) {
                     throw new Error(result.error);
                 }
                 this.activeMetadataTimestamp = result.newMetadataTimestamp;
                 this.schedules[newId] = { 
-                    name: newName, 
+                    name: name, 
                     createdBy: result.createdBy, 
+                    isDraft: isDraft,
                     data: { classrooms: [], scheduleData: {}, tags: [] } 
                 };
                 this.scheduleLastModified[newId] = result.lastModified;
-                AppElements.newScheduleNameInput.value = '';
                 this.ui.renderScheduleList();
                 this.ui.updateScheduleSelect();
-                this.ui.showNotification(`已新增課表: ${newName}`);
+                this.ui.showNotification(`已新增課表: ${name}`);
             } catch (err) {
                 this.ui.showNotification(`新增課表失敗: ${err.message}`, 'error');
             } finally {
@@ -222,22 +223,36 @@
 
             if (renameBtn) {
                 const id = renameBtn.dataset.id;
-                const oldName = this.schedules[id].name;
-                const newName = await this.modals.showPrompt('請輸入新的課表名稱：', oldName);
-                if (newName && newName.trim() !== oldName) {
-                    this.ui.showLoading('正在重新命名...');
-                    try {
-                        const result = await ServerApi.call('renameSchedule', { id: id, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
-                        if (result.error) { throw new Error(result.error); }
-                        this.activeMetadataTimestamp = result.newMetadataTimestamp;
-                        this.schedules[id].name = newName.trim();
-                        this.ui.renderScheduleList();
-                        this.ui.updateScheduleSelect();
-                        this.ui.showNotification('課表已重新命名');
-                    } catch (err) {
-                        this.ui.showNotification(`重新命名失敗: ${err.message}`, 'error');
-                    } finally {
-                        this.ui.hideLoading();
+                const oldSchedule = this.schedules[id];
+                const result = await this.modals.showScheduleEditor({
+                    id: id,
+                    name: oldSchedule.name,
+                    isDraft: oldSchedule.isDraft || false
+                });
+
+                if (result) {
+                    const hasChanged = result.name !== oldSchedule.name || result.isDraft !== oldSchedule.isDraft;
+                    if (hasChanged) {
+                        this.ui.showLoading('正在更新課表...');
+                        try {
+                            const backendResult = await ServerApi.call('renameSchedule', { 
+                                id: id, 
+                                newName: result.name, 
+                                isDraft: result.isDraft, 
+                                metadataTimestamp: this.activeMetadataTimestamp 
+                            });
+                            if (backendResult.error) { throw new Error(backendResult.error); }
+                            this.activeMetadataTimestamp = backendResult.newMetadataTimestamp;
+                            this.schedules[id].name = result.name;
+                            this.schedules[id].isDraft = result.isDraft;
+                            this.ui.renderScheduleList();
+                            this.ui.updateScheduleSelect();
+                            this.ui.showNotification('課表已更新');
+                        } catch (err) {
+                            this.ui.showNotification(`更新失敗: ${err.message}`, 'error');
+                        } finally {
+                            this.ui.hideLoading();
+                        }
                     }
                 }
             }
@@ -306,7 +321,9 @@
                 this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
                 
                 const allSchedulesData = {};
-                Object.values(this.schedules).forEach(schedule => {
+                Object.values(this.schedules)
+                    .filter(schedule => !schedule.isDraft) // Exclude draft schedules
+                    .forEach(schedule => {
                     if (schedule.data && schedule.data.scheduleData) {
                         Object.entries(schedule.data.scheduleData).forEach(([classroom, days]) => {
                             if (!allSchedulesData[classroom]) allSchedulesData[classroom] = {};

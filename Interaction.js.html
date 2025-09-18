@@ -59,7 +59,12 @@ function createInteractionModule(app) {
         app.modals.setupModalListeners(els.showFilterBtn, els.filterModal, els.filterModalClose, () => app.modals.populateFilterModal());
         app.modals.setupModalListeners(els.manageSchedulesBtn, els.scheduleManagerModal, els.scheduleManagerModalClose, () => app.ui.renderScheduleList());
 
-        els.addScheduleBtn.addEventListener('click', () => app.handleAddSchedule());
+        els.addScheduleBtn.addEventListener('click', async () => {
+            const result = await app.modals.showScheduleEditor({ isNew: true });
+            if (result) {
+                app.handleAddSchedule(result);
+            }
+        });
         els.scheduleList.addEventListener('click', (e) => app.handleScheduleListClick(e));
         els.scheduleSelect.addEventListener('change', (e) => app.handleScheduleSelectChange(e));
 

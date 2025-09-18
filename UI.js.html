@@ -160,13 +160,14 @@ function createUIModule(app) {
         select.innerHTML = '';
         const allOption = document.createElement('option');
         allOption.value = AppConfig.ALL_SCHEDULES_ID;
-        allOption.textContent = '所有課程';
+        allOption.textContent = '所有課程 (排除預排)';
         select.appendChild(allOption);
         const sortedScheduleIds = Object.keys(app.schedules).sort();
         for (const id of sortedScheduleIds) {
+            const schedule = app.schedules[id];
             const option = document.createElement('option');
             option.value = id;
-            option.textContent = app.schedules[id].name;
+            option.textContent = schedule.isDraft ? `${schedule.name} (預排)` : schedule.name;
             select.appendChild(option);
         }
         select.value = app.activeScheduleId;
@@ -181,19 +182,20 @@ function createUIModule(app) {
         const sortedScheduleIds = Object.keys(app.schedules).sort();
         for (const id of sortedScheduleIds) {
             const schedule = app.schedules[id];
+            const displayName = schedule.isDraft ? `${schedule.name} (預排)` : schedule.name;
             const createdBy = app.getShortUserName(schedule.createdBy || '未知');
             const canManage = isAdmin || (currentUser === createdBy);
             const li = document.createElement('li');
             li.className = 'schedule-list-item';
             let buttonsHtml = `<button class="copy-schedule-btn text-green-600 hover:text-green-800 text-sm" data-id="${id}">複製</button>`;
             if (canManage) {
-                buttonsHtml += `<button class="rename-schedule-btn text-blue-600 hover:text-blue-800 text-sm ml-2" data-id="${id}">重新命名</button>`;
+                buttonsHtml += `<button class="rename-schedule-btn text-blue-600 hover:text-blue-800 text-sm ml-2" data-id="${id}">編輯</button>`;
                 buttonsHtml += `<button class="delete-schedule-btn text-red-600 hover:text-red-800 text-sm ml-2" data-id="${id}">刪除</button>`;
             }
             li.innerHTML = (
                 `
                 <div class="schedule-info">
-                    <span class="schedule-name" data-tooltip="${schedule.name}" data-id="${id}">${schedule.name}</span>
+                    <span class="schedule-name" data-tooltip="${displayName}" data-id="${id}">${displayName}</span>
                     <span class="schedule-owner">(建立者: ${createdBy})</span>
                 </div>
                 <div class="schedule-actions">

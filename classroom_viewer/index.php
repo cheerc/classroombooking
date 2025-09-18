@@ -161,16 +161,31 @@ try {
     $client->setAuthConfig($keyFilePath);
     $service = new Google\Service\Sheets($client);
 
-    // --- 2. Find Target Sheet IDs ---
-    $indexRange = 'Data!A:B';
+    // --- 2. Find Target Sheet IDs (and filter out draft schedules) ---
+    $indexRange = 'Data!A:E'; // Read up to column E to get the 'Is Draft' status
     $indexResponse = $service->spreadsheets_values->get($spreadsheetId, $indexRange);
     $indexValues = $indexResponse->getValues();
     $targetSheetIds = [];
+
     if (!empty($indexValues)) {
-        $scheduleNameMap = array_column($indexValues, 0, 1); // Map: name => id
+        $scheduleDetailsMap = [];
+        // Create a map of schedule names to their details: [id, isDraft]
+        foreach ($indexValues as $row) {
+            // Ensure the row has at least name (col 1) and id (col 0)
+            if (!isset($row[0]) || !isset($row[1])) continue;
+            
+            $id = $row[0];
+            $name = $row[1];
+            // Column E (index 4) is 'Is Draft'. It's a boolean TRUE/FALSE from the sheet.
+            $isDraft = isset($row[4]) && $row[4] === true;
+            
+            $scheduleDetailsMap[$name] = ['id' => $id, 'isDraft' => $isDraft];
+        }
+
+        // Find the IDs of the requested schedules, excluding drafts
         foreach ($targetScheduleNames as $nameToFind) {
-            if (isset($scheduleNameMap[$nameToFind])) {
-                $targetSheetIds[] = $scheduleNameMap[$nameToFind];
+            if (isset($scheduleDetailsMap[$nameToFind]) && $scheduleDetailsMap[$nameToFind]['isDraft'] === false) {
+                $targetSheetIds[] = $scheduleDetailsMap[$nameToFind]['id'];
             }
         }
     }

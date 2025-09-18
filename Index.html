@@ -317,8 +317,8 @@
             <button id="schedule-manager-modal-close" class="absolute top-3 right-4 text-gray-400 hover:text-gray-700 text-3xl font-light">&times;</button>
             <div class="flex mb-4">
                 <label for="new-schedule-name" class="sr-only">新課表名稱</label>
-                <input type="text" id="new-schedule-name" placeholder="輸入新課表名稱" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-green-500">
-                <button id="add-schedule" class="bg-green-600 text-white px-4 py-2 rounded-r-md hover:bg-green-700 transition">新增課表</button>
+                <input type="text" id="new-schedule-name" placeholder="輸入新課表名稱" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-green-500" style="display: none;">
+                <button id="add-schedule" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition w-full">＋ 新增課表</button>
             </div>
             <div class="bg-white p-3 rounded-md max-h-64 overflow-y-auto border">
                 <h3 class="font-medium mb-2">現有課表:</h3>
@@ -327,6 +327,40 @@
                 </ul>
             </div>
         </div>
+    </div>
+
+    <!-- New/Edit Schedule Modal -->
+    <div id="schedule-edit-modal" class="loading-overlay" style="display: none;">
+      <div class="bg-white p-8 rounded-lg shadow-lg text-left max-w-md w-full relative">
+        <h2 id="schedule-edit-modal-title" class="text-2xl font-bold mb-6 text-center text-green-800">編輯課表</h2>
+        <button id="schedule-edit-modal-close" class="absolute top-3 right-4 text-gray-400 hover:text-gray-700 text-3xl font-light">&times;</button>
+        
+        <div class="space-y-6">
+          <input type="hidden" id="schedule-edit-id">
+          
+          <div>
+            <label for="schedule-edit-name" class="block text-sm font-medium text-gray-700">課表名稱</label>
+            <input type="text" id="schedule-edit-name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+          </div>
+
+          <div>
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <input id="schedule-edit-is-draft" type="checkbox" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded">
+              </div>
+              <div class="ml-3 text-sm">
+                <label for="schedule-edit-is-draft" class="font-medium text-gray-700">設為預排課表</label>
+                <p class="text-gray-500">預排課表不會顯示在「所有課程」的總覽模式中。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-4 border-t pt-6 mt-8">
+          <button id="schedule-edit-cancel" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-2 rounded-md transition">取消</button>
+          <button id="schedule-edit-save" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-md transition">儲存</button>
+        </div>
+      </div>
     </div>
 
     <div id="first-time-schedule-select-modal" class="loading-overlay" style="display: none;">

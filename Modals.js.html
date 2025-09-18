@@ -123,6 +123,60 @@ function createModalModule(app) {
         return this.showConfirm(message, true);
     },
 
+    showScheduleEditor: function(options = {}) {
+        return new Promise((resolve) => {
+            const { id = null, name = '', isDraft = false, isNew = false } = options;
+            const els = AppElements;
+
+            els.scheduleEditModalTitle.textContent = isNew ? '新增課表' : '編輯課表';
+            els.scheduleEditId.value = id;
+            els.scheduleEditName.value = name;
+            els.scheduleEditIsDraft.checked = isDraft;
+
+            els.scheduleEditModal.style.display = 'flex';
+            els.scheduleEditName.focus();
+            els.scheduleEditName.select();
+
+            const cleanup = () => {
+                els.scheduleEditSave.removeEventListener('click', saveHandler);
+                els.scheduleEditCancel.removeEventListener('click', cancelHandler);
+                els.scheduleEditModalClose.removeEventListener('click', cancelHandler);
+                els.scheduleEditModal.removeEventListener('click', overlayClickHandler);
+                els.scheduleEditModal.style.display = 'none';
+            };
+
+            const saveHandler = () => {
+                const newName = els.scheduleEditName.value.trim();
+                if (!newName) {
+                    app.ui.showNotification('課表名稱不能為空！', 'error');
+                    return;
+                }
+                cleanup();
+                resolve({
+                    id: id,
+                    name: newName,
+                    isDraft: els.scheduleEditIsDraft.checked
+                });
+            };
+
+            const cancelHandler = () => {
+                cleanup();
+                resolve(null);
+            };
+
+            const overlayClickHandler = (e) => {
+                if (e.target === els.scheduleEditModal) {
+                    cancelHandler();
+                }
+            };
+
+            els.scheduleEditSave.addEventListener('click', saveHandler, { once: true });
+            els.scheduleEditCancel.addEventListener('click', cancelHandler, { once: true });
+            els.scheduleEditModalClose.addEventListener('click', cancelHandler, { once: true });
+            els.scheduleEditModal.addEventListener('click', overlayClickHandler);
+        });
+    },
+
     /**
      * Shows the PDF options modal.
      */
