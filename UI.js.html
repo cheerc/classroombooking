@@ -686,6 +686,7 @@ function createUIModule(app) {
                 td.dataset.classroom = classroom;
                 td.dataset.day = day;
                 const classes = (dataToRender[classroom]?.[day] || []);
+                classes.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
                 let lastColor = null;
                 classes.forEach((classItem) => {
                     let currentColor = app.courseColorMap[classItem.name] || '#E2E8F0';
