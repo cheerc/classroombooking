@@ -697,22 +697,29 @@
         },
 
         // --- UTILITY ---
-        getAllTags: function() {
-            const allTags = new Set();
-            if (!this.scheduleData) return [];
-            Object.values(this.scheduleData).forEach(classroom => {
+        _collectFromScheduleData: function(dataSource, collectorFn) {
+            const resultSet = new Set();
+            if (!dataSource) return [];
+
+            Object.values(dataSource).forEach(classroom => {
                 if (!classroom) return;
                 Object.values(classroom).forEach(daySchedule => {
                     if (Array.isArray(daySchedule)) {
                         daySchedule.forEach(classItem => {
-                            if (classItem.tags && Array.isArray(classItem.tags)) {
-                                classItem.tags.forEach(tag => allTags.add(tag));
-                            }
+                            collectorFn(classItem, resultSet);
                         });
                     }
                 });
             });
-            return Array.from(allTags).sort();
+            return Array.from(resultSet).sort();
+        },
+
+        getAllTags: function() {
+            return this._collectFromScheduleData(this.scheduleData, (classItem, resultSet) => {
+                if (classItem.tags && Array.isArray(classItem.tags)) {
+                    classItem.tags.forEach(tag => resultSet.add(tag));
+                }
+            });
         },
 
         _collectFromAllCourses: function(collectorFn) {
