@@ -715,8 +715,8 @@
             return Array.from(allTags).sort();
         },
 
-        getGlobalAllTags: function() {
-            const allTags = new Set();
+        _collectFromAllCourses: function(collectorFn) {
+            const resultSet = new Set();
             if (!this.schedules) return [];
 
             Object.values(this.schedules).forEach(schedule => {
@@ -726,62 +726,38 @@
                         Object.values(classroom).forEach(daySchedule => {
                             if (Array.isArray(daySchedule)) {
                                 daySchedule.forEach(classItem => {
-                                    if (classItem.tags && Array.isArray(classItem.tags)) {
-                                        classItem.tags.forEach(tag => allTags.add(tag));
-                                    }
+                                    collectorFn(classItem, resultSet);
                                 });
                             }
                         });
                     });
                 }
             });
-            return Array.from(allTags).sort();
+            return Array.from(resultSet).sort();
+        },
+
+        getGlobalAllTags: function() {
+            return this._collectFromAllCourses((classItem, resultSet) => {
+                if (classItem.tags && Array.isArray(classItem.tags)) {
+                    classItem.tags.forEach(tag => resultSet.add(tag));
+                }
+            });
         },
 
         getGlobalAllCourseNames: function() {
-            const allNames = new Set();
-            if (!this.schedules) return [];
-
-            Object.values(this.schedules).forEach(schedule => {
-                if (schedule.data && schedule.data.scheduleData) {
-                    Object.values(schedule.data.scheduleData).forEach(classroom => {
-                        if (!classroom) return;
-                        Object.values(classroom).forEach(daySchedule => {
-                            if (Array.isArray(daySchedule)) {
-                                daySchedule.forEach(classItem => {
-                                    if (classItem.name) {
-                                        allNames.add(classItem.name);
-                                    }
-                                });
-                            }
-                        });
-                    });
+            return this._collectFromAllCourses((classItem, resultSet) => {
+                if (classItem.name) {
+                    resultSet.add(classItem.name);
                 }
             });
-            return Array.from(allNames).sort();
         },
 
         getGlobalAllTeachers: function() {
-            const allTeachers = new Set();
-            if (!this.schedules) return [];
-
-            Object.values(this.schedules).forEach(schedule => {
-                if (schedule.data && schedule.data.scheduleData) {
-                    Object.values(schedule.data.scheduleData).forEach(classroom => {
-                        if (!classroom) return;
-                        Object.values(classroom).forEach(daySchedule => {
-                            if (Array.isArray(daySchedule)) {
-                                daySchedule.forEach(classItem => {
-                                    if (classItem.teacher) {
-                                        allTeachers.add(classItem.teacher);
-                                    }
-                                });
-                            }
-                        });
-                    });
+            return this._collectFromAllCourses((classItem, resultSet) => {
+                if (classItem.teacher) {
+                    resultSet.add(classItem.teacher);
                 }
             });
-            return Array.from(allTeachers).sort();
         },
 
         getShortUserName: function(email) {
@@ -918,27 +894,34 @@
             return `${YYYY}${MM}${DD}_${HH}${mm}`;
         },
 
-        filterDataByTags: function(data) {
-            const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
-
-            if (tagFilters.size === 0) {
-                return data; // No tag filters, return original data
-            }
-
+        _filterScheduleData: function(data, filterPredicate) {
             const filteredData = {};
             for (const classroom in data) {
-                filteredData[classroom] = {};
-                for (const day in data[classroom]) {
-                    const filteredDay = data[classroom][day].filter(course => {
-                        // Course must have at least one of the selected tags
-                        return course.tags && course.tags.some(d => tagFilters.has(d));
-                    });
-                    if (filteredDay.length > 0) {
-                        filteredData[classroom][day] = filteredDay;
+                const dayData = data[classroom];
+                const newDayData = {};
+                let classroomHasCourses = false;
+                for (const day in dayData) {
+                    const filteredCourses = dayData[day].filter(filterPredicate);
+                    if (filteredCourses.length > 0) {
+                        newDayData[day] = filteredCourses;
+                        classroomHasCourses = true;
                     }
+                }
+                if (classroomHasCourses) {
+                    filteredData[classroom] = newDayData;
                 }
             }
             return filteredData;
+        },
+
+        filterDataByTags: function(data) {
+            const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
+            if (tagFilters.size === 0) {
+                return data;
+            }
+            return this._filterScheduleData(data, course => 
+                course.tags && course.tags.some(d => tagFilters.has(d))
+            );
         },
 
         filterDataByActiveFilters: function(data) {
@@ -946,33 +929,16 @@
             const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
             const teacherFilters = new Set(this.activeFilters.filter(f => f.type === 'teacher').map(f => f.value));
 
-            // If no filters of a certain type are active, the match should be true.
             if (nameFilters.size === 0 && tagFilters.size === 0 && teacherFilters.size === 0) {
                 return data;
             }
 
-            const filteredData = {};
-            for (const classroom in data) {
-                filteredData[classroom] = {};
-                for (const day in data[classroom]) {
-                    const filteredDay = data[classroom][day].filter(course => {
-                        const nameMatch = nameFilters.size === 0 || nameFilters.has(course.name);
-                        // Logic change: for tags/tags, check if the course has AT LEAST ONE of the selected tags.
-                        const tagMatch = tagFilters.size === 0 || (course.tags && course.tags.some(d => tagFilters.has(d)));
-                        const teacherMatch = teacherFilters.size === 0 || teacherFilters.has(course.teacher);
-                        
-                        // Logic change: Now we need to decide how filters interact.
-                        // Let's assume for now that filters of DIFFERENT types are ANDed,
-                        // but filters of the SAME type (like multiple tags) are ORed (which is handled by the .some() above).
-                        // The current logic already does this.
-                        return nameMatch && tagMatch && teacherMatch;
-                    });
-                    if (filteredDay.length > 0) {
-                        filteredData[classroom][day] = filteredDay;
-                    }
-                }
-            }
-            return filteredData;
+            return this._filterScheduleData(data, course => {
+                const nameMatch = nameFilters.size === 0 || nameFilters.has(course.name);
+                const tagMatch = tagFilters.size === 0 || (course.tags && course.tags.some(d => tagFilters.has(d)));
+                const teacherMatch = teacherFilters.size === 0 || teacherFilters.has(course.teacher);
+                return nameMatch && tagMatch && teacherMatch;
+            });
         },
 
         countOccurrences: function(predicate) {
