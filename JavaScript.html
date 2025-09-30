@@ -161,8 +161,6 @@
 
             this.classrooms = schedule.data.classrooms || [];
             this.scheduleData = this.ensureDataIds(schedule.data.scheduleData || {});
-            // Deprecated: this.tags is no longer loaded directly.
-            // this.tags = schedule.data.tags || [];
             this.tags = this.getAllTags(); // Dynamically get all tags
             
             // Initialize the tag filter for the current schedule
@@ -699,17 +697,8 @@
         // --- UTILITY ---
         _collectFromScheduleData: function(dataSource, collectorFn) {
             const resultSet = new Set();
-            if (!dataSource) return [];
-
-            Object.values(dataSource).forEach(classroom => {
-                if (!classroom) return;
-                Object.values(classroom).forEach(daySchedule => {
-                    if (Array.isArray(daySchedule)) {
-                        daySchedule.forEach(classItem => {
-                            collectorFn(classItem, resultSet);
-                        });
-                    }
-                });
+            this._forEachCourse(dataSource, (course) => {
+                collectorFn(course, resultSet);
             });
             return Array.from(resultSet).sort();
         },
@@ -948,30 +937,33 @@
             });
         },
 
-        countOccurrences: function(predicate) {
-            let count = 0;
-            for (const classroom in this.scheduleData) {
-                for (const day in this.scheduleData[classroom]) {
-                    this.scheduleData[classroom][day].forEach(item => {
-                        if (predicate(item)) {
-                            count++;
-                        }
+        _forEachCourse: function(dataSource, callback) {
+            if (!dataSource) return;
+            for (const classroom in dataSource) {
+                for (const day in dataSource[classroom]) {
+                    dataSource[classroom][day].forEach(course => {
+                        callback(course, classroom, day);
                     });
                 }
             }
+        },
+
+        countOccurrences: function(predicate) {
+            let count = 0;
+            this._forEachCourse(this.scheduleData, course => {
+                if (predicate(course)) {
+                    count++;
+                }
+            });
             return count;
         },
 
         updateAllOccurrences: function(predicate, updateFn) {
-            for (const classroom in this.scheduleData) {
-                for (const day in this.scheduleData[classroom]) {
-                    this.scheduleData[classroom][day].forEach(item => {
-                        if (predicate(item)) {
-                            updateFn(item);
-                        }
-                    });
+            this._forEachCourse(this.scheduleData, course => {
+                if (predicate(course)) {
+                    updateFn(course);
                 }
-            }
+            });
         },
 
         handleDrop: function(evt) {
