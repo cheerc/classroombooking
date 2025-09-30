@@ -496,7 +496,7 @@ function createUIModule(app) {
         const classroomMetadataMap = new Map();
         const dataForFiltering = {};
 
-        Object.values(app.schedules).forEach(schedule => {
+        Object.values(app.schedules).filter(schedule => !schedule.isDraft).forEach(schedule => {
             if (!schedule.data) return;
             const scheduleName = schedule.name;
             if (schedule.data.scheduleData) {
