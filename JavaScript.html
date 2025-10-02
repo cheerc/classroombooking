@@ -540,6 +540,7 @@
                     currentFilterValue = this.tagFilterTagify.value.map(tag => tag.value);
                 }
                 
+                this.tags = this.getAllTags(); // Recalculate all tags from current data
                 this.ui.initializeTagFilter(); // This will destroy and recreate the Tagify instance
 
                 if (this.tagFilterTagify && currentFilterValue.length > 0) {
