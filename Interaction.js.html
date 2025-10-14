@@ -68,7 +68,7 @@ function createInteractionModule(app) {
         els.scheduleList.addEventListener('click', (e) => app.handleScheduleListClick(e));
         els.scheduleSelect.addEventListener('change', (e) => app.handleScheduleSelectChange(e));
 
-        els.classroomList.addEventListener('click', (e) => this.handleItemDelete(e, 'classroom'));
+        els.classroomList.addEventListener('click', (e) => this.handleClassroomManagerClick(e));
         els.scheduleBody.addEventListener('click', (e) => this.handleScheduleBodyClick(e));
         document.addEventListener('click', (e) => this.handleDocumentClick(e), true);
         document.addEventListener('keydown', (e) => this.handleGlobalKeydown(e));
@@ -132,6 +132,21 @@ function createInteractionModule(app) {
         if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
             e.preventDefault();
             app.historyModule.redo();
+        }
+    },
+
+    handleClassroomManagerClick: async function(e) {
+        const editBtn = e.target.closest('.edit-classroom');
+        const deleteBtn = e.target.closest('.delete-classroom');
+
+        if (editBtn) {
+            const oldName = editBtn.dataset.classroom;
+            const newName = await app.modals.showPrompt('請輸入新的教室名稱：', oldName);
+            if (newName && newName.trim() !== oldName) {
+                app.handleEditClassroom(oldName, newName.trim());
+            }
+        } else if (deleteBtn) {
+            this.handleItemDelete(e, 'classroom');
         }
     },
 

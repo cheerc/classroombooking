@@ -261,11 +261,25 @@ function createUIModule(app) {
 
     updateClassroomList: function() {
         try {
-            this.renderManagerList({
-                listElement: AppElements.classroomList,
-                items: app.classrooms,
-                itemType: 'classroom',
-                sortFn: app.sortClassrooms
+            const listElement = AppElements.classroomList;
+            const items = app.classrooms;
+            const sortFn = app.sortClassrooms;
+
+            const sortedItems = sortFn ? sortFn(items) : [...items].sort();
+            
+            this.renderList(listElement, sortedItems, (item) => {
+                const li = document.createElement('li');
+                li.className = 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded';
+                li.innerHTML = (
+                    `
+                    <span>${item}</span>
+                    <div>
+                        <button class="edit-classroom text-blue-600 hover:text-blue-800 text-sm mr-2" data-classroom="${item}">編輯</button>
+                        <button class="delete-classroom text-red-600 hover:text-red-800 text-sm" data-classroom="${item}">刪除</button>
+                    </div>
+                `
+                );
+                return li;
             });
         } catch (e) {
             console.error('更新教室列表失敗:', e);
