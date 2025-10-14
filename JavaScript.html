@@ -3,6 +3,8 @@
     // App object now focuses on state management and data operations.
     const App = {
         // --- STATE ---
+        tabId: `tab_${Date.now()}_${Math.random()}`,
+        isReadOnly: false,
         schedules: {},
         activeScheduleId: null,
         activeMetadataTimestamp: null,
@@ -74,6 +76,9 @@
                     this.ui.renderScheduleTable();
                 }
             }, 60 * 1000); // Check every minute
+
+            // Heartbeat to keep the lock alive
+            setInterval(() => this.refreshLockHeartbeat(), 5000); // Refresh lock every 5 seconds
         },
 
         // --- DATA & SCHEDULE LOGIC ---
@@ -162,16 +167,26 @@
         },
 
         loadSchedule: function(scheduleId) {
+            // Release lock on the previous schedule before acquiring a new one
+            if (this.activeScheduleId) {
+                this.releaseLock(this.activeScheduleId);
+            }
+
             if (scheduleId === AppConfig.ALL_SCHEDULES_ID) {
+                this.isReadOnly = true; // "All schedules" is always read-only
                 this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
                 this.classrooms = [];
                 this.scheduleData = {};
-                this.tags = []; // This will be populated by the 'All Schedules' logic
+                this.tags = [];
                 this.ui.renderScheduleTable();
-                this.ui.updateGlobalUIForScheduleMode();
+                this.ui.updateHeaderUIState();
                 localStorage.setItem('activeScheduleId', scheduleId);
                 return;
             }
+
+            // Acquire lock for the new schedule
+            const hasLock = this.acquireLock(scheduleId);
+            this.isReadOnly = !hasLock;
 
             if (!this.schedules[scheduleId]) {
                 this.ui.showNotification(`錯誤：找不到指定的課表 ID: ${scheduleId}`, 'error');
@@ -200,9 +215,8 @@
             this.buildCourseColorMap();
             this.ui.updateClassroomList();
             this.ui.renderScheduleTable();
-            this.ui.updateGlobalUIForScheduleMode();
-            this.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE);
-            this.historyModule.resetHistory(); // Moved from loadDataFromServer
+            this.ui.updateHeaderUIState(); // Update UI based on lock and schedule mode
+            this.historyModule.resetHistory();
             localStorage.setItem('activeScheduleId', scheduleId);
         },
 
@@ -724,6 +738,62 @@
         },
 
         // --- UTILITY ---
+
+        _getLocks: function() {
+            try {
+                return JSON.parse(localStorage.getItem('gemini_schedule_locks') || '{}');
+            } catch (e) {
+                return {};
+            }
+        },
+
+        _saveLocks: function(locks) {
+            localStorage.setItem('gemini_schedule_locks', JSON.stringify(locks));
+        },
+
+        acquireLock: function(scheduleId) {
+            const locks = this._getLocks();
+            const existingLock = locks[scheduleId];
+            const now = Date.now();
+
+            if (existingLock && existingLock.tabId !== this.tabId) {
+                const isStale = (now - existingLock.timestamp) > 15000; // 15 second stale threshold
+                if (!isStale) {
+                    return false; // Lock is held by another tab
+                }
+                // If we are here, the lock is stale, so we break it.
+            }
+
+            // Acquire or update the lock
+            locks[scheduleId] = { tabId: this.tabId, timestamp: now };
+            this._saveLocks(locks);
+            return true;
+        },
+
+        releaseLock: function(scheduleId) {
+            if (!scheduleId) return;
+            const locks = this._getLocks();
+            if (locks[scheduleId] && locks[scheduleId].tabId === this.tabId) {
+                delete locks[scheduleId];
+                this._saveLocks(locks);
+            }
+        },
+
+        releaseCurrentLock: function() {
+            this.releaseLock(this.activeScheduleId);
+        },
+
+        refreshLockHeartbeat: function() {
+            if (this.isReadOnly || !this.activeScheduleId || this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
+                return;
+            }
+            const locks = this._getLocks();
+            if (locks[this.activeScheduleId] && locks[this.activeScheduleId].tabId === this.tabId) {
+                locks[this.activeScheduleId].timestamp = Date.now();
+                this._saveLocks(locks);
+            }
+        },
+
         _collectFromScheduleData: function(dataSource, collectorFn) {
             const resultSet = new Set();
             this._forEachCourse(dataSource, (course) => {

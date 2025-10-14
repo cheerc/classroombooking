@@ -97,27 +97,41 @@ function createUIModule(app) {
         }
     },
 
-    updateGlobalUIForScheduleMode: function() {
+    updateHeaderUIState: function() {
         const isAllSchedulesMode = app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
+        const isReadOnly = app.isReadOnly;
+        const shouldBeReadOnly = isAllSchedulesMode || isReadOnly;
         const els = AppElements;
+
+        // Toggle read-only banner
+        els.readOnlyBanner.classList.toggle('hidden', !isReadOnly || isAllSchedulesMode); // Show only for lock-based read-only
+
+        // Buttons to disable in any read-only scenario
         const buttonsToDisable = [
             els.saveToCloudBtn, els.loadVersionBtn, els.showClassroomManagerBtn,
             els.manageSchedulesBtn, els.undoBtn, els.redoBtn,
             els.showVersionHistoryBtn
         ];
+
         buttonsToDisable.forEach(btn => {
             if (btn) {
-                btn.disabled = isAllSchedulesMode;
-                btn.classList.toggle('opacity-50', isAllSchedulesMode);
-                btn.classList.toggle('cursor-not-allowed', isAllSchedulesMode);
+                btn.disabled = shouldBeReadOnly;
+                btn.classList.toggle('opacity-50', shouldBeReadOnly);
+                btn.classList.toggle('cursor-not-allowed', shouldBeReadOnly);
             }
         });
 
+        // Update sync status display based on the mode
         if (isAllSchedulesMode) {
             els.syncStatus.className = 'sync-status readonly-mode';
             els.syncStatusText.textContent = '👀 唯讀總覽模式';
             els.syncStatus.setAttribute('data-tooltip', '合併顯示所有課表');
+        } else if (isReadOnly) {
+            els.syncStatus.className = 'sync-status readonly-mode';
+            els.syncStatusText.textContent = '🔒 唯讀模式';
+            els.syncStatus.setAttribute('data-tooltip', '此課表正在另一分頁編輯中');
         } else {
+            // If not in any read-only mode, revert to checking the dirty status
             app.historyModule.checkDirty();
         }
     },
@@ -732,6 +746,7 @@ function createUIModule(app) {
     setupDragAndDrop: function() {
         try {
             const isDraggable = app.viewSortMode === 'classroom' && app.activeScheduleId !== AppConfig.ALL_SCHEDULES_ID;
+            const isDisabled = !isDraggable || app.isReadOnly;
 
             document.querySelectorAll('.schedule-cell').forEach(cell => {
                 if (cell.sortable) cell.sortable.destroy();
@@ -742,16 +757,16 @@ function createUIModule(app) {
                         put: isDraggable
                     },
                     animation: 150,
-                    disabled: !isDraggable,
+                    disabled: isDisabled,
                     onStart: (evt) => {
-                        if (!isDraggable) return;
+                        if (isDisabled) return;
                         app.originalSourceListElement = evt.from;
                     },
                     onMove: (evt) => {
-                        return isDraggable && evt.from !== evt.to;
+                        return !isDisabled && evt.from !== evt.to;
                     },
                     onEnd: (evt) => {
-                        if (!isDraggable) return;
+                        if (isDisabled) return;
                         app.handleDrop(evt);
                     }
                 });

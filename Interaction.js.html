@@ -74,6 +74,7 @@ function createInteractionModule(app) {
         document.addEventListener('keydown', (e) => this.handleGlobalKeydown(e));
 
         window.addEventListener('beforeunload', (e) => {
+            app.releaseCurrentLock();
             if (app.isDirty) {
                 e.preventDefault();
                 e.returnValue = '';
@@ -136,6 +137,7 @@ function createInteractionModule(app) {
     },
 
     handleClassroomManagerClick: async function(e) {
+        if (app.isReadOnly) return;
         const editBtn = e.target.closest('.edit-classroom');
         const deleteBtn = e.target.closest('.delete-classroom');
 
@@ -510,6 +512,17 @@ function createInteractionModule(app) {
     },
 
     handleScheduleBodyClick: function(event) {
+        if (app.isReadOnly) {
+            // In read-only mode, only allow selection, nothing else.
+            const classElement = event.target.closest('.class-item');
+            if (classElement) {
+                app.ui.toggleSelection(classElement);
+            } else {
+                app.ui.clearAllSelections();
+            }
+            return;
+        }
+
         if (app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
             // In "All Schedules" view, only allow selection
             const classElement = event.target.closest('.class-item');
@@ -623,6 +636,7 @@ function createInteractionModule(app) {
     },
 
     handleAddClassroom: function() {
+        if (app.isReadOnly) return;
         this.handleAddItem({
             itemType: '教室',
             name: elements.classroomNameInput.value.trim(),
