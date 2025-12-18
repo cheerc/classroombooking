@@ -195,6 +195,7 @@ function createInteractionModule(app) {
             ${tagEditorHtml}
             ${app.currentViewMode === 'day' ? `<textarea placeholder="備註 (僅在日檢視顯示/編輯)" class="inline-input" name="notes" style="min-height: 60px;">${isEditMode ? classItemToEdit.notes || '' : ''}</textarea>` : ''}
             <div class="inline-form-actions">
+                ${isEditMode ? `<button title="複製到" class="copy-inline">📋</button>` : ''}
                 <button title="儲存" class="save-inline">✓</button>
             </div>
         `;
@@ -401,7 +402,7 @@ function createInteractionModule(app) {
                    timeStart !== originalData.timeStart ||
                    timeEnd !== originalData.timeEnd ||
                    currentTeacher !== (originalData.teacher || '') ||
-                   JSON.stringify(currentTags.sort()) !== JSON.stringify((originalData.tags || []).sort());
+                   JSON.stringify([...currentTags].sort()) !== JSON.stringify([...(originalData.tags || [])].sort());
         };
 
         const closeHandler = async (forceSave = false) => {
@@ -471,6 +472,68 @@ function createInteractionModule(app) {
         };
 
         formDiv.querySelector('.save-inline').addEventListener('click', (e) => { e.preventDefault(); closeHandler(true); });
+        
+        // --- Add Copy Button Listener ---
+        const copyBtn = formDiv.querySelector('.copy-inline');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const name = formDiv.querySelector('input[name="name"]').value.trim();
+                const timeStart = formDiv.querySelector('input[name="timeStart"]').value;
+                const timeEnd = formDiv.querySelector('input[name="timeEnd"]').value;
+                const teacherTagify = app.activeInlineForm.teacherTagify;
+                const teacher = teacherTagify && teacherTagify.value.length > 0 ? teacherTagify.value[0].value : '';
+                const tagify = app.activeInlineForm.tagify;
+                const tags = tagify ? tagify.value.map(tag => tag.value) : [];
+                const notesTextarea = formDiv.querySelector('textarea[name="notes"]');
+                const notes = notesTextarea ? notesTextarea.value.trim() : '';
+
+                if (!name || !timeStart || !timeEnd || !teacher) {
+                    app.ui.showNotification('請先填寫完整資訊再進行複製', 'error');
+                    return;
+                }
+
+                const result = await app.modals.showCopyCourseModal(app.classrooms, context.classroom, context.day);
+                if (result) {
+                    const { targetClassroom, targetDays } = result;
+                    const formattedTimeStart = app.formatTime(timeStart);
+                    const formattedTimeEnd = app.formatTime(timeEnd);
+                    
+                    let successCount = 0;
+                    
+                    targetDays.forEach(dayIndex => {
+                        const newClassItem = {
+                            id: app.generateUniqueId(),
+                            name: name,
+                            timeStart: formattedTimeStart,
+                            timeEnd: formattedTimeEnd,
+                            teacher: teacher,
+                            tags: tags,
+                            notes: notes
+                        };
+                        
+                        if (!app.scheduleData[targetClassroom]) app.scheduleData[targetClassroom] = {};
+                        if (!app.scheduleData[targetClassroom][dayIndex]) app.scheduleData[targetClassroom][dayIndex] = [];
+                        
+                        const daySchedule = app.scheduleData[targetClassroom][dayIndex];
+                        const insertIndex = daySchedule.findIndex(item => app.timeToMinutes(item.timeStart) > app.timeToMinutes(newClassItem.timeStart));
+                        daySchedule.splice(insertIndex === -1 ? daySchedule.length : insertIndex, 0, newClassItem);
+                        successCount++;
+                    });
+                    
+                    if (successCount > 0) {
+                        app.buildCourseColorMap();
+                        app.saveDataToLocal();
+                        app.historyModule.saveState(); // Ensure history is recorded immediately
+                        app.ui.showNotification(`成功複製 ${successCount} 堂課程`);
+                        // This will save the original course (applying edits) and close the form
+                        closeHandler(true);
+                    }
+                }
+            });
+        }
+        // --- End Copy Button Listener ---
+
         formDiv.querySelector('.inline-add-cancel-btn').addEventListener('click', () => closeHandler());
         formDiv.addEventListener('keydown', (evt) => { if (evt.key === 'Escape') { evt.preventDefault(); closeHandler(); } });
     },

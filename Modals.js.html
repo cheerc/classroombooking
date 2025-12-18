@@ -325,6 +325,94 @@ function createModalModule(app) {
         
         const searchInput = searchContainer.querySelector('#filter-search-input');
         if (searchInput) searchInput.value = '';
+    },
+
+    /**
+     * Shows the Copy Course modal.
+     * @param {Array} classrooms - List of available classrooms.
+     * @param {string} currentClassroom - The current classroom name.
+     * @param {number} currentDay - The current day index (0-based, optional).
+     * @returns {Promise<object|null>} The selected target classroom and days, or null if cancelled.
+     */
+    showCopyCourseModal: function(classrooms, currentClassroom, currentDay) {
+        return new Promise((resolve) => {
+            const els = AppElements;
+            const modal = els.copyCourseModal;
+            const classroomSelect = els.copyTargetClassroom;
+            const daysContainer = els.copyTargetDays;
+            
+            // Populate Classrooms
+            classroomSelect.innerHTML = '';
+            classrooms.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c;
+                option.textContent = c;
+                if (c === currentClassroom) option.selected = true;
+                classroomSelect.appendChild(option);
+            });
+
+            // Populate Days
+            daysContainer.innerHTML = '';
+            AppConfig.WEEKDAYS.forEach((dayName, index) => {
+                const wrapper = document.createElement('label');
+                wrapper.className = 'flex items-center space-x-2 cursor-pointer p-2 hover:bg-gray-100 rounded';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = index;
+                checkbox.className = 'form-checkbox h-5 w-5 text-blue-600';
+                
+                // If it's the current day, maybe don't check it by default? Or check it?
+                // Logic: Usually you copy to *other* days. But copying to *other* classroom on *same* day is also valid.
+                // Let's leave them unchecked by default to force user selection, preventing accidental overwrites.
+                
+                const span = document.createElement('span');
+                span.textContent = dayName;
+                
+                wrapper.appendChild(checkbox);
+                wrapper.appendChild(span);
+                daysContainer.appendChild(wrapper);
+            });
+
+            modal.style.display = 'flex';
+
+            const cleanup = () => {
+                els.copyCourseConfirm.removeEventListener('click', confirmHandler);
+                els.copyCourseCancel.removeEventListener('click', cancelHandler);
+                els.copyCourseModalClose.removeEventListener('click', cancelHandler);
+                modal.removeEventListener('click', overlayClickHandler);
+                modal.style.display = 'none';
+            };
+
+            const confirmHandler = () => {
+                const targetClassroom = classroomSelect.value;
+                const targetDays = Array.from(daysContainer.querySelectorAll('input:checked')).map(cb => parseInt(cb.value));
+                
+                if (targetDays.length === 0) {
+                    app.ui.showNotification('請至少選擇一個目標星期！', 'error');
+                    return;
+                }
+
+                cleanup();
+                resolve({ targetClassroom, targetDays });
+            };
+
+            const cancelHandler = () => {
+                cleanup();
+                resolve(null);
+            };
+
+            const overlayClickHandler = (e) => {
+                if (e.target === modal) {
+                    cancelHandler();
+                }
+            };
+
+            els.copyCourseConfirm.addEventListener('click', confirmHandler, { once: true });
+            els.copyCourseCancel.addEventListener('click', cancelHandler, { once: true });
+            els.copyCourseModalClose.addEventListener('click', cancelHandler, { once: true });
+            modal.addEventListener('click', overlayClickHandler);
+        });
     }
   };
 }
