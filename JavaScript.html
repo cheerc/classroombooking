@@ -1,1403 +1,1438 @@
 <script>
-(function() {
-    // App object now focuses on state management and data operations.
-    const App = {
-        // --- STATE ---
-        tabId: `tab_${Date.now()}_${Math.random()}`,
-        isReadOnly: false,
-        schedules: {},
-        activeScheduleId: null,
-        activeMetadataTimestamp: null,
-        classrooms: [],
-        scheduleData: {},
-        tags: [], // This holds all tags for the current schedule
-        tagFilterTagify: null, // To hold the tagify instance for the filter
-        courseColorMap: {},
-        lastSyncTime: null,
-        scheduleLastModified: {},
-        loadingTimeout: null,
-        isConnecting: false,
-        activeInlineForm: null,
-        originalSourceListElement: null,
-        isDirty: false,
-        cleanStateSnapshot: '',
-        activeFilters: [],
-        currentUserEmail: '',
-        currentViewMode: localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK,
-        viewSortMode: (localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK) === AppConfig.MODES.DAY ? 'time' : 'classroom',
-        currentDayIndex: (() => {
-            // If the initial view mode is 'day', set the index to today. Otherwise, default to Monday (0).
-            if ((localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK) === AppConfig.MODES.DAY) {
-                const today = new Date().getDay();
-                return (today === 0) ? 6 : today - 1; // Sunday is 0, we want it to be 6.
-            }
-            return 0;
-        })(),
-        nextUpcomingClassIds: new Set(),
-        pdfFontBase64: null,
-        
-        // --- MODULES ---
-        modals: null,
-        historyModule: null,
-        ui: null,
-        interaction: null,
-
-        init: function() {
-            // Initialize all modules
-            this.modals = createModalModule(this);
-            this.historyModule = createHistoryModule(this);
-            this.ui = createUIModule(this);
-            this.interaction = createInteractionModule(this);
-
-            const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
-            this.currentUserEmail = this.getShortUserName(fullEmail);
-
-            // The initial load logic is now split. We first load from local storage,
-            // then fetch from server, which will then call loadInitialSchedules again.
-            this.interaction.addEventListeners();
-            AppElements.versionBadge.textContent = `版本 ${AppConfig.APP_VERSION}`;
-
-            setTimeout(() => {
-                this.loadDataFromServer().catch(error => {
-                    console.warn("Initial data load failed:", error.message);
-                });
-            }, 500);
-
-            // Set up a timer to periodically check for the next upcoming class.
-            setInterval(() => {
-                // First, always recalculate which classes are upcoming.
-                this.findNextUpcomingClasses();
-
-                // Then, if we are in a view where the upcoming status is relevant (today's day view),
-                // always re-render the table to reflect the passage of time.
-                const today = new Date();
-                const todayIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
-                if (this.currentViewMode === AppConfig.MODES.DAY && this.currentDayIndex === todayIndex) {
-                    this.ui.renderScheduleTable();
+    (function () {
+        // App object now focuses on state management and data operations.
+        const App = {
+            // --- STATE ---
+            tabId: `tab_${Date.now()}_${Math.random()}`,
+            isReadOnly: false,
+            schedules: {},
+            activeScheduleId: null,
+            activeMetadataTimestamp: null,
+            classrooms: [],
+            scheduleData: {},
+            tags: [], // This holds all tags for the current schedule
+            tagFilterTagify: null, // To hold the tagify instance for the filter
+            courseColorMap: {},
+            lastSyncTime: null,
+            scheduleLastModified: {},
+            loadingTimeout: null,
+            isConnecting: false,
+            activeInlineForm: null,
+            originalSourceListElement: null,
+            isDirty: false,
+            cleanStateSnapshot: '',
+            activeFilters: [],
+            currentUserEmail: '',
+            currentViewMode: localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK,
+            viewSortMode: (localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK) === AppConfig.MODES.DAY ? 'time' : 'classroom',
+            currentDayIndex: (() => {
+                // If the initial view mode is 'day', set the index to today. Otherwise, default to Monday (0).
+                if ((localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK) === AppConfig.MODES.DAY) {
+                    const today = new Date().getDay();
+                    return (today === 0) ? 6 : today - 1; // Sunday is 0, we want it to be 6.
                 }
-            }, 60 * 1000); // Check every minute
+                return 0;
+            })(),
+            nextUpcomingClassIds: new Set(),
+            pdfFontBase64: null,
 
-            // Heartbeat to keep the lock alive
-            setInterval(() => this.refreshLockHeartbeat(), 5000); // Refresh lock every 5 seconds
-        },
+            // --- MODULES ---
+            modals: null,
+            historyModule: null,
+            ui: null,
+            interaction: null,
 
-        // --- DATA & SCHEDULE LOGIC ---
-        showFirstTimeScheduleSelector: function() {
-            const modal = AppElements.firstTimeScheduleSelectModal;
-            const select = AppElements.firstTimeScheduleSelect;
-            const confirmBtn = AppElements.firstTimeScheduleConfirmBtn;
+            init: function () {
+                // Initialize all modules
+                this.modals = createModalModule(this);
+                this.historyModule = createHistoryModule(this);
+                this.ui = createUIModule(this);
+                this.interaction = createInteractionModule(this);
 
-            select.innerHTML = ''; // Clear previous options
-            const scheduleIds = Object.keys(this.schedules);
+                const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
+                this.currentUserEmail = this.getShortUserName(fullEmail);
 
-            if (scheduleIds.length === 0) {
-                select.innerHTML = '<option disabled>沒有可用的課表</option>';
-                confirmBtn.disabled = true;
-            } else {
-                scheduleIds.forEach(id => {
-                    const option = document.createElement('option');
-                    option.value = id;
-                    option.textContent = this.schedules[id].name;
-                    select.appendChild(option);
-                });
-                confirmBtn.disabled = false;
-            }
+                // The initial load logic is now split. We first load from local storage,
+                // then fetch from server, which will then call loadInitialSchedules again.
+                this.interaction.addEventListeners();
+                AppElements.versionBadge.textContent = `版本 ${AppConfig.APP_VERSION}`;
 
-            modal.style.display = 'flex';
+                setTimeout(() => {
+                    this.loadDataFromServer().catch(error => {
+                        console.warn("Initial data load failed:", error.message);
+                    });
+                }, 500);
 
-            confirmBtn.onclick = () => {
-                const selectedId = select.value;
-                if (selectedId) {
-                    modal.style.display = 'none';
-                    this.loadSchedule(selectedId);
-                    this.ui.updateScheduleSelect(); // Ensure main dropdown is also updated
-                }
-            };
-        },
+                // Set up a timer to periodically check for the next upcoming class.
+                setInterval(() => {
+                    // First, always recalculate which classes are upcoming.
+                    this.findNextUpcomingClasses();
 
-        handleEditClassroom: function(oldName, newName) {
-            if (!newName) {
-                this.ui.showNotification('教室名稱不能為空！', 'error');
-                return;
-            }
-            if (this.classrooms.includes(newName)) {
-                this.ui.showNotification(`教室名稱 "${newName}" 已存在！`, 'error');
-                return;
-            }
+                    // Then, if we are in a view where the upcoming status is relevant (today's day view),
+                    // always re-render the table to reflect the passage of time.
+                    const today = new Date();
+                    const todayIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
+                    if (this.currentViewMode === AppConfig.MODES.DAY && this.currentDayIndex === todayIndex) {
+                        this.ui.renderScheduleTable();
+                    }
+                }, 60 * 1000); // Check every minute
 
-            const index = this.classrooms.indexOf(oldName);
-            if (index > -1) {
-                this.classrooms[index] = newName;
-            }
+                // Heartbeat to keep the lock alive
+                setInterval(() => this.refreshLockHeartbeat(), 5000); // Refresh lock every 5 seconds
+            },
 
-            // Rename the key in the scheduleData object
-            if (this.scheduleData[oldName]) {
-                this.scheduleData[newName] = this.scheduleData[oldName];
-                delete this.scheduleData[oldName];
-            }
+            // --- DATA & SCHEDULE LOGIC ---
+            showFirstTimeScheduleSelector: function () {
+                const modal = AppElements.firstTimeScheduleSelectModal;
+                const select = AppElements.firstTimeScheduleSelect;
+                const confirmBtn = AppElements.firstTimeScheduleConfirmBtn;
 
-            this.ui.updateClassroomList();
-            this.ui.renderScheduleTable();
-            this.saveDataToLocal();
-            this.historyModule.saveState();
-            this.ui.showNotification(`教室名稱已從 "${oldName}" 更新為 "${newName}"`);
-        },
+                select.innerHTML = ''; // Clear previous options
+                const scheduleIds = Object.keys(this.schedules);
 
-        loadInitialSchedules: function() {
-            const localActiveId = localStorage.getItem('activeScheduleId');
-            
-            // Check if the locally stored ID is a valid schedule that we just got from the server
-            if (localActiveId && this.schedules[localActiveId]) {
-                this.loadSchedule(localActiveId);
-                this.ui.updateScheduleSelect();
-            } else {
-                // If no local preference, or the preference is invalid (e.g., schedule was deleted)
-                if (Object.keys(this.schedules).length > 0) {
-                    // We have schedules from the server, so we MUST ask the user to choose one.
-                    this.showFirstTimeScheduleSelector();
+                if (scheduleIds.length === 0) {
+                    select.innerHTML = '<option disabled>沒有可用的課表</option>';
+                    confirmBtn.disabled = true;
                 } else {
-                    // No schedules on the server at all. This is a rare edge case.
-                    this.ui.showNotification("雲端沒有任何課表。請聯絡管理員新增一個。", "info", 5000);
-                    this.schedules = {};
-                    this.activeScheduleId = null;
-                    this.ui.renderScheduleTable(); // Render an empty table
-                    this.ui.updateScheduleSelect();
+                    scheduleIds.forEach(id => {
+                        const option = document.createElement('option');
+                        option.value = id;
+                        option.textContent = this.schedules[id].name;
+                        select.appendChild(option);
+                    });
+                    confirmBtn.disabled = false;
                 }
-            }
-        },
 
-        loadSchedule: function(scheduleId) {
-            // Release lock on the previous schedule before acquiring a new one
-            if (this.activeScheduleId) {
-                this.releaseLock(this.activeScheduleId);
-            }
+                modal.style.display = 'flex';
 
-            if (scheduleId === AppConfig.ALL_SCHEDULES_ID) {
-                this.isReadOnly = true; // "All schedules" is always read-only
-                this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
-                this.classrooms = [];
-                this.scheduleData = {};
-                this.tags = [];
-                this.ui.renderScheduleTable();
-                this.ui.updateHeaderUIState();
-                localStorage.setItem('activeScheduleId', scheduleId);
-                return;
-            }
-
-            // Acquire lock for the new schedule
-            const hasLock = this.acquireLock(scheduleId);
-            this.isReadOnly = !hasLock;
-
-            if (!this.schedules[scheduleId]) {
-                this.ui.showNotification(`錯誤：找不到指定的課表 ID: ${scheduleId}`, 'error');
-                const firstId = Object.keys(this.schedules)[0];
-                if (firstId) this.loadSchedule(firstId);
-                return;
-            }
-            this.activeScheduleId = scheduleId;
-            const schedule = this.schedules[scheduleId];
-
-            if (!schedule.data) {
-                this.ui.showNotification(`課表 "${schedule.name || '未命名'}" 格式錯誤，將為其創建新的空資料。`, 'error', 5000);
-                schedule.data = { classrooms: [], scheduleData: {}, tags: [] };
-            }
-
-            this.classrooms = schedule.data.classrooms || [];
-            this.scheduleData = this.ensureDataIds(schedule.data.scheduleData || {});
-            this.tags = this.getAllTags(); // Dynamically get all tags
-            
-            // Initialize the tag filter for the current schedule
-            this.ui.initializeTagFilter();
-
-            // Load and apply persisted tag filters
-            this.loadAndApplyPersistedFilters();
-
-            this.buildCourseColorMap();
-            this.ui.updateClassroomList();
-            this.ui.renderScheduleTable();
-            this.ui.updateHeaderUIState(); // Update UI based on lock and schedule mode
-            this.historyModule.resetHistory();
-            localStorage.setItem('activeScheduleId', scheduleId);
-        },
-
-        saveSchedulesToLocal: function() {
-            localStorage.setItem('schedules', JSON.stringify(this.schedules));
-        },
-
-        handleAddSchedule: async function(scheduleDetails) {
-            const { name, isDraft } = scheduleDetails;
-            this.ui.showLoading('正在新增課表...');
-            const newId = `schedule_${Date.now()}`;
-            try {
-                const result = await ServerApi.call('addSchedule', { 
-                    id: newId, 
-                    name: name, 
-                    isDraft: isDraft, 
-                    metadataTimestamp: this.activeMetadataTimestamp 
-                });
-                if (result.error) {
-                    throw new Error(result.error);
-                }
-                this.activeMetadataTimestamp = result.newMetadataTimestamp;
-                this.schedules[newId] = { 
-                    name: name, 
-                    createdBy: result.createdBy, 
-                    isDraft: isDraft,
-                    data: { classrooms: [], scheduleData: {}, tags: [] } 
+                confirmBtn.onclick = () => {
+                    const selectedId = select.value;
+                    if (selectedId) {
+                        modal.style.display = 'none';
+                        this.loadSchedule(selectedId);
+                        this.ui.updateScheduleSelect(); // Ensure main dropdown is also updated
+                    }
                 };
-                this.scheduleLastModified[newId] = result.lastModified;
-                this.ui.renderScheduleList();
-                this.ui.updateScheduleSelect();
-                this.ui.showNotification(`已新增課表: ${name}`);
-            } catch (err) {
-                this.ui.showNotification(`新增課表失敗: ${err.message}`, 'error');
-            } finally {
-                this.ui.hideLoading();
-            }
-        },
+            },
 
-        handleScheduleListClick: async function(e) {
-            const renameBtn = e.target.closest('.rename-schedule-btn');
-            const deleteBtn = e.target.closest('.delete-schedule-btn');
-            const copyBtn = e.target.closest('.copy-schedule-btn');
+            handleEditClassroom: function (oldName, newName) {
+                if (!newName) {
+                    this.ui.showNotification('教室名稱不能為空！', 'error');
+                    return;
+                }
+                if (this.classrooms.includes(newName)) {
+                    this.ui.showNotification(`教室名稱 "${newName}" 已存在！`, 'error');
+                    return;
+                }
 
-            if (renameBtn) {
-                const id = renameBtn.dataset.id;
-                const oldSchedule = this.schedules[id];
-                const result = await this.modals.showScheduleEditor({
-                    id: id,
-                    name: oldSchedule.name,
-                    isDraft: oldSchedule.isDraft || false
-                });
+                const index = this.classrooms.indexOf(oldName);
+                if (index > -1) {
+                    this.classrooms[index] = newName;
+                }
 
-                if (result) {
-                    const hasChanged = result.name !== oldSchedule.name || result.isDraft !== oldSchedule.isDraft;
-                    if (hasChanged) {
-                        this.ui.showLoading('正在更新課表...');
+                // Rename the key in the scheduleData object
+                if (this.scheduleData[oldName]) {
+                    this.scheduleData[newName] = this.scheduleData[oldName];
+                    delete this.scheduleData[oldName];
+                }
+
+                this.ui.updateClassroomList();
+                this.ui.renderScheduleTable();
+                this.saveDataToLocal();
+                this.historyModule.saveState();
+                this.ui.showNotification(`教室名稱已從 "${oldName}" 更新為 "${newName}"`);
+            },
+
+            loadInitialSchedules: function () {
+                const localActiveId = localStorage.getItem('activeScheduleId');
+
+                // Check if the locally stored ID is a valid schedule that we just got from the server
+                if (localActiveId && this.schedules[localActiveId]) {
+                    this.loadSchedule(localActiveId);
+                    this.ui.updateScheduleSelect();
+                } else {
+                    // If no local preference, or the preference is invalid (e.g., schedule was deleted)
+                    if (Object.keys(this.schedules).length > 0) {
+                        // We have schedules from the server, so we MUST ask the user to choose one.
+                        this.showFirstTimeScheduleSelector();
+                    } else {
+                        // No schedules on the server at all. This is a rare edge case.
+                        this.ui.showNotification("雲端沒有任何課表。請聯絡管理員新增一個。", "info", 5000);
+                        this.schedules = {};
+                        this.activeScheduleId = null;
+                        this.ui.renderScheduleTable(); // Render an empty table
+                        this.ui.updateScheduleSelect();
+                    }
+                }
+            },
+
+            loadSchedule: function (scheduleId) {
+                // Release lock on the previous schedule before acquiring a new one
+                if (this.activeScheduleId) {
+                    this.releaseLock(this.activeScheduleId);
+                }
+
+                if (scheduleId === AppConfig.ALL_SCHEDULES_ID) {
+                    this.isReadOnly = true; // "All schedules" is always read-only
+                    this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
+                    this.classrooms = [];
+                    this.scheduleData = {};
+                    this.tags = [];
+                    this.ui.renderScheduleTable();
+                    this.ui.updateHeaderUIState();
+                    localStorage.setItem('activeScheduleId', scheduleId);
+                    return;
+                }
+
+                // Acquire lock for the new schedule
+                const hasLock = this.acquireLock(scheduleId);
+                this.isReadOnly = !hasLock;
+
+                if (!this.schedules[scheduleId]) {
+                    this.ui.showNotification(`錯誤：找不到指定的課表 ID: ${scheduleId}`, 'error');
+                    const firstId = Object.keys(this.schedules)[0];
+                    if (firstId) this.loadSchedule(firstId);
+                    return;
+                }
+                this.activeScheduleId = scheduleId;
+                const schedule = this.schedules[scheduleId];
+
+                if (!schedule.data) {
+                    this.ui.showNotification(`課表 "${schedule.name || '未命名'}" 格式錯誤，將為其創建新的空資料。`, 'error', 5000);
+                    schedule.data = { classrooms: [], scheduleData: {}, tags: [] };
+                }
+
+                this.classrooms = schedule.data.classrooms || [];
+                this.scheduleData = this.ensureDataIds(schedule.data.scheduleData || {});
+                this.tags = this.getAllTags(); // Dynamically get all tags
+
+                // Initialize the tag filter for the current schedule
+                this.ui.initializeTagFilter();
+
+                // Load and apply persisted tag filters
+                this.loadAndApplyPersistedFilters();
+
+                this.buildCourseColorMap();
+                this.ui.updateClassroomList();
+                this.ui.renderScheduleTable();
+                this.ui.updateHeaderUIState(); // Update UI based on lock and schedule mode
+                this.historyModule.resetHistory();
+                localStorage.setItem('activeScheduleId', scheduleId);
+            },
+
+            saveSchedulesToLocal: function () {
+                localStorage.setItem('schedules', JSON.stringify(this.schedules));
+            },
+
+            handleAddSchedule: async function (scheduleDetails) {
+                const { name, isDraft } = scheduleDetails;
+                this.ui.showLoading('正在新增課表...');
+                const newId = `schedule_${Date.now()}`;
+                try {
+                    const result = await ServerApi.call('addSchedule', {
+                        id: newId,
+                        name: name,
+                        isDraft: isDraft,
+                        metadataTimestamp: this.activeMetadataTimestamp
+                    });
+                    if (result.error) {
+                        throw new Error(result.error);
+                    }
+                    this.activeMetadataTimestamp = result.newMetadataTimestamp;
+                    this.schedules[newId] = {
+                        name: name,
+                        createdBy: result.createdBy,
+                        isDraft: isDraft,
+                        data: { classrooms: [], scheduleData: {}, tags: [] }
+                    };
+                    this.scheduleLastModified[newId] = result.lastModified;
+                    this.ui.renderScheduleList();
+                    this.ui.updateScheduleSelect();
+                    this.ui.showNotification(`已新增課表: ${name}`);
+                } catch (err) {
+                    this.ui.showNotification(`新增課表失敗: ${err.message}`, 'error');
+                } finally {
+                    this.ui.hideLoading();
+                }
+            },
+
+            handleScheduleListClick: async function (e) {
+                const renameBtn = e.target.closest('.rename-schedule-btn');
+                const deleteBtn = e.target.closest('.delete-schedule-btn');
+                const copyBtn = e.target.closest('.copy-schedule-btn');
+
+                if (renameBtn) {
+                    const id = renameBtn.dataset.id;
+                    const oldSchedule = this.schedules[id];
+                    const result = await this.modals.showScheduleEditor({
+                        id: id,
+                        name: oldSchedule.name,
+                        isDraft: oldSchedule.isDraft || false
+                    });
+
+                    if (result) {
+                        const hasChanged = result.name !== oldSchedule.name || result.isDraft !== oldSchedule.isDraft;
+                        if (hasChanged) {
+                            this.ui.showLoading('正在更新課表...');
+                            try {
+                                const backendResult = await ServerApi.call('renameSchedule', {
+                                    id: id,
+                                    newName: result.name,
+                                    isDraft: result.isDraft,
+                                    metadataTimestamp: this.activeMetadataTimestamp
+                                });
+                                if (backendResult.error) { throw new Error(backendResult.error); }
+                                this.activeMetadataTimestamp = backendResult.newMetadataTimestamp;
+                                this.schedules[id].name = result.name;
+                                this.schedules[id].isDraft = result.isDraft;
+                                // CRITICAL FIX: Update the lastModified timestamp after a metadata change
+                                if (backendResult.lastModified) {
+                                    this.scheduleLastModified[id] = backendResult.lastModified;
+                                }
+                                this.ui.renderScheduleList();
+                                this.ui.updateScheduleSelect();
+                                this.ui.showNotification('課表已更新');
+                            } catch (err) {
+                                this.ui.showNotification(`更新失敗: ${err.message}`, 'error');
+                            } finally {
+                                this.ui.hideLoading();
+                            }
+                        }
+                    }
+                }
+
+                if (deleteBtn) {
+                    const id = deleteBtn.dataset.id;
+                    if (await this.modals.showConfirm(`確定要刪除課表 "${this.schedules[id].name}" 嗎？此操作無法復原。`)) {
+                        this.ui.showLoading('正在刪除課表...');
                         try {
-                            const backendResult = await ServerApi.call('renameSchedule', { 
-                                id: id, 
-                                newName: result.name, 
-                                isDraft: result.isDraft, 
-                                metadataTimestamp: this.activeMetadataTimestamp 
-                            });
-                            if (backendResult.error) { throw new Error(backendResult.error); }
-                            this.activeMetadataTimestamp = backendResult.newMetadataTimestamp;
-                            this.schedules[id].name = result.name;
-                            this.schedules[id].isDraft = result.isDraft;
-                            // CRITICAL FIX: Update the lastModified timestamp after a metadata change
-                            if (backendResult.lastModified) {
-                                this.scheduleLastModified[id] = backendResult.lastModified;
+                            const result = await ServerApi.call('deleteSchedule', { id: id, metadataTimestamp: this.activeMetadataTimestamp });
+                            if (result.error) { throw new Error(result.error); }
+                            this.activeMetadataTimestamp = result.newMetadataTimestamp;
+                            delete this.schedules[id];
+                            if (id === this.activeScheduleId) {
+                                this.activeScheduleId = Object.keys(this.schedules)[0];
+                                this.loadSchedule(this.activeScheduleId);
                             }
                             this.ui.renderScheduleList();
                             this.ui.updateScheduleSelect();
-                            this.ui.showNotification('課表已更新');
+                            this.ui.showNotification('課表已刪除');
                         } catch (err) {
-                            this.ui.showNotification(`更新失敗: ${err.message}`, 'error');
+                            this.ui.showNotification(`刪除失敗: ${err.message}`, 'error');
                         } finally {
                             this.ui.hideLoading();
                         }
                     }
                 }
-            }
 
-            if (deleteBtn) {
-                const id = deleteBtn.dataset.id;
-                if (await this.modals.showConfirm(`確定要刪除課表 "${this.schedules[id].name}" 嗎？此操作無法復原。`)) {
-                    this.ui.showLoading('正在刪除課表...');
-                    try {
-                        const result = await ServerApi.call('deleteSchedule', { id: id, metadataTimestamp: this.activeMetadataTimestamp });
-                        if (result.error) { throw new Error(result.error); }
-                        this.activeMetadataTimestamp = result.newMetadataTimestamp;
-                        delete this.schedules[id];
-                        if (id === this.activeScheduleId) {
-                            this.activeScheduleId = Object.keys(this.schedules)[0];
-                            this.loadSchedule(this.activeScheduleId);
+                if (copyBtn) {
+                    const sourceId = copyBtn.dataset.id;
+                    const sourceName = this.schedules[sourceId].name;
+                    const newName = await this.modals.showPrompt('請為複製的課表命名：', `${sourceName} (複製)`);
+                    if (newName && newName.trim()) {
+                        this.ui.showLoading('正在複製課表，請稍候...');
+                        try {
+                            const result = await ServerApi.call('copySchedule', { sourceId: sourceId, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
+                            if (result.error) { throw new Error(result.error); }
+                            this.activeMetadataTimestamp = result.newMetadataTimestamp;
+                            const newId = result.newId;
+                            this.schedules[newId] = {
+                                name: newName.trim(),
+                                createdBy: result.createdBy,
+                                isDraft: result.isDraft, // Also copy the draft status
+                                data: JSON.parse(JSON.stringify(this.schedules[sourceId].data))
+                            };
+                            // CRITICAL FIX: Set the lastModified timestamp for the new schedule
+                            this.scheduleLastModified[newId] = result.lastModified;
+                            this.ui.renderScheduleList();
+                            this.ui.updateScheduleSelect();
+                            this.ui.showNotification('課表複製成功！');
+                        } catch (err) {
+                            this.ui.showNotification(`複製失敗: ${err.message}`, 'error');
+                        } finally {
+                            this.ui.hideLoading();
                         }
-                        this.ui.renderScheduleList();
-                        this.ui.updateScheduleSelect();
-                        this.ui.showNotification('課表已刪除');
-                    } catch (err) {
-                        this.ui.showNotification(`刪除失敗: ${err.message}`, 'error');
-                    } finally {
-                        this.ui.hideLoading();
                     }
                 }
-            }
+            },
 
-            if (copyBtn) {
-                const sourceId = copyBtn.dataset.id;
-                const sourceName = this.schedules[sourceId].name;
-                const newName = await this.modals.showPrompt('請為複製的課表命名：', `${sourceName} (複製)`);
-                if (newName && newName.trim()) {
-                    this.ui.showLoading('正在複製課表，請稍候...');
+            handleScheduleSelectChange: async function (e) {
+                const newId = e.target.value;
+                if (this.isDirty) {
+                    if (!await this.modals.showConfirm('您有未儲存的變更，確定要切換課表並捨棄變更嗎？')) {
+                        e.target.value = this.activeScheduleId; // Revert selection
+                        return;
+                    }
+                }
+                if (newId === AppConfig.ALL_SCHEDULES_ID) {
+                    this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
+
+                    const allSchedulesData = {};
+                    Object.values(this.schedules)
+                        .filter(schedule => !schedule.isDraft) // Exclude draft schedules
+                        .forEach(schedule => {
+                            if (schedule.data && schedule.data.scheduleData) {
+                                Object.entries(schedule.data.scheduleData).forEach(([classroom, days]) => {
+                                    if (!allSchedulesData[classroom]) allSchedulesData[classroom] = {};
+                                    Object.entries(days).forEach(([day, courses]) => {
+                                        if (!allSchedulesData[classroom][day]) allSchedulesData[classroom][day] = [];
+                                        allSchedulesData[classroom][day].push(...courses);
+                                    });
+                                });
+                            }
+                        });
+
+                    this.tags = this.getGlobalAllTags();
+                    this.ui.initializeTagFilter();
+                    this.loadAndApplyPersistedFilters();
+                    this.modals.populateFilterModal(); // Ensure filter modal is updated for global view
+
+                    this.buildCourseColorMap(allSchedulesData);
+
+                    this.ui.renderScheduleTable();
+                    this.ui.updateGlobalUIForScheduleMode();
+                    this.ui.updateClearAllFiltersButtonVisibility();
+                    localStorage.setItem('activeScheduleId', this.activeScheduleId);
+                } else {
+                    this.loadSchedule(newId);
+                }
+            },
+
+            // --- FILTER LOGIC ---
+            loadAndApplyPersistedFilters: function () {
+                const persistedTagsJSON = localStorage.getItem('activeTagFilters');
+                if (persistedTagsJSON) {
                     try {
-                        const result = await ServerApi.call('copySchedule', { sourceId: sourceId, newName: newName.trim(), metadataTimestamp: this.activeMetadataTimestamp });
-                        if (result.error) { throw new Error(result.error); }
-                        this.activeMetadataTimestamp = result.newMetadataTimestamp;
-                        const newId = result.newId;
-                        this.schedules[newId] = {
-                            name: newName.trim(),
-                            createdBy: result.createdBy,
-                            isDraft: result.isDraft, // Also copy the draft status
-                            data: JSON.parse(JSON.stringify(this.schedules[sourceId].data))
-                        };
-                        // CRITICAL FIX: Set the lastModified timestamp for the new schedule
-                        this.scheduleLastModified[newId] = result.lastModified;
-                        this.ui.renderScheduleList();
-                        this.ui.updateScheduleSelect();
-                        this.ui.showNotification('課表複製成功！');
-                    } catch (err) {
-                        this.ui.showNotification(`複製失敗: ${err.message}`, 'error');
-                    } finally {
-                        this.ui.hideLoading();
+                        const persistedTags = JSON.parse(persistedTagsJSON);
+                        const allCurrentTags = new Set(this.getAllTags());
+
+                        const validPersistedTags = persistedTags.filter(tag => allCurrentTags.has(tag));
+
+                        this.activeFilters = validPersistedTags.map(tag => ({ type: 'tag', value: tag }));
+
+                        if (this.tagFilterTagify) {
+                            this.tagFilterTagify.loadOriginalValues(validPersistedTags);
+                        }
+
+                        if (persistedTags.length !== validPersistedTags.length) {
+                            localStorage.setItem('activeTagFilters', JSON.stringify(validPersistedTags));
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse persisted tag filters:", e);
+                        localStorage.removeItem('activeTagFilters');
+                        this.activeFilters = [];
+                    }
+                } else {
+                    this.activeFilters = [];
+                }
+                this.ui.updateClearFilterButtonVisibility();
+                this.ui.updateAdvancedFilterButtonState();
+                this.ui.updateClearAllFiltersButtonVisibility();
+            },
+
+            applyTagFilters: async function () {
+                if (!this.tagFilterTagify) return;
+
+                const advancedFiltersExist = this.activeFilters.some(f => f.type !== 'tag');
+                const selectedTags = this.tagFilterTagify.value.map(tag => tag.value);
+
+                // If advanced filters are active, and the user is changing the primary tag filter, confirm first.
+                if (advancedFiltersExist && selectedTags.length > 0) {
+                    const confirmed = await this.modals.showConfirm(
+                        '變更主要標籤將會重設目前的進階篩選條件，確定要繼續嗎？'
+                    );
+                    if (!confirmed) {
+                        // Revert the visual change in Tagify input to match the actual active filter state
+                        const currentTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
+                        this.tagFilterTagify.loadOriginalValues(currentTags);
+                        return;
                     }
                 }
-            }
-        },
 
-        handleScheduleSelectChange: async function(e) {
-            const newId = e.target.value;
-            if (this.isDirty) {
-                if (!await this.modals.showConfirm('您有未儲存的變更，確定要切換課表並捨棄變更嗎？')) {
-                    e.target.value = this.activeScheduleId; // Revert selection
+                // Set activeFilters to ONLY be the new tag filters, effectively clearing advanced filters.
+                this.activeFilters = selectedTags.map(tag => ({ type: 'tag', value: tag }));
+
+                localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
+                this.modals.populateFilterModal();
+                this.ui.renderScheduleTable();
+                this.ui.updateAdvancedFilterButtonState();
+                this.ui.updateClearFilterButtonVisibility();
+                this.ui.updateClearAllFiltersButtonVisibility();
+            },
+
+            toggleAllFilterCheckboxes: function (shouldBeChecked) {
+                AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.checked = shouldBeChecked;
+                });
+            },
+
+            applyFilters: function () {
+                const filterType = AppElements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
+                const selectedItems = Array.from(AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+
+                const tagFilters = this.activeFilters.filter(f => f.type === 'tag');
+                const newAdvancedFilters = selectedItems.map(item => ({ type: filterType, value: item }));
+                this.activeFilters = [...tagFilters, ...newAdvancedFilters];
+
+                this.ui.renderScheduleTable();
+                this.ui.updateAdvancedFilterButtonState();
+                this.ui.updateClearAllFiltersButtonVisibility();
+                AppElements.filterModal.style.display = 'none';
+            },
+
+            clearAdvancedFilters: function () {
+                this.activeFilters = this.activeFilters.filter(f => f.type === 'tag');
+                this.modals.populateFilterModal();
+                this.ui.renderScheduleTable();
+                this.ui.updateAdvancedFilterButtonState();
+                this.ui.updateClearAllFiltersButtonVisibility();
+            },
+
+            clearAllFilters: function () {
+                this.activeFilters = [];
+                localStorage.removeItem('activeTagFilters');
+                if (this.tagFilterTagify) {
+                    this.tagFilterTagify.removeAllTags();
+                }
+                this.modals.populateFilterModal();
+                this.ui.renderScheduleTable();
+                this.ui.updateAdvancedFilterButtonState();
+                this.ui.updateClearFilterButtonVisibility();
+                this.ui.updateClearAllFiltersButtonVisibility();
+            },
+
+            // --- API COMMUNICATION ---
+            loadVersions: async function () {
+                const select = AppElements.versionHistorySelect;
+                select.innerHTML = '<option>正在載入中...</option>';
+                this.ui.showNotification('正在獲取版本列表...', 'info');
+
+                try {
+                    const versions = await ServerApi.call('getVersions', this.activeScheduleId);
+                    if (!versions || versions.error) throw new Error(versions ? versions.error : '未知錯誤');
+
+                    select.innerHTML = '';
+                    if (versions.length > 0) {
+                        versions.forEach(v => {
+                            const option = document.createElement('option');
+                            option.value = v.id;
+                            option.textContent = `${new Date(v.id).toLocaleString()} by ${this.getShortUserName(v.user)}`;
+                            select.appendChild(option);
+                        });
+                        this.ui.showNotification('版本列表已更新', 'success');
+                    } else {
+                        select.innerHTML = '<option>此課表沒有歷史紀錄</option>';
+                    }
+                } catch (error) {
+                    this.ui.showNotification('獲取版本列表失敗: ' + error.message, 'error');
+                    select.innerHTML = '<option>獲取失敗</option>';
+                }
+            },
+
+            handleLoadVersion: async function () {
+                const select = AppElements.versionHistorySelect;
+                const versionId = select.value;
+                if (!versionId || select.options[select.selectedIndex].text === '沒有歷史紀錄') {
+                    this.ui.showNotification('請選擇一個有效的版本', 'error');
                     return;
                 }
-            }
-            if (newId === AppConfig.ALL_SCHEDULES_ID) {
-                this.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
-                
-                const allSchedulesData = {};
-                Object.values(this.schedules)
-                    .filter(schedule => !schedule.isDraft) // Exclude draft schedules
-                    .forEach(schedule => {
+                if (this.isDirty && !await this.modals.showConfirm(`您有未儲存的變更，確定要讀取歷史版本並覆蓋當前的課表嗎？`)) {
+                    return;
+                }
+                AppElements.versionHistoryModal.style.display = 'none';
+                this.ui.showLoading('正在讀取歷史版本...');
+
+                try {
+                    const data = await ServerApi.call('getVersionData', versionId);
+                    if (!data || !data.success) throw new Error(data ? data.error : '未知錯誤');
+
+                    const currentSchedule = this.schedules[this.activeScheduleId];
+                    currentSchedule.data.classrooms = data.classrooms || [];
+                    currentSchedule.data.scheduleData = this.ensureDataIds(data.scheduleData || {});
+                    currentSchedule.data.tags = data.tags || [];
+
+                    this.saveSchedulesToLocal();
+                    this.loadSchedule(this.activeScheduleId);
+
+                    this.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE, this.lastCloudModifiedTime);
+                    this.ui.showNotification(`已在本地載入版本: ${new Date(data.versionId).toLocaleString()}`, 'info');
+                } catch (error) {
+                    this.ui.showNotification('讀取版本失敗: ' + error.message, 'error');
+                } finally {
+                    this.ui.hideLoading();
+                }
+            },
+
+            saveDataToLocal: function () {
+                try {
+                    // Sync the current working data back to the main schedules object
+                    if (this.activeScheduleId && this.schedules[this.activeScheduleId]) {
+                        const activeSchedule = this.schedules[this.activeScheduleId];
+                        if (activeSchedule.data) {
+                            activeSchedule.data.scheduleData = this.scheduleData;
+                            activeSchedule.data.classrooms = this.classrooms;
+                            activeSchedule.data.tags = this.getAllTags(); // Also update the tags list for consistency
+                        }
+                    }
+
+                    // After saving, the list of all tags might have changed.
+                    // We need to re-initialize the tag filter to get the fresh list, while preserving the current value.
+                    let currentFilterValue = [];
+                    if (this.tagFilterTagify) {
+                        currentFilterValue = this.tagFilterTagify.value.map(tag => tag.value);
+                    }
+
+                    this.tags = this.getAllTags(); // Recalculate all tags from current data
+                    this.ui.initializeTagFilter(); // This will destroy and recreate the Tagify instance
+
+                    if (this.tagFilterTagify && currentFilterValue.length > 0) {
+                        // Restore the previous value without triggering 'add' events.
+                        // loadOriginalValues will only add valid tags from the new whitelist.
+                        this.tagFilterTagify.loadOriginalValues(currentFilterValue);
+                    }
+
+                    this.saveSchedulesToLocal();
+                    localStorage.setItem('activeScheduleId', this.activeScheduleId);
+                    localStorage.setItem('app_version', AppConfig.APP_VERSION);
+                    if (this.lastSyncTime) localStorage.setItem('lastSyncTime', this.lastSyncTime.toISOString());
+                } catch (e) {
+                    console.error("保存數據到本地失敗:", e);
+                    this.ui.showNotification("保存數據失敗，可能是存儲空間不足", "error");
+                }
+            },
+
+            loadDataFromServer: async function () {
+                if (this.isConnecting) {
+                    this.ui.showNotification("A sync operation is already in progress.", "info");
+                    return;
+                }
+                this.isConnecting = true;
+                this.ui.manageLoadingState('start', { message: '正在從雲端同步資料...' });
+
+                try {
+                    const result = await ServerApi.call('getData');
+                    if (!result || result.error) throw new Error(result ? result.error : '從服務器獲取的數據為空');
+
+                    this.schedules = result.schedules || {};
+                    this.scheduleLastModified = {}; // Clear old timestamps
+                    for (const id in this.schedules) {
+                        if (this.schedules[id].lastModified) {
+                            this.scheduleLastModified[id] = this.schedules[id].lastModified;
+                            // The timestamp is sensitive and only needed for the save operation,
+                            // let's not keep it in the main data object that gets saved to local storage.
+                            delete this.schedules[id].lastModified;
+                        }
+                    }
+
+                    this.activeMetadataTimestamp = result.metadataTimestamp;
+
+                    // After fetching data, the client decides which schedule to load.
+                    this.loadInitialSchedules();
+
+                    this.lastSyncTime = new Date();
+                    this.saveSchedulesToLocal();
+                    this.ui.manageLoadingState('end', { success: true, message: '從雲端讀取數據成功！' });
+
+                } catch (error) {
+                    this.ui.manageLoadingState('end', { success: false, message: `讀取失敗: ${error.message}` });
+                } finally {
+                    this.isConnecting = false;
+                }
+            },
+
+            saveDataToServer: async function () {
+                if (this.isConnecting) return;
+                this.isConnecting = true;
+                this.ui.manageLoadingState('start', { message: '正在檢查版本並儲存至雲端...' });
+
+                try {
+                    const currentScheduleTimestamp = this.scheduleLastModified[this.activeScheduleId];
+                    if (!currentScheduleTimestamp) {
+                        throw new Error("找不到當前課表的版本資訊，無法儲存。請嘗試重新載入。");
+                    }
+
+                    const dataToSend = {
+                        scheduleId: this.activeScheduleId,
+                        lastModified: currentScheduleTimestamp, // *** STEP 4: Attach the specific timestamp
+                        scheduleData: {
+                            classrooms: this.classrooms,
+                            scheduleData: this.scheduleData,
+                            tags: this.tags
+                        }
+                    };
+
+                    const saveResult = await ServerApi.call('saveData', dataToSend);
+
+                    // *** STEP 4: Handle new conflict error
+                    if (saveResult && saveResult.conflict) {
+                        this.modals.showConfirm(saveResult.error, true); // Show the specific error from server
+                        this.ui.manageLoadingState('end', { success: false, isConflict: true });
+                        return;
+                    }
+
+                    if (!saveResult || !saveResult.success) {
+                        throw new Error(saveResult?.error || '儲存時發生未知錯誤');
+                    }
+
+                    this.lastSyncTime = new Date();
+                    this.scheduleLastModified[this.activeScheduleId] = saveResult.lastModified;
+                    this.historyModule.updateCleanSnapshot();
+                    this.historyModule.checkDirty();
+                    this.ui.manageLoadingState('end', { success: true, message: '數據已成功儲存到雲端！' });
+
+                } catch (error) {
+                    this.ui.manageLoadingState('end', { success: false, message: `數據儲存失敗: ${error.message}` });
+                } finally {
+                    this.isConnecting = false;
+                }
+            },
+
+            findNextUpcomingClasses: function () {
+                this.nextUpcomingClassIds.clear();
+
+                const today = new Date();
+                const todayIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
+
+                // This feature is only active when viewing today in day mode.
+                if (this.currentViewMode !== AppConfig.MODES.DAY || this.currentDayIndex !== todayIndex) {
+                    return;
+                }
+
+                const nowInMinutes = today.getHours() * 60 + today.getMinutes();
+                const thresholdInMinutes = 30;
+                let futureClasses = [];
+
+                // First, find all classes in the future for today
+                for (const classroom in this.scheduleData) {
+                    if (this.scheduleData[classroom]?.[todayIndex]) {
+                        this.scheduleData[classroom][todayIndex].forEach(course => {
+                            const startTimeInMinutes = this.timeToMinutes(course.timeStart);
+                            if (startTimeInMinutes >= nowInMinutes) {
+                                futureClasses.push(course);
+                            }
+                        });
+                    }
+                }
+
+                if (futureClasses.length > 0) {
+                    // Rule 1: Prioritize classes within the 30-minute threshold
+                    const withinThresholdClasses = futureClasses.filter(course => {
+                        const startTimeInMinutes = this.timeToMinutes(course.timeStart);
+                        const timeDifference = startTimeInMinutes - nowInMinutes;
+                        return timeDifference >= 0 && timeDifference <= thresholdInMinutes;
+                    });
+
+                    if (withinThresholdClasses.length > 0) {
+                        withinThresholdClasses.forEach(course => this.nextUpcomingClassIds.add(course.id));
+                    } else {
+                        // Rule 2: If none in threshold, find the very next one(s)
+                        const nextStartTime = Math.min(...futureClasses.map(c => this.timeToMinutes(c.timeStart)));
+                        futureClasses.forEach(course => {
+                            if (this.timeToMinutes(course.timeStart) === nextStartTime) {
+                                this.nextUpcomingClassIds.add(course.id);
+                            }
+                        });
+                    }
+                }
+                // This function no longer needs to return a value; it just updates the state.
+            },
+
+            // --- UTILITY ---
+
+            _getLocks: function () {
+                try {
+                    return JSON.parse(localStorage.getItem('gemini_schedule_locks') || '{}');
+                } catch (e) {
+                    return {};
+                }
+            },
+
+            _saveLocks: function (locks) {
+                localStorage.setItem('gemini_schedule_locks', JSON.stringify(locks));
+            },
+
+            acquireLock: function (scheduleId) {
+                const locks = this._getLocks();
+                const existingLock = locks[scheduleId];
+                const now = Date.now();
+
+                if (existingLock && existingLock.tabId !== this.tabId) {
+                    const isStale = (now - existingLock.timestamp) > 15000; // 15 second stale threshold
+                    if (!isStale) {
+                        return false; // Lock is held by another tab
+                    }
+                    // If we are here, the lock is stale, so we break it.
+                }
+
+                // Acquire or update the lock
+                locks[scheduleId] = { tabId: this.tabId, timestamp: now };
+                this._saveLocks(locks);
+                return true;
+            },
+
+            releaseLock: function (scheduleId) {
+                if (!scheduleId) return;
+                const locks = this._getLocks();
+                if (locks[scheduleId] && locks[scheduleId].tabId === this.tabId) {
+                    delete locks[scheduleId];
+                    this._saveLocks(locks);
+                }
+            },
+
+            releaseCurrentLock: function () {
+                this.releaseLock(this.activeScheduleId);
+            },
+
+            refreshLockHeartbeat: function () {
+                if (this.isReadOnly || !this.activeScheduleId || this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
+                    return;
+                }
+                const locks = this._getLocks();
+                if (locks[this.activeScheduleId] && locks[this.activeScheduleId].tabId === this.tabId) {
+                    locks[this.activeScheduleId].timestamp = Date.now();
+                    this._saveLocks(locks);
+                }
+            },
+
+            _collectFromScheduleData: function (dataSource, collectorFn) {
+                const resultSet = new Set();
+                this._forEachCourse(dataSource, (course) => {
+                    collectorFn(course, resultSet);
+                });
+                return Array.from(resultSet).sort();
+            },
+
+            getAllTags: function () {
+                return this._collectFromScheduleData(this.scheduleData, (classItem, resultSet) => {
+                    if (classItem.tags && Array.isArray(classItem.tags)) {
+                        classItem.tags.forEach(tag => resultSet.add(tag));
+                    }
+                });
+            },
+
+            _collectFromAllCourses: function (collectorFn) {
+                const resultSet = new Set();
+                if (!this.schedules) return [];
+
+                Object.values(this.schedules).forEach(schedule => {
                     if (schedule.data && schedule.data.scheduleData) {
-                        Object.entries(schedule.data.scheduleData).forEach(([classroom, days]) => {
-                            if (!allSchedulesData[classroom]) allSchedulesData[classroom] = {};
-                            Object.entries(days).forEach(([day, courses]) => {
-                                if (!allSchedulesData[classroom][day]) allSchedulesData[classroom][day] = [];
-                                allSchedulesData[classroom][day].push(...courses);
+                        Object.values(schedule.data.scheduleData).forEach(classroom => {
+                            if (!classroom) return;
+                            Object.values(classroom).forEach(daySchedule => {
+                                if (Array.isArray(daySchedule)) {
+                                    daySchedule.forEach(classItem => {
+                                        collectorFn(classItem, resultSet);
+                                    });
+                                }
                             });
                         });
                     }
                 });
-                
-                this.tags = this.getGlobalAllTags();
-                this.ui.initializeTagFilter();
-                this.loadAndApplyPersistedFilters();
-                this.modals.populateFilterModal(); // Ensure filter modal is updated for global view
+                return Array.from(resultSet).sort();
+            },
 
-                this.buildCourseColorMap(allSchedulesData);
-                
-                this.ui.renderScheduleTable();
-                this.ui.updateGlobalUIForScheduleMode();
-                this.ui.updateClearAllFiltersButtonVisibility();
-                localStorage.setItem('activeScheduleId', this.activeScheduleId);
-            } else {
-                this.loadSchedule(newId);
-            }
-        },
-
-        // --- FILTER LOGIC ---
-        loadAndApplyPersistedFilters: function() {
-            const persistedTagsJSON = localStorage.getItem('activeTagFilters');
-            if (persistedTagsJSON) {
-                try {
-                    const persistedTags = JSON.parse(persistedTagsJSON);
-                    const allCurrentTags = new Set(this.getAllTags());
-                    
-                    const validPersistedTags = persistedTags.filter(tag => allCurrentTags.has(tag));
-                    
-                    this.activeFilters = validPersistedTags.map(tag => ({ type: 'tag', value: tag }));
-                    
-                    if (this.tagFilterTagify) {
-                        this.tagFilterTagify.loadOriginalValues(validPersistedTags);
+            getGlobalAllTags: function () {
+                return this._collectFromAllCourses((classItem, resultSet) => {
+                    if (classItem.tags && Array.isArray(classItem.tags)) {
+                        classItem.tags.forEach(tag => resultSet.add(tag));
                     }
+                });
+            },
 
-                    if (persistedTags.length !== validPersistedTags.length) {
-                        localStorage.setItem('activeTagFilters', JSON.stringify(validPersistedTags));
+            getGlobalAllCourseNames: function () {
+                return this._collectFromAllCourses((classItem, resultSet) => {
+                    if (classItem.name) {
+                        resultSet.add(classItem.name);
                     }
-                } catch (e) {
-                    console.error("Failed to parse persisted tag filters:", e);
-                    localStorage.removeItem('activeTagFilters');
-                    this.activeFilters = [];
+                });
+            },
+
+            getGlobalAllTeachers: function () {
+                return this._collectFromAllCourses((classItem, resultSet) => {
+                    if (classItem.teacher) {
+                        resultSet.add(classItem.teacher);
+                    }
+                });
+            },
+
+            getShortUserName: function (email) {
+                if (!email || email.indexOf('@') === -1) return email;
+                return email.split('@')[0];
+            },
+
+            isCurrentUserAdmin: function () {
+                const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
+                return fullEmail.toLowerCase() === 'cheerc@talented.com.tw';
+            },
+
+            canManageCurrentScheduleSettings: function () {
+                if (this.isCurrentUserAdmin()) {
+                    return true;
                 }
-            } else {
-                this.activeFilters = [];
-            }
-            this.ui.updateClearFilterButtonVisibility();
-            this.ui.updateAdvancedFilterButtonState();
-            this.ui.updateClearAllFiltersButtonVisibility();
-        },
-
-        applyTagFilters: async function() {
-            if (!this.tagFilterTagify) return;
-
-            const advancedFiltersExist = this.activeFilters.some(f => f.type !== 'tag');
-            const selectedTags = this.tagFilterTagify.value.map(tag => tag.value);
-
-            // If advanced filters are active, and the user is changing the primary tag filter, confirm first.
-            if (advancedFiltersExist && selectedTags.length > 0) {
-                const confirmed = await this.modals.showConfirm(
-                    '變更主要標籤將會重設目前的進階篩選條件，確定要繼續嗎？'
-                );
-                if (!confirmed) {
-                    // Revert the visual change in Tagify input to match the actual active filter state
-                    const currentTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
-                    this.tagFilterTagify.loadOriginalValues(currentTags);
-                    return; 
+                if (this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
+                    return false; // Cannot manage settings in "All Schedules" view
                 }
-            }
+                const schedule = this.schedules[this.activeScheduleId];
+                if (!schedule || !schedule.createdBy) {
+                    return false; // No schedule or creator info
+                }
+                return this.currentUserEmail === this.getShortUserName(schedule.createdBy);
+            },
 
-            // Set activeFilters to ONLY be the new tag filters, effectively clearing advanced filters.
-            this.activeFilters = selectedTags.map(tag => ({ type: 'tag', value: tag }));
-
-            localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
-            this.modals.populateFilterModal();
-            this.ui.renderScheduleTable();
-            this.ui.updateAdvancedFilterButtonState();
-            this.ui.updateClearFilterButtonVisibility();
-            this.ui.updateClearAllFiltersButtonVisibility();
-        },
-
-        toggleAllFilterCheckboxes: function(shouldBeChecked) {
-            AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                cb.checked = shouldBeChecked;
-            });
-        },
-
-        applyFilters: function() {
-            const filterType = AppElements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
-            const selectedItems = Array.from(AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-            
-            const tagFilters = this.activeFilters.filter(f => f.type === 'tag');
-            const newAdvancedFilters = selectedItems.map(item => ({ type: filterType, value: item }));
-            this.activeFilters = [...tagFilters, ...newAdvancedFilters];
-
-            this.ui.renderScheduleTable();
-            this.ui.updateAdvancedFilterButtonState();
-            this.ui.updateClearAllFiltersButtonVisibility();
-            AppElements.filterModal.style.display = 'none';
-        },
-
-        clearAdvancedFilters: function() {
-            this.activeFilters = this.activeFilters.filter(f => f.type === 'tag');
-            this.modals.populateFilterModal();
-            this.ui.renderScheduleTable();
-            this.ui.updateAdvancedFilterButtonState();
-            this.ui.updateClearAllFiltersButtonVisibility();
-        },
-
-        clearAllFilters: function() {
-            this.activeFilters = [];
-            localStorage.removeItem('activeTagFilters');
-            if (this.tagFilterTagify) {
-                this.tagFilterTagify.removeAllTags();
-            }
-            this.modals.populateFilterModal();
-            this.ui.renderScheduleTable();
-            this.ui.updateAdvancedFilterButtonState();
-            this.ui.updateClearFilterButtonVisibility();
-            this.ui.updateClearAllFiltersButtonVisibility();
-        },
-
-        // --- API COMMUNICATION ---
-        loadVersions: async function() {
-            const select = AppElements.versionHistorySelect;
-            select.innerHTML = '<option>正在載入中...</option>';
-            this.ui.showNotification('正在獲取版本列表...', 'info');
-            
-            try {
-                const versions = await ServerApi.call('getVersions', this.activeScheduleId);
-                if (!versions || versions.error) throw new Error(versions ? versions.error : '未知錯誤');
-                
-                select.innerHTML = '';
-                if (versions.length > 0) {
-                    versions.forEach(v => {
-                        const option = document.createElement('option');
-                        option.value = v.id;
-                        option.textContent = `${new Date(v.id).toLocaleString()} by ${this.getShortUserName(v.user)}`;
-                        select.appendChild(option);
+            ensureDataIds: function (scheduleData) {
+                if (!scheduleData) return {};
+                Object.values(scheduleData).forEach(classroom => {
+                    if (!classroom) return;
+                    Object.values(classroom).forEach(daySchedule => {
+                        if (Array.isArray(daySchedule)) {
+                            daySchedule.forEach(classItem => {
+                                if (classItem && !classItem.id) {
+                                    classItem.id = this.generateUniqueId();
+                                }
+                            });
+                        }
                     });
-                    this.ui.showNotification('版本列表已更新', 'success');
-                } else {
-                    select.innerHTML = '<option>此課表沒有歷史紀錄</option>';
+                });
+                return scheduleData;
+            },
+
+            generateUniqueId: function () {
+                return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+            },
+
+            stringToHashCode: function (str) {
+                let hash = 5381;
+                for (let i = 0; i < str.length; i++) {
+                    hash = ((hash << 5) + hash) + str.charCodeAt(i);
                 }
-            } catch (error) {
-                this.ui.showNotification('獲取版本列表失敗: ' + error.message, 'error');
-                select.innerHTML = '<option>獲取失敗</option>';
-            }
-        },
+                return hash;
+            },
 
-        handleLoadVersion: async function() {
-            const select = AppElements.versionHistorySelect;
-            const versionId = select.value;
-            if (!versionId || select.options[select.selectedIndex].text === '沒有歷史紀錄') {
-                this.ui.showNotification('請選擇一個有效的版本', 'error');
-                return;
-            }
-            if (this.isDirty && !await this.modals.showConfirm(`您有未儲存的變更，確定要讀取歷史版本並覆蓋當前的課表嗎？`)) {
-                return;
-            }
-            AppElements.versionHistoryModal.style.display = 'none';
-            this.ui.showLoading('正在讀取歷史版本...');
+            buildCourseColorMap: function (dataSource = this.scheduleData) {
+                this.courseColorMap = {};
+                const allNames = new Set();
+                if (!dataSource) return;
 
-            try {
-                const data = await ServerApi.call('getVersionData', versionId);
-                if (!data || !data.success) throw new Error(data ? data.error : '未知錯誤');
+                Object.values(dataSource).forEach(classroom => {
+                    if (!classroom) return;
+                    Object.values(classroom).forEach(daySchedule => {
+                        if (Array.isArray(daySchedule)) {
+                            daySchedule.forEach(item => allNames.add(item.name));
+                        }
+                    });
+                });
 
-                const currentSchedule = this.schedules[this.activeScheduleId];
-                currentSchedule.data.classrooms = data.classrooms || [];
-                currentSchedule.data.scheduleData = this.ensureDataIds(data.scheduleData || {});
-                currentSchedule.data.tags = data.tags || [];
-                
-                this.saveSchedulesToLocal();
-                this.loadSchedule(this.activeScheduleId);
+                const sortedNames = Array.from(allNames).sort();
+                sortedNames.forEach(name => {
+                    const hash = this.stringToHashCode(name);
+                    const colorIndex = Math.abs(hash) % AppConfig.COURSE_COLORS.length;
+                    this.courseColorMap[name] = AppConfig.COURSE_COLORS[colorIndex];
+                });
+            },
 
-                this.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE, this.lastCloudModifiedTime);
-                this.ui.showNotification(`已在本地載入版本: ${new Date(data.versionId).toLocaleString()}`, 'info');
-            } catch (error) {
-                this.ui.showNotification('讀取版本失敗: ' + error.message, 'error');
-            } finally {
-                this.ui.hideLoading();
-            }
-        },
+            sortClassrooms: function (classroomList) {
+                try {
+                    return [...classroomList].sort((a, b) => {
+                        const numA = parseInt((a.match(/\d+/) || ['0'])[0]);
+                        const numB = parseInt((b.match(/\d+/) || ['0'])[0]);
+                        const hundredsA = Math.floor(numA / 100);
+                        const hundredsB = Math.floor(numB / 100);
+                        if (hundredsA !== hundredsB) return hundredsB - hundredsA;
+                        return (numA % 100) - (numB % 100);
+                    });
+                } catch (e) {
+                    console.error('排序教室失敗:', e);
+                    return classroomList || [];
+                }
+            },
 
-        saveDataToLocal: function() {
-            try {
-                // Sync the current working data back to the main schedules object
-                if (this.activeScheduleId && this.schedules[this.activeScheduleId]) {
-                    const activeSchedule = this.schedules[this.activeScheduleId];
-                    if (activeSchedule.data) {
-                        activeSchedule.data.scheduleData = this.scheduleData;
-                        activeSchedule.data.classrooms = this.classrooms;
-                        activeSchedule.data.tags = this.getAllTags(); // Also update the tags list for consistency
+            checkTimeConflict: function (classroom, day, newClass) {
+                if (!this.scheduleData[classroom]?.[day]) return false;
+                const newStart = this.timeToMinutes(newClass.timeStart);
+                const newEnd = this.timeToMinutes(newClass.timeEnd);
+                return this.scheduleData[classroom][day].some((existingClass) => {
+                    if (existingClass.id === newClass.id) return false;
+                    const existingStart = this.timeToMinutes(existingClass.timeStart);
+                    const existingEnd = this.timeToMinutes(existingClass.timeEnd);
+                    return newStart < existingEnd && newEnd > existingStart;
+                });
+            },
+
+            timeToMinutes: function (timeStr) {
+                try {
+                    const [hours, minutes] = timeStr.split(':').map(Number);
+                    return hours * 60 + minutes;
+                } catch (e) {
+                    console.error('時間轉換失敗:', e, timeStr);
+                    return 0;
+                }
+            },
+
+            formatTime: function (timeStr) {
+                if (!timeStr) return '00:00';
+                timeStr = timeStr.trim();
+                if (AppConfig.TIME_REGEX.test(timeStr)) {
+                    const [hours, minutes] = timeStr.split(':');
+                    return hours.padStart(2, '0') + ':' + minutes.padStart(2, '0');
+                }
+                return '00:00';
+            },
+
+            formatTimestampForFilename: function (timestamp) {
+                if (!timestamp) return '';
+                const date = new Date(timestamp);
+                const YYYY = date.getFullYear();
+                const MM = String(date.getMonth() + 1).padStart(2, '0');
+                const DD = String(date.getDate()).padStart(2, '0');
+                const HH = String(date.getHours()).padStart(2, '0');
+                const mm = String(date.getMinutes()).padStart(2, '0');
+                return `${YYYY}${MM}${DD}_${HH}${mm}`;
+            },
+
+            _filterScheduleData: function (data, filterPredicate) {
+                const filteredData = {};
+                for (const classroom in data) {
+                    const dayData = data[classroom];
+                    const newDayData = {};
+                    let classroomHasCourses = false;
+                    for (const day in dayData) {
+                        const filteredCourses = dayData[day].filter(filterPredicate);
+                        if (filteredCourses.length > 0) {
+                            newDayData[day] = filteredCourses;
+                            classroomHasCourses = true;
+                        }
+                    }
+                    if (classroomHasCourses) {
+                        filteredData[classroom] = newDayData;
                     }
                 }
+                return filteredData;
+            },
 
-                // After saving, the list of all tags might have changed.
-                // We need to re-initialize the tag filter to get the fresh list, while preserving the current value.
-                let currentFilterValue = [];
-                if (this.tagFilterTagify) {
-                    currentFilterValue = this.tagFilterTagify.value.map(tag => tag.value);
+            filterDataByTags: function (data) {
+                const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
+                if (tagFilters.size === 0) {
+                    return data;
                 }
-                
-                this.tags = this.getAllTags(); // Recalculate all tags from current data
-                this.ui.initializeTagFilter(); // This will destroy and recreate the Tagify instance
+                return this._filterScheduleData(data, course =>
+                    course.tags && course.tags.some(d => tagFilters.has(d))
+                );
+            },
 
-                if (this.tagFilterTagify && currentFilterValue.length > 0) {
-                    // Restore the previous value without triggering 'add' events.
-                    // loadOriginalValues will only add valid tags from the new whitelist.
-                    this.tagFilterTagify.loadOriginalValues(currentFilterValue);
+            filterDataByActiveFilters: function (data) {
+                const nameFilters = new Set(this.activeFilters.filter(f => f.type === 'name').map(f => f.value));
+                const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
+                const teacherFilters = new Set(this.activeFilters.filter(f => f.type === 'teacher').map(f => f.value));
+
+                if (nameFilters.size === 0 && tagFilters.size === 0 && teacherFilters.size === 0) {
+                    return data;
                 }
 
-                this.saveSchedulesToLocal();
-                localStorage.setItem('activeScheduleId', this.activeScheduleId);
-                localStorage.setItem('app_version', AppConfig.APP_VERSION);
-                if (this.lastSyncTime) localStorage.setItem('lastSyncTime', this.lastSyncTime.toISOString());
-            } catch (e) {
-                console.error("保存數據到本地失敗:", e);
-                this.ui.showNotification("保存數據失敗，可能是存儲空間不足", "error");
-            }
-        },
+                return this._filterScheduleData(data, course => {
+                    const nameMatch = nameFilters.size === 0 || nameFilters.has(course.name);
+                    const tagMatch = tagFilters.size === 0 || (course.tags && course.tags.some(d => tagFilters.has(d)));
+                    const teacherMatch = teacherFilters.size === 0 || teacherFilters.has(course.teacher);
+                    return nameMatch && tagMatch && teacherMatch;
+                });
+            },
 
-        loadDataFromServer: async function() {
-            if (this.isConnecting) {
-                this.ui.showNotification("A sync operation is already in progress.", "info");
-                return;
-            }
-            this.isConnecting = true;
-            this.ui.manageLoadingState('start', { message: '正在從雲端同步資料...' });
-
-            try {
-                const result = await ServerApi.call('getData');
-                if (!result || result.error) throw new Error(result ? result.error : '從服務器獲取的數據為空');
-                
-                this.schedules = result.schedules || {};
-                this.scheduleLastModified = {}; // Clear old timestamps
-                for (const id in this.schedules) {
-                    if (this.schedules[id].lastModified) {
-                        this.scheduleLastModified[id] = this.schedules[id].lastModified;
-                        // The timestamp is sensitive and only needed for the save operation,
-                        // let's not keep it in the main data object that gets saved to local storage.
-                        delete this.schedules[id].lastModified;
+            _forEachCourse: function (dataSource, callback) {
+                if (!dataSource) return;
+                for (const classroom in dataSource) {
+                    for (const day in dataSource[classroom]) {
+                        dataSource[classroom][day].forEach(course => {
+                            callback(course, classroom, day);
+                        });
                     }
                 }
+            },
 
-                this.activeMetadataTimestamp = result.metadataTimestamp;
-
-                // After fetching data, the client decides which schedule to load.
-                this.loadInitialSchedules();
-
-                this.lastSyncTime = new Date();
-                this.saveSchedulesToLocal();
-                this.ui.manageLoadingState('end', { success: true, message: '從雲端讀取數據成功！' });
-
-            } catch (error) {
-                this.ui.manageLoadingState('end', { success: false, message: `讀取失敗: ${error.message}` });
-            } finally {
-                this.isConnecting = false;
-            }
-        },
-
-        saveDataToServer: async function() {
-            if (this.isConnecting) return;
-            this.isConnecting = true;
-            this.ui.manageLoadingState('start', { message: '正在檢查版本並儲存至雲端...' });
-
-            try {
-                const currentScheduleTimestamp = this.scheduleLastModified[this.activeScheduleId];
-                if (!currentScheduleTimestamp) {
-                    throw new Error("找不到當前課表的版本資訊，無法儲存。請嘗試重新載入。");
-                }
-
-                const dataToSend = {
-                    scheduleId: this.activeScheduleId,
-                    lastModified: currentScheduleTimestamp, // *** STEP 4: Attach the specific timestamp
-                    scheduleData: {
-                        classrooms: this.classrooms,
-                        scheduleData: this.scheduleData,
-                        tags: this.tags
+            countOccurrences: function (predicate) {
+                let count = 0;
+                this._forEachCourse(this.scheduleData, course => {
+                    if (predicate(course)) {
+                        count++;
                     }
-                };
+                });
+                return count;
+            },
 
-                const saveResult = await ServerApi.call('saveData', dataToSend);
+            updateAllOccurrences: function (predicate, updateFn) {
+                this._forEachCourse(this.scheduleData, course => {
+                    if (predicate(course)) {
+                        updateFn(course);
+                    }
+                });
+            },
 
-                // *** STEP 4: Handle new conflict error
-                if (saveResult && saveResult.conflict) {
-                    this.modals.showConfirm(saveResult.error, true); // Show the specific error from server
-                    this.ui.manageLoadingState('end', { success: false, isConflict: true });
+            handleDrop: function (evt) {
+                const { from, to, item, newIndex } = evt;
+                const classId = item.dataset.id;
+                const fromClassroom = from.dataset.classroom, fromDay = parseInt(from.dataset.day);
+                const toClassroom = to.dataset.classroom, toDay = parseInt(to.dataset.day);
+
+                this.originalSourceListElement = null;
+
+                if (from === to) {
+                    this.ui.renderScheduleTable();
                     return;
                 }
 
-                if (!saveResult || !saveResult.success) {
-                    throw new Error(saveResult?.error || '儲存時發生未知錯誤');
+                const fromDaySchedule = this.scheduleData[fromClassroom]?.[fromDay] || [];
+                const itemIndex = fromDaySchedule.findIndex(c => c.id === classId);
+
+                if (itemIndex === -1) {
+                    console.error("Could not find dragged item in data model.");
+                    this.ui.renderScheduleTable();
+                    return;
                 }
 
-                this.lastSyncTime = new Date();
-                this.scheduleLastModified[this.activeScheduleId] = saveResult.lastModified;
-                this.historyModule.updateCleanSnapshot();
-                this.historyModule.checkDirty();
-                this.ui.manageLoadingState('end', { success: true, message: '數據已成功儲存到雲端！' });
+                const [movedItem] = fromDaySchedule.splice(itemIndex, 1);
 
-            } catch (error) {
-                this.ui.manageLoadingState('end', { success: false, message: `數據儲存失敗: ${error.message}` });
-            } finally {
-                this.isConnecting = false;
-            }
-        },
+                if (!this.scheduleData[toClassroom]) this.scheduleData[toClassroom] = {};
+                if (!this.scheduleData[toClassroom][toDay]) this.scheduleData[toClassroom][toDay] = [];
 
-        findNextUpcomingClasses: function() {
-            this.nextUpcomingClassIds.clear();
-            
-            const today = new Date();
-            const todayIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
+                this.scheduleData[toClassroom][toDay].splice(newIndex, 0, movedItem);
 
-            // This feature is only active when viewing today in day mode.
-            if (this.currentViewMode !== AppConfig.MODES.DAY || this.currentDayIndex !== todayIndex) {
-                return;
-            }
-
-            const nowInMinutes = today.getHours() * 60 + today.getMinutes();
-            const thresholdInMinutes = 30;
-            let futureClasses = [];
-
-            // First, find all classes in the future for today
-            for (const classroom in this.scheduleData) {
-                if (this.scheduleData[classroom]?.[todayIndex]) {
-                    this.scheduleData[classroom][todayIndex].forEach(course => {
-                        const startTimeInMinutes = this.timeToMinutes(course.timeStart);
-                        if (startTimeInMinutes >= nowInMinutes) {
-                            futureClasses.push(course);
-                        }
-                    });
+                if (this.scheduleData[fromClassroom]?.[fromDay]?.length === 0) {
+                    delete this.scheduleData[fromClassroom][fromDay];
                 }
-            }
 
-            if (futureClasses.length > 0) {
-                // Rule 1: Prioritize classes within the 30-minute threshold
-                const withinThresholdClasses = futureClasses.filter(course => {
-                    const startTimeInMinutes = this.timeToMinutes(course.timeStart);
-                    const timeDifference = startTimeInMinutes - nowInMinutes;
-                    return timeDifference >= 0 && timeDifference <= thresholdInMinutes;
-                });
+                this.scheduleData[toClassroom][toDay].sort((a, b) => this.timeToMinutes(a.timeStart) - this.timeToMinutes(b.timeStart));
 
-                if (withinThresholdClasses.length > 0) {
-                    withinThresholdClasses.forEach(course => this.nextUpcomingClassIds.add(course.id));
-                } else {
-                    // Rule 2: If none in threshold, find the very next one(s)
-                    const nextStartTime = Math.min(...futureClasses.map(c => this.timeToMinutes(c.timeStart)));
-                    futureClasses.forEach(course => {
-                        if (this.timeToMinutes(course.timeStart) === nextStartTime) {
-                            this.nextUpcomingClassIds.add(course.id);
-                        }
-                    });
-                }
-            }
-            // This function no longer needs to return a value; it just updates the state.
-        },
-
-        // --- UTILITY ---
-
-        _getLocks: function() {
-            try {
-                return JSON.parse(localStorage.getItem('gemini_schedule_locks') || '{}');
-            } catch (e) {
-                return {};
-            }
-        },
-
-        _saveLocks: function(locks) {
-            localStorage.setItem('gemini_schedule_locks', JSON.stringify(locks));
-        },
-
-        acquireLock: function(scheduleId) {
-            const locks = this._getLocks();
-            const existingLock = locks[scheduleId];
-            const now = Date.now();
-
-            if (existingLock && existingLock.tabId !== this.tabId) {
-                const isStale = (now - existingLock.timestamp) > 15000; // 15 second stale threshold
-                if (!isStale) {
-                    return false; // Lock is held by another tab
-                }
-                // If we are here, the lock is stale, so we break it.
-            }
-
-            // Acquire or update the lock
-            locks[scheduleId] = { tabId: this.tabId, timestamp: now };
-            this._saveLocks(locks);
-            return true;
-        },
-
-        releaseLock: function(scheduleId) {
-            if (!scheduleId) return;
-            const locks = this._getLocks();
-            if (locks[scheduleId] && locks[scheduleId].tabId === this.tabId) {
-                delete locks[scheduleId];
-                this._saveLocks(locks);
-            }
-        },
-
-        releaseCurrentLock: function() {
-            this.releaseLock(this.activeScheduleId);
-        },
-
-        refreshLockHeartbeat: function() {
-            if (this.isReadOnly || !this.activeScheduleId || this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
-                return;
-            }
-            const locks = this._getLocks();
-            if (locks[this.activeScheduleId] && locks[this.activeScheduleId].tabId === this.tabId) {
-                locks[this.activeScheduleId].timestamp = Date.now();
-                this._saveLocks(locks);
-            }
-        },
-
-        _collectFromScheduleData: function(dataSource, collectorFn) {
-            const resultSet = new Set();
-            this._forEachCourse(dataSource, (course) => {
-                collectorFn(course, resultSet);
-            });
-            return Array.from(resultSet).sort();
-        },
-
-        getAllTags: function() {
-            return this._collectFromScheduleData(this.scheduleData, (classItem, resultSet) => {
-                if (classItem.tags && Array.isArray(classItem.tags)) {
-                    classItem.tags.forEach(tag => resultSet.add(tag));
-                }
-            });
-        },
-
-        _collectFromAllCourses: function(collectorFn) {
-            const resultSet = new Set();
-            if (!this.schedules) return [];
-
-            Object.values(this.schedules).forEach(schedule => {
-                if (schedule.data && schedule.data.scheduleData) {
-                    Object.values(schedule.data.scheduleData).forEach(classroom => {
-                        if (!classroom) return;
-                        Object.values(classroom).forEach(daySchedule => {
-                            if (Array.isArray(daySchedule)) {
-                                daySchedule.forEach(classItem => {
-                                    collectorFn(classItem, resultSet);
-                                });
-                            }
-                        });
-                    });
-                }
-            });
-            return Array.from(resultSet).sort();
-        },
-
-        getGlobalAllTags: function() {
-            return this._collectFromAllCourses((classItem, resultSet) => {
-                if (classItem.tags && Array.isArray(classItem.tags)) {
-                    classItem.tags.forEach(tag => resultSet.add(tag));
-                }
-            });
-        },
-
-        getGlobalAllCourseNames: function() {
-            return this._collectFromAllCourses((classItem, resultSet) => {
-                if (classItem.name) {
-                    resultSet.add(classItem.name);
-                }
-            });
-        },
-
-        getGlobalAllTeachers: function() {
-            return this._collectFromAllCourses((classItem, resultSet) => {
-                if (classItem.teacher) {
-                    resultSet.add(classItem.teacher);
-                }
-            });
-        },
-
-        getShortUserName: function(email) {
-            if (!email || email.indexOf('@') === -1) return email;
-            return email.split('@')[0];
-        },
-
-        isCurrentUserAdmin: function() {
-            const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
-            return fullEmail.toLowerCase() === 'cheerc@talented.com.tw';
-        },
-
-        canManageCurrentScheduleSettings: function() {
-            if (this.isCurrentUserAdmin()) {
-                return true;
-            }
-            if (this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
-                return false; // Cannot manage settings in "All Schedules" view
-            }
-            const schedule = this.schedules[this.activeScheduleId];
-            if (!schedule || !schedule.createdBy) {
-                return false; // No schedule or creator info
-            }
-            return this.currentUserEmail === this.getShortUserName(schedule.createdBy);
-        },
-
-        ensureDataIds: function(scheduleData) {
-            if (!scheduleData) return {};
-            Object.values(scheduleData).forEach(classroom => {
-                if (!classroom) return;
-                Object.values(classroom).forEach(daySchedule => {
-                    if (Array.isArray(daySchedule)) {
-                        daySchedule.forEach(classItem => {
-                            if (classItem && !classItem.id) {
-                                classItem.id = this.generateUniqueId();
-                            }
-                        });
-                    }
-                });
-            });
-            return scheduleData;
-        },
-
-        generateUniqueId: function() {
-            return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-        },
-
-        stringToHashCode: function(str) {
-            let hash = 5381;
-            for (let i = 0; i < str.length; i++) {
-                hash = ((hash << 5) + hash) + str.charCodeAt(i);
-            }
-            return hash;
-        },
-
-        buildCourseColorMap: function(dataSource = this.scheduleData) {
-            this.courseColorMap = {};
-            const allNames = new Set();
-            if (!dataSource) return;
-
-            Object.values(dataSource).forEach(classroom => {
-                if (!classroom) return;
-                Object.values(classroom).forEach(daySchedule => {
-                    if (Array.isArray(daySchedule)) {
-                        daySchedule.forEach(item => allNames.add(item.name));
-                    }
-                });
-            });
-
-            const sortedNames = Array.from(allNames).sort();
-            sortedNames.forEach(name => {
-                const hash = this.stringToHashCode(name);
-                const colorIndex = Math.abs(hash) % AppConfig.COURSE_COLORS.length;
-                this.courseColorMap[name] = AppConfig.COURSE_COLORS[colorIndex];
-            });
-        },
-
-        sortClassrooms: function(classroomList) {
-            try {
-                return [...classroomList].sort((a, b) => {
-                    const numA = parseInt((a.match(/\d+/) || ['0'])[0]);
-                    const numB = parseInt((b.match(/\d+/) || ['0'])[0]);
-                    const hundredsA = Math.floor(numA / 100);
-                    const hundredsB = Math.floor(numB / 100);
-                    if (hundredsA !== hundredsB) return hundredsB - hundredsA;
-                    return (numA % 100) - (numB % 100);
-                });
-            } catch (e) {
-                console.error('排序教室失敗:', e);
-                return classroomList || [];
-            }
-        },
-
-        checkTimeConflict: function(classroom, day, newClass) {
-            if (!this.scheduleData[classroom]?.[day]) return false;
-            const newStart = this.timeToMinutes(newClass.timeStart);
-            const newEnd = this.timeToMinutes(newClass.timeEnd);
-            return this.scheduleData[classroom][day].some((existingClass) => {
-                if (existingClass.id === newClass.id) return false;
-                const existingStart = this.timeToMinutes(existingClass.timeStart);
-                const existingEnd = this.timeToMinutes(existingClass.timeEnd);
-                return newStart < existingEnd && newEnd > existingStart;
-            });
-        },
-
-        timeToMinutes: function(timeStr) {
-            try {
-                const [hours, minutes] = timeStr.split(':').map(Number);
-                return hours * 60 + minutes;
-            } catch (e) {
-                console.error('時間轉換失敗:', e, timeStr);
-                return 0;
-            }
-        },
-
-        formatTime: function(timeStr) {
-            if (!timeStr) return '00:00';
-            timeStr = timeStr.trim();
-            if (AppConfig.TIME_REGEX.test(timeStr)) {
-                const [hours, minutes] = timeStr.split(':');
-                return hours.padStart(2, '0') + ':' + minutes.padStart(2, '0');
-            }
-            return '00:00';
-        },
-
-        formatTimestampForFilename: function(timestamp) {
-            if (!timestamp) return '';
-            const date = new Date(timestamp);
-            const YYYY = date.getFullYear();
-            const MM = String(date.getMonth() + 1).padStart(2, '0');
-            const DD = String(date.getDate()).padStart(2, '0');
-            const HH = String(date.getHours()).padStart(2, '0');
-            const mm = String(date.getMinutes()).padStart(2, '0');
-            return `${YYYY}${MM}${DD}_${HH}${mm}`;
-        },
-
-        _filterScheduleData: function(data, filterPredicate) {
-            const filteredData = {};
-            for (const classroom in data) {
-                const dayData = data[classroom];
-                const newDayData = {};
-                let classroomHasCourses = false;
-                for (const day in dayData) {
-                    const filteredCourses = dayData[day].filter(filterPredicate);
-                    if (filteredCourses.length > 0) {
-                        newDayData[day] = filteredCourses;
-                        classroomHasCourses = true;
-                    }
-                }
-                if (classroomHasCourses) {
-                    filteredData[classroom] = newDayData;
-                }
-            }
-            return filteredData;
-        },
-
-        filterDataByTags: function(data) {
-            const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
-            if (tagFilters.size === 0) {
-                return data;
-            }
-            return this._filterScheduleData(data, course => 
-                course.tags && course.tags.some(d => tagFilters.has(d))
-            );
-        },
-
-        filterDataByActiveFilters: function(data) {
-            const nameFilters = new Set(this.activeFilters.filter(f => f.type === 'name').map(f => f.value));
-            const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
-            const teacherFilters = new Set(this.activeFilters.filter(f => f.type === 'teacher').map(f => f.value));
-
-            if (nameFilters.size === 0 && tagFilters.size === 0 && teacherFilters.size === 0) {
-                return data;
-            }
-
-            return this._filterScheduleData(data, course => {
-                const nameMatch = nameFilters.size === 0 || nameFilters.has(course.name);
-                const tagMatch = tagFilters.size === 0 || (course.tags && course.tags.some(d => tagFilters.has(d)));
-                const teacherMatch = teacherFilters.size === 0 || teacherFilters.has(course.teacher);
-                return nameMatch && tagMatch && teacherMatch;
-            });
-        },
-
-        _forEachCourse: function(dataSource, callback) {
-            if (!dataSource) return;
-            for (const classroom in dataSource) {
-                for (const day in dataSource[classroom]) {
-                    dataSource[classroom][day].forEach(course => {
-                        callback(course, classroom, day);
-                    });
-                }
-            }
-        },
-
-        countOccurrences: function(predicate) {
-            let count = 0;
-            this._forEachCourse(this.scheduleData, course => {
-                if (predicate(course)) {
-                    count++;
-                }
-            });
-            return count;
-        },
-
-        updateAllOccurrences: function(predicate, updateFn) {
-            this._forEachCourse(this.scheduleData, course => {
-                if (predicate(course)) {
-                    updateFn(course);
-                }
-            });
-        },
-
-        handleDrop: function(evt) {
-            const { from, to, item, newIndex } = evt;
-            const classId = item.dataset.id;
-            const fromClassroom = from.dataset.classroom, fromDay = parseInt(from.dataset.day);
-            const toClassroom = to.dataset.classroom, toDay = parseInt(to.dataset.day);
-
-            this.originalSourceListElement = null;
-
-            if (from === to) {
                 this.ui.renderScheduleTable();
-                return;
-            }
+                this.saveDataToLocal();
+                this.ui.showNotification('已移動課程');
+                this.historyModule.saveState();
+            },
 
-            const fromDaySchedule = this.scheduleData[fromClassroom]?.[fromDay] || [];
-            const itemIndex = fromDaySchedule.findIndex(c => c.id === classId);
-            
-            if (itemIndex === -1) {
-                console.error("Could not find dragged item in data model.");
-                this.ui.renderScheduleTable();
-                return;
-            }
-            
-            const [movedItem] = fromDaySchedule.splice(itemIndex, 1);
+            hexToRgb: function (hex) {
+                if (!hex) return [255, 255, 255]; // Default to white if color is undefined
+                const bigint = parseInt(hex.slice(1), 16);
+                const r = (bigint >> 16) & 255;
+                const g = (bigint >> 8) & 255;
+                const b = bigint & 255;
+                return [r, g, b];
+            },
 
-            if (!this.scheduleData[toClassroom]) this.scheduleData[toClassroom] = {};
-            if (!this.scheduleData[toClassroom][toDay]) this.scheduleData[toClassroom][toDay] = [];
-            
-            this.scheduleData[toClassroom][toDay].splice(newIndex, 0, movedItem);
+            printScheduleToPdf: async function (pdfOptions) {
+                this.ui.showLoading('正在準備下載，請稍候...');
 
-            if (this.scheduleData[fromClassroom]?.[fromDay]?.length === 0) {
-                delete this.scheduleData[fromClassroom][fromDay];
-            }
-            
-            this.scheduleData[toClassroom][toDay].sort((a, b) => this.timeToMinutes(a.timeStart) - this.timeToMinutes(b.timeStart));
-            
-            this.ui.renderScheduleTable();
-            this.saveDataToLocal();
-            this.ui.showNotification('已移動課程');
-            this.historyModule.saveState();
-        },
+                try {
+                    // Step 1: Ensure font data is loaded.
+                    if (!this.pdfFontBase64) {
+                        this.ui.showLoading('首次列印，正在載入PDF專用字體...');
+                        const fontData = await ServerApi.call('getFontBase64FromDrive');
+                        if (fontData && fontData.error) throw new Error(fontData.error);
+                        if (!fontData) throw new Error('無法從伺服器獲取字體資料(回傳為空)。');
+                        this.pdfFontBase64 = fontData;
+                    }
 
-        hexToRgb: function(hex) {
-            if (!hex) return [255, 255, 255]; // Default to white if color is undefined
-            const bigint = parseInt(hex.slice(1), 16);
-            const r = (bigint >> 16) & 255;
-            const g = (bigint >> 8) & 255;
-            const b = bigint & 255;
-            return [r, g, b];
-        },
+                    this.ui.showLoading('正在生成PDF...');
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF({
+                        orientation: pdfOptions.orientation,
+                        unit: 'mm',
+                        format: pdfOptions.format
+                    });
 
-        printScheduleToPdf: async function(pdfOptions) {
-            this.ui.showLoading('正在準備下載，請稍候...');
+                    // Step 2: Define titles and filenames
+                    const isAllSchedules = this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
+                    const scheduleNameForPdf = isAllSchedules
+                        ? '所有課表'
+                        : (this.schedules[this.activeScheduleId]?.name || '未命名');
 
-            try {
-                // Step 1: Ensure font data is loaded.
-                if (!this.pdfFontBase64) {
-                    this.ui.showLoading('首次列印，正在載入PDF專用字體...');
-                    const fontData = await ServerApi.call('getFontBase64FromDrive');
-                    if (fontData && fontData.error) throw new Error(fontData.error);
-                    if (!fontData) throw new Error('無法從伺服器獲取字體資料(回傳為空)。');
-                    this.pdfFontBase64 = fontData;
-                }
+                    const hasCustomTitle = pdfOptions.customTitle && pdfOptions.customTitle.length > 0;
+                    const finalTitle = hasCustomTitle ? pdfOptions.customTitle : `課表: ${scheduleNameForPdf}`;
 
-                this.ui.showLoading('正在生成PDF...');
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF({
-                    orientation: pdfOptions.orientation,
-                    unit: 'mm',
-                    format: pdfOptions.format
-                });
+                    // Step 3: Add font to the jsPDF instance.
+                    doc.addFileToVFS("NotoSansTC-Regular.ttf", this.pdfFontBase64);
+                    doc.addFont("NotoSansTC-Regular.ttf", "NotoSansTC", "normal");
+                    doc.setFont("NotoSansTC");
 
-                // Step 2: Define titles and filenames
-                const isAllSchedules = this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
-                const scheduleNameForPdf = isAllSchedules 
-                    ? '所有課表' 
-                    : (this.schedules[this.activeScheduleId]?.name || '未命名');
-                
-                const hasCustomTitle = pdfOptions.customTitle && pdfOptions.customTitle.length > 0;
-                const finalTitle = hasCustomTitle ? pdfOptions.customTitle : `課表: ${scheduleNameForPdf}`;
-                
-                // Step 3: Add font to the jsPDF instance.
-                doc.addFileToVFS("NotoSansTC-Regular.ttf", this.pdfFontBase64);
-                doc.addFont("NotoSansTC-Regular.ttf", "NotoSansTC", "normal");
-                doc.setFont("NotoSansTC");
+                    // Shared function for drawing header/footer on each page
+                    const didDrawPage = (data) => {
+                        const pageWidth = doc.internal.pageSize.getWidth();
+                        doc.setFont('NotoSansTC', 'normal');
+                        doc.setFontSize(16);
+                        doc.text(finalTitle, pageWidth / 2, 10, { align: 'center' });
 
-                // Shared function for drawing header/footer on each page
-                const didDrawPage = (data) => {
-                    doc.setFont('NotoSansTC', 'normal');
-                    doc.setFontSize(12);
-                    doc.text(finalTitle, data.settings.margin.left, 10);
+                        if (!hasCustomTitle) {
+                            const activeTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
+                            if (activeTags.length > 0) {
+                                doc.setFontSize(8);
+                                const tagsText = `篩選標籤: ${activeTags.join(', ')}`;
+                                const rightMargin = data.settings.margin.right;
+                                doc.text(tagsText, pageWidth - rightMargin, 10, { align: 'right' });
+                            }
+                        }
+                    };
 
-                    if (!hasCustomTitle) {
-                        const activeTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
-                        if (activeTags.length > 0) {
+                    const didDrawCellHooks = (data) => {
+                        if (data.section === 'head' && data.column.index === 0) {
+                            const { x, y, width, height } = data.cell;
+                            doc.setDrawColor(200, 200, 200);
+                            doc.setLineWidth(0.1);
+                            doc.line(x, y, x + width, y + height);
+
+                            doc.setFont('NotoSansTC', 'bold');
                             doc.setFontSize(8);
-                            const tagsText = `篩選標籤: ${activeTags.join(', ')}`;
-                            const pageWidth = doc.internal.pageSize.getWidth();
-                            const rightMargin = data.settings.margin.right;
-                            doc.text(tagsText, pageWidth - rightMargin, 10, { align: 'right' });
+                            doc.setTextColor(0, 0, 0);
+
+                            // "星期" right-aligned at top
+                            doc.text('星期', x + width - 2, y + 5, { align: 'right' });
+
+                            // "教室/老師" left-aligned at bottom
+                            const bottomText = this.viewSortMode === 'teacher' ? '老師' : '教室';
+                            doc.text(bottomText, x + 2, y + height - 2, { align: 'left' });
                         }
-                    }
-                };
+                    };
 
-                // Step 4: Build and render the table based on view mode.
-                if (this.currentViewMode === AppConfig.MODES.DAY) {
-                    // --- DAY VIEW PDF LOGIC (WYSIWYG) ---
-                    const table = document.getElementById('schedule-table');
-                    if (!table) throw new Error('找不到課表表格元素。');
+                    // Step 4: Build and render the table based on view mode.
+                    if (this.currentViewMode === AppConfig.MODES.DAY) {
+                        // --- DAY VIEW PDF LOGIC (WYSIWYG) ---
+                        const table = document.getElementById('schedule-table');
+                        if (!table) throw new Error('找不到課表表格元素。');
 
-                    // 1. Scrape Headers for WYSIWYG
-                    const thead = table.querySelector('thead');
-                    let head = [];
-                    if (thead) {
-                        const firstHeader = thead.querySelector('th')?.textContent.trim() || '教室/時間';
-                        const secondHeader = thead.querySelectorAll('th')[1]?.textContent.trim() || AppConfig.WEEKDAYS[this.currentDayIndex];
-                        head.push([firstHeader, secondHeader, '備註']);
-                    } else {
-                        const dayName = AppConfig.WEEKDAYS[this.currentDayIndex];
-                        head.push(['教室/時間', dayName, '備註']);
-                    }
+                        // 1. Scrape Headers for WYSIWYG
+                        const thead = table.querySelector('thead');
+                        let head = [];
+                        if (thead) {
+                            const secondHeader = thead.querySelectorAll('th')[1]?.textContent.trim() || AppConfig.WEEKDAYS[this.currentDayIndex];
+                            head.push(['', secondHeader, '備註']); // First cell empty for diagonal
+                        } else {
+                            const dayName = AppConfig.WEEKDAYS[this.currentDayIndex];
+                            head.push(['', dayName, '備註']);
+                        }
 
-                    // 2. Scrape Body for WYSIWYG order and content lookup
-                    const body = [];
-                    const tbody = table.querySelector('tbody');
-                    if (tbody) {
-                        tbody.querySelectorAll('tr').forEach(row => {
-                            try {
-                                if (!pdfOptions.includeEmpty) {
+                        // 2. Scrape Body for WYSIWYG order and content lookup
+                        const body = [];
+                        const tbody = table.querySelector('tbody');
+                        if (tbody) {
+                            tbody.querySelectorAll('tr').forEach(row => {
+                                try {
+                                    if (!pdfOptions.includeEmpty) {
+                                        const contentCell = row.cells[1];
+                                        if (!contentCell || contentCell.querySelectorAll('.class-item').length === 0) {
+                                            return;
+                                        }
+                                    }
+
+                                    const identifierCell = row.cells[0];
                                     const contentCell = row.cells[1];
-                                    if (!contentCell || contentCell.querySelectorAll('.class-item').length === 0) {
+                                    if (!identifierCell || !contentCell) return;
+
+                                    const prefix = identifierCell.querySelector('.schedule-prefix')?.textContent.trim() || '';
+                                    const mainName = identifierCell.querySelector('.classroom-name-main')?.textContent.trim() || identifierCell.textContent.trim();
+                                    const identifier = prefix ? `[${prefix}] ${mainName}` : mainName;
+
+                                    const classItems = contentCell.querySelectorAll('.class-item');
+
+                                    if (classItems.length === 0) {
+                                        body.push([identifier, '', '']);
                                         return;
                                     }
+
+                                    const pdfRowsForThisHtmlRow = [];
+                                    for (let i = 0; i < classItems.length; i++) {
+                                        pdfRowsForThisHtmlRow.push([]);
+                                    }
+
+                                    pdfRowsForThisHtmlRow[0].push({
+                                        content: identifier,
+                                        rowSpan: classItems.length,
+                                        styles: { valign: 'middle' }
+                                    });
+
+                                    classItems.forEach((classItemEl, index) => {
+                                        const courseId = classItemEl.dataset.id;
+                                        const classroomName = classItemEl.dataset.classroom;
+                                        const dayIndex = parseInt(classItemEl.dataset.day, 10);
+                                        const course = this.scheduleData[classroomName]?.[dayIndex]?.find(c => c.id === courseId);
+
+                                        if (course) {
+                                            const timeStr = `${course.timeStart} - ${course.timeEnd}`;
+                                            const bottomText = this.viewSortMode === 'teacher' ? `(教室：${classroomName})` : `(${course.teacher})`;
+                                            const mainContent = `${course.name}\n${timeStr}\n${bottomText}`;
+                                            const color = this.courseColorMap[course.name];
+                                            const courseCell = {
+                                                content: mainContent,
+                                                styles: { fillColor: this.hexToRgb(color) }
+                                            };
+                                            const notes = course.notes || '';
+                                            pdfRowsForThisHtmlRow[index].push(courseCell, notes);
+                                        } else {
+                                            pdfRowsForThisHtmlRow[index].push('(資料錯誤)', '');
+                                        }
+                                    });
+
+                                    body.push(...pdfRowsForThisHtmlRow);
+
+                                } catch (e) {
+                                    console.error("Error processing a PDF row:", e, row);
                                 }
+                            });
+                        }
 
-                                const identifierCell = row.cells[0];
-                                const contentCell = row.cells[1];
-                                if (!identifierCell || !contentCell) return;
+                        // 3. Manual width calculation
+                        const pageWidth = doc.internal.pageSize.getWidth();
+                        const margin = 15;
+                        const usableWidth = pageWidth - (margin * 2);
+                        const fixedColumnWidth = 40;
+                        const remainingWidth = usableWidth - fixedColumnWidth;
+                        const sharedWidth = remainingWidth / 2;
 
-                                const identifier = identifierCell.textContent.trim();
-                                const classItems = contentCell.querySelectorAll('.class-item');
+                        doc.autoTable({
+                            head: head,
+                            body: body,
+                            startY: 20,
+                            margin: { left: margin, right: margin },
+                            theme: 'grid',
+                            showHead: 'everyPage',
+                            headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle', font: 'NotoSansTC' },
+                            styles: { fontSize: 16, cellPadding: 3, valign: 'middle', font: 'NotoSansTC', textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [180, 180, 180] },
+                            columnStyles: {
+                                0: { cellWidth: fixedColumnWidth, fontStyle: 'bold', halign: 'center' },
+                                1: { cellWidth: sharedWidth, halign: 'center' },
+                                2: { cellWidth: sharedWidth },
+                            },
+                            didDrawPage: didDrawPage,
+                            didDrawCell: didDrawCellHooks
+                        });
 
-                                if (classItems.length === 0) {
-                                    body.push([identifier, '', '']);
-                                    return;
+                    } else {
+                        // --- WEEK VIEW PDF LOGIC (Original, untouched) ---
+                        const table = document.getElementById('schedule-table');
+                        if (!table) throw new Error('找不到課表表格元素。');
+
+                        const head = [];
+                        const thead = table.querySelector('thead');
+                        if (thead) {
+                            const headerRow = ['']; // First cell empty for diagonal
+                            const ths = thead.querySelectorAll('th');
+                            for (let i = 1; i < ths.length; i++) {
+                                headerRow.push(ths[i].textContent.trim());
+                            }
+                            head.push(headerRow);
+                        }
+
+                        const body = [];
+                        const tbody = table.querySelector('tbody');
+                        if (tbody) {
+                            tbody.querySelectorAll('tr').forEach(tr => {
+                                if (!pdfOptions.includeEmpty) {
+                                    const classItemsInRow = tr.querySelectorAll('.class-item');
+                                    if (classItemsInRow.length === 0) {
+                                        return; // Skip this empty row
+                                    }
                                 }
+                                const htmlRow = tr.cells;
+                                let maxCoursesInRow = 0;
+                                for (let i = 1; i < htmlRow.length; i++) {
+                                    maxCoursesInRow = Math.max(maxCoursesInRow, htmlRow[i].querySelectorAll('.class-item').length);
+                                }
+                                maxCoursesInRow = Math.max(1, maxCoursesInRow); // Ensure at least one row is created
 
                                 const pdfRowsForThisHtmlRow = [];
-                                for (let i = 0; i < classItems.length; i++) {
+                                for (let i = 0; i < maxCoursesInRow; i++) {
                                     pdfRowsForThisHtmlRow.push([]);
                                 }
 
                                 pdfRowsForThisHtmlRow[0].push({
-                                    content: identifier,
-                                    rowSpan: classItems.length,
+                                    content: htmlRow[0].textContent.trim(),
+                                    rowSpan: maxCoursesInRow,
                                     styles: { valign: 'middle' }
                                 });
 
-                                classItems.forEach((classItemEl, index) => {
-                                    const courseId = classItemEl.dataset.id;
-                                    const classroomName = classItemEl.dataset.classroom;
-                                    const dayIndex = parseInt(classItemEl.dataset.day, 10);
-                                    const course = this.scheduleData[classroomName]?.[dayIndex]?.find(c => c.id === courseId);
+                                for (let colIndex = 1; colIndex < htmlRow.length; colIndex++) {
+                                    const cell = htmlRow[colIndex];
+                                    const classItems = cell.querySelectorAll('.class-item');
+                                    for (let courseIndex = 0; courseIndex < maxCoursesInRow; courseIndex++) {
+                                        const item = classItems[courseIndex];
+                                        if (item) {
+                                            const name = item.querySelector('[data-field="name"]')?.textContent.trim() || '';
+                                            const time = item.querySelector('[data-field="time"]')?.textContent.trim() || '';
+                                            const refTeacher = item.querySelector('[data-field="teacher"]')?.textContent.trim() || '';
 
-                                    if (course) {
-                                        const timeStr = `${course.timeStart} - ${course.timeEnd}`;
-                                        const mainContent = `${course.name}\n${timeStr}\n(${course.teacher})`;
-                                        const color = this.courseColorMap[course.name];
-                                        const courseCell = {
-                                            content: mainContent,
-                                            styles: { fillColor: this.hexToRgb(color) }
-                                        };
-                                        const notes = course.notes || '';
-                                        pdfRowsForThisHtmlRow[index].push(courseCell, notes);
-                                    } else {
-                                        pdfRowsForThisHtmlRow[index].push('(資料錯誤)', '');
+                                            let bottomObj = `(${refTeacher})`;
+                                            if (this.viewSortMode === 'teacher') {
+                                                const cRoom = item.dataset.classroom || '';
+                                                bottomObj = `(教室：${cRoom})`;
+                                            }
+
+                                            const content = `${name}\n${time}\n${bottomObj}`;
+                                            const color = this.courseColorMap[name];
+                                            pdfRowsForThisHtmlRow[courseIndex].push({
+                                                content: content,
+                                                styles: { fillColor: this.hexToRgb(color) }
+                                            });
+                                        } else {
+                                            pdfRowsForThisHtmlRow[courseIndex].push('');
+                                        }
                                     }
-                                });
-
+                                }
                                 body.push(...pdfRowsForThisHtmlRow);
-
-                            } catch (e) {
-                                console.error("Error processing a PDF row:", e, row);
-                            }
-                        });
-                    }
-
-                    // 3. Manual width calculation
-                    const pageWidth = doc.internal.pageSize.getWidth();
-                    const margin = 15;
-                    const usableWidth = pageWidth - (margin * 2);
-                    const fixedColumnWidth = 40;
-                    const remainingWidth = usableWidth - fixedColumnWidth;
-                    const sharedWidth = remainingWidth / 2;
-
-                    doc.autoTable({
-                        head: head,
-                        body: body,
-                        startY: 20,
-                        margin: { left: margin, right: margin },
-                        theme: 'grid',
-                        showHead: 'everyPage',
-                        headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle', font: 'NotoSansTC' },
-                        styles: { fontSize: 16, cellPadding: 3, valign: 'middle', font: 'NotoSansTC', textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [180, 180, 180] },
-                        columnStyles: {
-                            0: { cellWidth: fixedColumnWidth, fontStyle: 'bold', halign: 'center' },
-                            1: { cellWidth: sharedWidth, halign: 'center' },
-                            2: { cellWidth: sharedWidth },
-                        },
-                        didDrawPage: didDrawPage
-                    });
-
-                } else {
-                    // --- WEEK VIEW PDF LOGIC (Original, untouched) ---
-                    const table = document.getElementById('schedule-table');
-                    if (!table) throw new Error('找不到課表表格元素。');
-
-                    const head = [];
-                    const thead = table.querySelector('thead');
-                    if (thead) {
-                        const headerRow = [];
-                        thead.querySelectorAll('th').forEach(th => headerRow.push(th.textContent.trim()));
-                        head.push(headerRow);
-                    }
-
-                    const body = [];
-                    const tbody = table.querySelector('tbody');
-                    if (tbody) {
-                        tbody.querySelectorAll('tr').forEach(tr => {
-                            if (!pdfOptions.includeEmpty) {
-                                const classItemsInRow = tr.querySelectorAll('.class-item');
-                                if (classItemsInRow.length === 0) {
-                                    return; // Skip this empty row
-                                }
-                            }
-                            const htmlRow = tr.cells;
-                            let maxCoursesInRow = 0;
-                            for (let i = 1; i < htmlRow.length; i++) {
-                                maxCoursesInRow = Math.max(maxCoursesInRow, htmlRow[i].querySelectorAll('.class-item').length);
-                            }
-                            maxCoursesInRow = Math.max(1, maxCoursesInRow); // Ensure at least one row is created
-
-                            const pdfRowsForThisHtmlRow = [];
-                            for (let i = 0; i < maxCoursesInRow; i++) {
-                                pdfRowsForThisHtmlRow.push([]);
-                            }
-
-                            pdfRowsForThisHtmlRow[0].push({ 
-                                content: htmlRow[0].textContent.trim(), 
-                                rowSpan: maxCoursesInRow,
-                                styles: { valign: 'middle' } 
                             });
+                        }
 
-                            for (let colIndex = 1; colIndex < htmlRow.length; colIndex++) {
-                                const cell = htmlRow[colIndex];
-                                const classItems = cell.querySelectorAll('.class-item');
-                                for (let courseIndex = 0; courseIndex < maxCoursesInRow; courseIndex++) {
-                                    const item = classItems[courseIndex];
-                                    if (item) {
-                                        const name = item.querySelector('[data-field="name"]')?.textContent.trim() || '';
-                                        const time = item.querySelector('[data-field="time"]')?.textContent.trim() || '';
-                                        const teacher = item.querySelector('[data-field="teacher"]')?.textContent.trim() || '';
-                                        const content = `${name}\n${time}\n(${teacher})`;
-                                        const color = this.courseColorMap[name];
-                                        pdfRowsForThisHtmlRow[courseIndex].push({ 
-                                            content: content, 
-                                            styles: { fillColor: this.hexToRgb(color) } 
-                                        });
-                                    } else {
-                                        pdfRowsForThisHtmlRow[courseIndex].push('');
-                                    }
-                                }
-                            }
-                            body.push(...pdfRowsForThisHtmlRow);
+                        doc.autoTable({
+                            head: head,
+                            body: body,
+                            startY: 20,
+                            theme: 'grid',
+                            showHead: 'everyPage',
+                            headStyles: {
+                                fillColor: [240, 240, 240],
+                                textColor: [0, 0, 0],
+                                fontStyle: 'bold',
+                                halign: 'center',
+                                valign: 'middle',
+                                font: 'NotoSansTC',
+                            },
+                            styles: {
+                                fontSize: 7,
+                                cellPadding: 2,
+                                halign: 'center',
+                                valign: 'middle',
+                                font: 'NotoSansTC',
+                                fontStyle: 'bold',
+                                textColor: [0, 0, 0],
+                                lineWidth: 0.1,
+                                lineColor: [200, 200, 200],
+                            },
+                            columnStyles: {
+                                0: { fontStyle: 'bold', fillColor: [240, 240, 240], valign: 'middle' },
+                            },
+                            didDrawPage: didDrawPage,
+                            didDrawCell: didDrawCellHooks
                         });
                     }
 
-                    doc.autoTable({
-                        head: head,
-                        body: body,
-                        startY: 20,
-                        theme: 'grid',
-                        showHead: 'everyPage',
-                        headStyles: {
-                            fillColor: [240, 240, 240],
-                            textColor: [0, 0, 0],
-                            fontStyle: 'bold',
-                            halign: 'center',
-                            valign: 'middle',
-                            font: 'NotoSansTC',
-                        },
-                        styles: {
-                            fontSize: 7,
-                            cellPadding: 2,
-                            halign: 'center',
-                            valign: 'middle',
-                            font: 'NotoSansTC',
-                            fontStyle: 'bold',
-                            textColor: [0, 0, 0],
-                            lineWidth: 0.1,
-                            lineColor: [200, 200, 200],
-                        },
-                        columnStyles: {
-                            0: { fontStyle: 'bold', fillColor: [240, 240, 240], valign: 'middle' },
-                        },
-                        didDrawPage: didDrawPage
-                    });
+                    // Step 6: Save the PDF with the correct filename
+                    const activeTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
+                    const tagSuffix = activeTags.length > 0 ? ` (${activeTags.join(', ')})` : '';
+                    const lastModifiedTimestamp = isAllSchedules ? Date.now() : this.scheduleLastModified[this.activeScheduleId];
+                    const timestampSuffix = lastModifiedTimestamp ? `-${this.formatTimestampForFilename(lastModifiedTimestamp)}` : '';
+
+                    const filename = hasCustomTitle
+                        ? `${pdfOptions.customTitle}${timestampSuffix}.pdf`
+                        : `課表_${scheduleNameForPdf}${tagSuffix}${timestampSuffix}.pdf`;
+
+                    doc.save(filename);
+                    this.ui.showNotification('PDF已成功生成並下載！', 'success');
+
+                } catch (error) {
+                    console.error('生成PDF失敗:', error);
+                    this.ui.showNotification(`下載PDF失敗: ${error.message}`, 'error');
+                } finally {
+                    this.ui.hideLoading();
                 }
-
-                // Step 6: Save the PDF with the correct filename
-                const activeTags = this.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
-                const tagSuffix = activeTags.length > 0 ? ` (${activeTags.join(', ')})` : '';
-                const lastModifiedTimestamp = isAllSchedules ? Date.now() : this.scheduleLastModified[this.activeScheduleId];
-                const timestampSuffix = lastModifiedTimestamp ? `-${this.formatTimestampForFilename(lastModifiedTimestamp)}` : '';
-                
-                const filename = hasCustomTitle
-                    ? `${pdfOptions.customTitle}${timestampSuffix}.pdf`
-                    : `課表_${scheduleNameForPdf}${tagSuffix}${timestampSuffix}.pdf`;
-
-                doc.save(filename);
-                this.ui.showNotification('PDF已成功生成並下載！', 'success');
-
-            } catch (error) {
-                console.error('生成PDF失敗:', error);
-                this.ui.showNotification(`下載PDF失敗: ${error.message}`, 'error');
-            } finally {
-                this.ui.hideLoading();
             }
-        }
-    };
+        };
 
-    // --- Initialization ---
-    window.App = App; // Expose App to global scope for modules
-    App.init();
+        // --- Initialization ---
+        window.App = App; // Expose App to global scope for modules
+        App.init();
 
-})();
+    })();
 </script>
