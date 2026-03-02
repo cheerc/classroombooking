@@ -1176,15 +1176,21 @@
                             doc.line(x, y, x + width, y + height);
 
                             doc.setFont('NotoSansTC', 'normal');
-                            doc.setFontSize(8);
+                            const isDayView = this.currentViewMode === AppConfig.MODES.DAY;
+                            const fontSize = isDayView ? 12 : 7;
+                            doc.setFontSize(fontSize);
                             doc.setTextColor(0, 0, 0);
 
+                            // Calculate baseline offsets
+                            const topY = y + (fontSize * 0.35) + 1; // Approx 1mm padding from top
+                            const bottomY = y + height - 1.5; // 1.5mm padding from bottom
+
                             // "星期" right-aligned at top
-                            doc.text('星期', x + width - 2, y + 5, { align: 'right' });
+                            doc.text('星期', x + width - 1.5, topY, { align: 'right' });
 
                             // "教室/老師" left-aligned at bottom
                             const bottomText = this.viewSortMode === 'teacher' ? '老師' : '教室';
-                            doc.text(bottomText, x + 2, y + height - 2, { align: 'left' });
+                            doc.text(bottomText, x + 1.5, bottomY, { align: 'left' });
                         }
                     };
 
@@ -1401,7 +1407,7 @@
                                 lineColor: [200, 200, 200],
                             },
                             columnStyles: {
-                                0: { fontStyle: 'bold', fillColor: [240, 240, 240], valign: 'middle' },
+                                0: { fontStyle: 'bold', fillColor: [240, 240, 240], valign: 'middle', cellWidth: 16 },
                             },
                             didDrawPage: didDrawPage,
                             didDrawCell: didDrawCellHooks
