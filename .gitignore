@@ -1,3 +1,12 @@
+# BMAD-Mathod
+_bmad/
+
+# Antigravity Agent
+.agent/
+
+# Gemini CLI
+.gemini/
+
 # Dependencies
 node_modules
 
