@@ -171,6 +171,10 @@ function saveData(payload) {
     if (rowIndex === -1) {
       throw new Error(`在索引中找不到 ID 為 "${scheduleId}" 的課表。`);
     }
+
+    // Ref: #5 — Enforce admin/creator permission before modifying schedule data
+    const createdBy = rowValues[3];
+    _checkPermission(createdBy);
     
     const serverLastModified = new Date(rowValues[2]).toISOString();
     if (serverLastModified !== lastModified) {
