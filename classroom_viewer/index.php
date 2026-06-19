@@ -1,14 +1,17 @@
 <?php
-// Allow embedding only by specific origins for security
-header("Content-Security-Policy: frame-ancestors https://talented.mido-9.com;");
+define('APP_RUNNING', true);
+$config = require __DIR__ . '/config.php';
 
-ini_set('display_errors', 1);
+// Allow embedding only by specific origins for security
+header("Content-Security-Policy: frame-ancestors https://" . $config['csp_domain'] . ";");
+
+ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
 require __DIR__ . '/vendor/autoload.php';
 
 // --- Configuration ---
-$spreadsheetId = '1lWqXsLYhGQiq3vOa55rWw527M2jOfNks0UdtOjGB8Ck';
+$spreadsheetId = $config['spreadsheet_id'];
 $keyFilePath = __DIR__ . '/credentials/service-account-key.json';
 $weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
 $courseColors = ['#93c5fd', '#73EEDC', '#DBF4A7', '#fca5a5', '#92DBFA', '#C5D8D1', '#B5EBCC', '#FDE74C', '#F5AE80', '#D6D1CD'];
@@ -142,7 +145,7 @@ function render_schedule_table($classrooms, $schedule, $weekdays, $colorMap) {
 }
 
 // --- Security & Encryption Configuration ---
-define('ENCRYPTION_KEY', 'def000006a78468f258197313832a43f85469991a3294542e93018151994b8f494334a7ac6a78468f258197313832a43f85469991a3294542e93018151994b8f494334a7a'); // 256-bit key
+define('ENCRYPTION_KEY', $config['encryption_key']); // 256-bit key
 define('ENCRYPTION_CIPHER', 'aes-256-cbc');
 
 // --- Main Logic ---

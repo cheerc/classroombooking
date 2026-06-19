@@ -3,3 +3,6 @@
 
 # Ignore sensitive credentials
 service-account-key.json
+
+# Local config (contains secrets)
+config.php
