@@ -37,7 +37,8 @@ try {
     $non_draft_sheet_ids = [];
 
     foreach (array_slice($indexValues, 1) as $row) { // Skip header row
-        if (isset($row[0]) && isset($row[1]) && (!isset($row[4]) || $row[4] !== true)) {
+        // Ref: #6 — Sheets API FORMATTED_VALUE returns booleans as strings "TRUE"/"FALSE"
+        if (isset($row[0]) && isset($row[1]) && (!isset($row[4]) || strtoupper(trim($row[4])) !== 'TRUE')) {
             $all_schedules[] = $row[1]; // Schedule Name
             $non_draft_sheet_ids[] = $row[0]; // Schedule ID
         }
