@@ -23,8 +23,9 @@ output.css
 # Deployment configuration (contains project-specific IDs)
 .clasp.json
 
-# Code analysis output
+# Code analysis output (local-only, post-commit hook auto-rebuilds)
 graphify-out/
+.graphify*
 
 # Environment / config files
 *.env
