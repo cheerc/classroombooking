@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 依序修復 codebase-review V1 發現的 15 個 issues（4 HIGH + 10 MED），建立 test baseline，並在每個 wave 結束後執行 `/retro` 回顧。
+**Goal:** 依序修復 codebase-review V1 發現的 13 個 issues（3 HIGH + 10 MED），建立 test baseline，並在每個 wave 結束後執行 `/retro` 回顧。（另有 2 個 LOCK issues 待 operator 討論）
 
 **Architecture:** 6 waves，按依賴順序排列 — 先建 test 基礎（W1），再修 HIGH bugs（W2），再強化 security（W3），再補測試鏈（W4），再建 GAS mock tests（W5），最後 performance/code-quality 優化（W6）。
 
@@ -276,6 +276,8 @@ git commit -m "ci: integrate Vitest + PHPUnit into CI and workflow.sh — #50 #4
 
 ### Task 2.1: 修復 #4 — Interaction.js.html XSS 殘留
 
+> **Scope note**: PR #36 已修復 UI.js.html、JavaScript.html、Modals.js.html 的 XSS（23 處 escapeHtml）。本 task 只針對 PR #36 遺漏的 **Interaction.js.html**。
+
 **Files:**
 - Modify: `Interaction.js.html`（所有 template literal 中的使用者資料加 `escapeHtml()`）
 
@@ -382,18 +384,43 @@ function copySchedule(params) {
 
 ### Task 3.2: 修復 #42 — AES-CBC 加 HMAC
 
-**Files:**
-- Modify: `classroom_viewer/generate_iframe.php`（加密端）
-- Modify: `classroom_viewer/index.php`（解密端）
-- Modify: `classroom_viewer/config.example.php`（新增 hmac_key）
-- Update: `classroom_viewer/tests/EncryptionTest.php`（加 HMAC 測試）
+> ⚠️ **Migration Warning**: 加 HMAC 後，舊的 iframe URL（無 HMAC）格式不同。必須實作 backward-compatible 解密，否則現行嵌入頁面全部壞掉。
 
-- [ ] **Step 1: config.example.php 加 hmac_key**
+**Files:**
+- Modify: `classroom_viewer/generate_iframe.php`（加密端 — encrypt-then-MAC）
+- Modify: `classroom_viewer/index.php`（解密端 — try-HMAC-first, fallback legacy）
+- Modify: `classroom_viewer/config.example.php`（新增 hmac_key + allow_legacy_payloads flag）
+- Update: `classroom_viewer/tests/EncryptionTest.php`（加 HMAC 測試 + legacy fallback 測試）
+
+- [ ] **Step 1: config.example.php 加 hmac_key + legacy flag**
+```php
+'hmac_key' => 'YOUR_HMAC_KEY_HERE',     // 新增：用於 encrypt-then-MAC
+'allow_legacy_payloads' => true,          // 過渡期允許舊格式（無 HMAC）
+```
+
 - [ ] **Step 2: generate_iframe.php — encrypt-then-MAC**
-- [ ] **Step 3: index.php — verify-MAC-then-decrypt**
-- [ ] **Step 4: 更新 PHPUnit 測試涵蓋 HMAC round-trip + tamper detection**
+新產生的 URL 一律帶 HMAC（格式：`base64(hmac + iv + ciphertext)`）。
+
+- [ ] **Step 3: index.php — backward-compatible 解密**
+```php
+// 解密策略（backward compatible）:
+// 1. 嘗試 HMAC 格式：前 32 bytes = HMAC，接下來 16 bytes = IV，剩餘 = ciphertext
+// 2. HMAC 驗證通過 → 解密
+// 3. HMAC 驗證失敗 + allow_legacy_payloads=true → fallback 舊格式（前 16 bytes = IV）+ log warning
+// 4. HMAC 驗證失敗 + allow_legacy_payloads=false → 拒絕（「資料驗證失敗」）
+```
+
+- [ ] **Step 4: 更新 PHPUnit 測試**
+  - HMAC round-trip（新格式）
+  - Legacy payload fallback（舊格式仍可解密）
+  - Tampered payload detection（HMAC 不符 → 拒絕）
+  - `allow_legacy_payloads=false` 時舊格式被拒絕
+
 - [ ] **Step 5: `php -l` + PHPUnit PASS**
-- [ ] **Step 6: Commit** `fix: add HMAC to AES-CBC encryption — Closes #42`
+
+- [ ] **Step 6: Commit** `fix: add HMAC to AES-CBC with legacy fallback — Closes #42`
+
+> **Migration timeline**: 部署後 `allow_legacy_payloads=true`。通知使用者重新產生 iframe URL。確認所有舊 URL 更新後，將 flag 改為 `false`（sunset legacy）。
 
 ### Task 3.3: 修復 #43 — htmlspecialchars ENT_QUOTES
 
