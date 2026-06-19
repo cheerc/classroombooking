@@ -115,9 +115,11 @@ function getData() {
         if (scheduleSheet) {
           const sheetDataRange = scheduleSheet.getRange("B2:B4").getValues();
           let scheduleData = {}, classrooms = [], tags = [];
-          try { scheduleData = JSON.parse(sheetDataRange[0][0] || '{}'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 scheduleData 失敗`); }
-          try { classrooms = JSON.parse(sheetDataRange[1][0] || '[]'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 classrooms 失敗`); }
-          try { tags = JSON.parse(sheetDataRange[2][0] || '[]'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 tags 失敗`); }
+          // Ref: #16 — Collect parse errors instead of silently swallowing them
+          const parseErrors = [];
+          try { scheduleData = JSON.parse(sheetDataRange[0][0] || '{}'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 scheduleData 失敗: ${e}`); parseErrors.push(`scheduleData: ${e.message}`); }
+          try { classrooms = JSON.parse(sheetDataRange[1][0] || '[]'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 classrooms 失敗: ${e}`); parseErrors.push(`classrooms: ${e.message}`); }
+          try { tags = JSON.parse(sheetDataRange[2][0] || '[]'); } catch(e) { Logger.log(`解析 ${scheduleId} 的 tags 失敗: ${e}`); parseErrors.push(`tags: ${e.message}`); }
 
           schedules[scheduleId] = {
             name: scheduleName,
@@ -126,11 +128,15 @@ function getData() {
             lastModified: lastModified.toISOString(),
             data: { scheduleData, classrooms, tags: tags }
           };
+          if (parseErrors.length > 0) {
+            schedules[scheduleId].parseErrors = parseErrors;
+          }
         }
       }
     });
 
     const result = {
+      success: true,
       schedules: schedules,
       metadataTimestamp: metadataTimestamp
     };
@@ -453,7 +459,7 @@ function getVersions(scheduleId) {
     return versions;
   } catch (e) {
     Logger.log(`獲取版本列表失敗: ${e.stack}`);
-    return { error: e.toString() };
+    return { success: false, error: e.toString() };
   }
 }
 
@@ -519,6 +525,6 @@ function getFontBase64FromDrive() {
     }
   } catch (e) {
     Logger.log(`從 Drive 獲取字體時發生錯誤: ${e.stack}`);
-    return { error: e.toString() };
+    return { success: false, error: e.toString() };
   }
 }
