@@ -9,6 +9,18 @@ REQUIRED_FILES=(
   "input.css"
   "package.json"
   "tailwind.config.js"
+  "JavaScript.html"
+  "Api.js.html"
+  "Config.js.html"
+  "Elements.js.html"
+  "Modals.js.html"
+  "History.js.html"
+  "UI.js.html"
+  "Interaction.js.html"
+  "classroom_viewer/index.php"
+  "classroom_viewer/generate_iframe.php"
+  "classroom_viewer/config.example.php"
+  "classroom_viewer/composer.json"
 )
 
 EXIT_CODE=0
