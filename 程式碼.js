@@ -212,8 +212,26 @@ function saveData(payload) {
     historySheet.insertRowBefore(2);
     historySheet.getRange("A2:D2").setValues([[timestampISO, userEmail, JSON.stringify(dataToSave), scheduleId]]);
 
-    if (historySheet.getLastRow() > MAX_HISTORY_RECORDS + 1) {
-      historySheet.deleteRows(MAX_HISTORY_RECORDS + 2, historySheet.getLastRow() - (MAX_HISTORY_RECORDS + 1));
+    // Ref: #12 — Per-schedule history limit: only trim excess versions for the current schedule
+    const historyLastRow = historySheet.getLastRow();
+    if (historyLastRow > 1) {
+      const allHistory = historySheet.getRange(2, 1, historyLastRow - 1, 4).getValues();
+      // Collect 0-based indices (within allHistory) of rows matching this schedule
+      const scheduleRows = [];
+      for (let i = 0; i < allHistory.length; i++) {
+        if (allHistory[i][3] === scheduleId) {
+          scheduleRows.push(i);
+        }
+      }
+      // scheduleRows is in insertion order (newest first since insertRowBefore(2))
+      if (scheduleRows.length > MAX_HISTORY_RECORDS) {
+        // Delete excess oldest rows (tail of scheduleRows); delete bottom-up to avoid index shift
+        const rowsToDelete = scheduleRows.slice(MAX_HISTORY_RECORDS);
+        rowsToDelete.sort((a, b) => b - a); // descending so deletion doesn't shift earlier indices
+        for (const idx of rowsToDelete) {
+          historySheet.deleteRow(idx + 2); // +2: 0-based allHistory index → 1-based sheet row with header
+        }
+      }
     }
 
     Logger.log(`數據保存成功 by ${userEmail} for schedule ${scheduleId}`);
