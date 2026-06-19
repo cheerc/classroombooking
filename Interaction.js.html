@@ -665,7 +665,7 @@ function createInteractionModule(app) {
         const classroom = btn.dataset.classroom;
         const day = parseInt(btn.dataset.day);
         const className = classElement.querySelector('[data-field="name"]').textContent;
-        if (await app.modals.showConfirm(`確定要刪除課程 "${className}" 嗎？`)) {
+        if (await app.modals.showConfirm(`確定要刪除課程 「${escapeHtml(className)}」 嗎？`)) {
             if (!app.scheduleData[classroom] || !app.scheduleData[classroom][day]) return;
             const classIndex = app.scheduleData[classroom][day].findIndex(c => c.id === classId);
             if (classIndex > -1) {
@@ -739,7 +739,7 @@ function createInteractionModule(app) {
             return;
         }
 
-        if (await app.modals.showConfirm(`確定要刪除${currentConfig.typeName} "${itemName}" 嗎？`)) {
+        if (await app.modals.showConfirm(`確定要刪除${currentConfig.typeName} 「${escapeHtml(itemName)}」 嗎？`)) {
             const itemIndex = currentConfig.sourceArray.indexOf(itemName);
             if (itemIndex > -1) {
                 currentConfig.sourceArray.splice(itemIndex, 1);
