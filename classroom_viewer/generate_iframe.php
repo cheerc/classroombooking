@@ -102,15 +102,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ivLength = openssl_cipher_iv_length(ENCRYPTION_CIPHER);
     $iv = openssl_random_pseudo_bytes($ivLength);
     $encrypted_json = openssl_encrypt($json_params, ENCRYPTION_CIPHER, ENCRYPTION_KEY, 0, $iv);
-    $encrypted_payload = base64_encode($iv . $encrypted_json);
+    // Ref: #42 — Encrypt-then-MAC: HMAC-SHA256 over iv+ciphertext for integrity
+    $hmac_key = $config['hmac_key'] ?? '';
+    $iv_cipher = $iv . $encrypted_json;
+    $hmac = hash_hmac('sha256', $iv_cipher, $hmac_key, true); // 32 bytes
+    $encrypted_payload = base64_encode($hmac . $iv_cipher);
 
     $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
     $base_url = $protocol . '://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . '/index.php';
     $final_url = $base_url . '?data=' . urlencode($encrypted_payload);
 
-    $iframe_tag = '<iframe src="' . htmlspecialchars($final_url) . '"';
+    $iframe_tag = '<iframe src="' . htmlspecialchars($final_url, ENT_QUOTES, 'UTF-8') . '"';
     foreach ($iframe_attrs as $key => $value) {
-        $iframe_tag .= ' ' . $key . '="' . htmlspecialchars($value) . '"';
+        $iframe_tag .= ' ' . $key . '="' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '"';
     }
     $iframe_tag .= '></iframe>';
     $generated_iframe = $iframe_tag;
@@ -147,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p>此工具用於生成安全的 iframe 嵌入碼，可從資料庫讀取可用選項，並隱藏原始參數。</p>
 
         <?php if ($error_message): ?>
-            <div class="error-box"><?= htmlspecialchars($error_message) ?></div>
+            <div class="error-box"><?= htmlspecialchars($error_message, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endif; ?>
         
         <form action="" method="POST">
@@ -155,15 +159,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="form-grid">
                 <div class="form-group">
                     <label for="schedule_name">課表名稱 (schedule_name)</label>
-                    <input type="text" id="schedule_name" name="schedule_name" class="tagify-input" value='<?= htmlspecialchars($_POST['schedule_name'] ?? '') ?>' required>
+                    <input type="text" id="schedule_name" name="schedule_name" class="tagify-input" value='<?= htmlspecialchars($_POST['schedule_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>' required>
                 </div>
                 <div class="form-group">
                     <label for="tags">包含標籤 (tags)</label>
-                    <input type="text" id="tags" name="tags" class="tagify-input" value='<?= htmlspecialchars($_POST['tags'] ?? '') ?>'>
+                    <input type="text" id="tags" name="tags" class="tagify-input" value='<?= htmlspecialchars($_POST['tags'] ?? '', ENT_QUOTES, 'UTF-8') ?>'>
                 </div>
                 <div class="form-group">
                     <label for="exclude_tags">排除標籤 (exclude_tags)</label>
-                    <input type="text" id="exclude_tags" name="exclude_tags" class="tagify-input" value='<?= htmlspecialchars($_POST['exclude_tags'] ?? '') ?>'>
+                    <input type="text" id="exclude_tags" name="exclude_tags" class="tagify-input" value='<?= htmlspecialchars($_POST['exclude_tags'] ?? '', ENT_QUOTES, 'UTF-8') ?>'>
                 </div>
             </div>
 
@@ -171,11 +175,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
                 <div class="form-group">
                     <label for="iframe_title">標題 (title)</label>
-                    <input type="text" id="iframe_title" name="iframe_title" value="<?= htmlspecialchars($_POST['iframe_title'] ?? '課表') ?>">
+                    <input type="text" id="iframe_title" name="iframe_title" value="<?= htmlspecialchars($_POST['iframe_title'] ?? '課表', ENT_QUOTES, 'UTF-8') ?>">
                 </div>
                 <div class="form-group">
                     <label for="iframe_id">ID</label>
-                    <input type="text" id="iframe_id" name="iframe_id" value="<?= htmlspecialchars($_POST['iframe_id'] ?? 'schedule-iframe') ?>">
+                    <input type="text" id="iframe_id" name="iframe_id" value="<?= htmlspecialchars($_POST['iframe_id'] ?? 'schedule-iframe', ENT_QUOTES, 'UTF-8') ?>">
                 </div>
             </div>
 
@@ -186,7 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div id="result-container">
             <h2>產生的程式碼</h2>
             <button id="copy-btn">複製</button>
-            <pre><code id="result-code"><?= htmlspecialchars($generated_iframe) ?></code></pre>
+            <pre><code id="result-code"><?= htmlspecialchars($generated_iframe, ENT_QUOTES, 'UTF-8') ?></code></pre>
         </div>
         <?php endif; ?>
     </div>

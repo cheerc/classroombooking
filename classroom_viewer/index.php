@@ -158,10 +158,40 @@ try {
     $encryptedData = $_GET['data'];
     $decodedData = base64_decode($encryptedData);
     $ivLength = openssl_cipher_iv_length(ENCRYPTION_CIPHER);
-    $iv = substr($decodedData, 0, $ivLength);
-    $encryptedJson = substr($decodedData, $ivLength);
+    $hmacLength = 32; // SHA-256 produces 32 bytes
 
-    $decryptedJson = openssl_decrypt($encryptedJson, ENCRYPTION_CIPHER, ENCRYPTION_KEY, 0, $iv);
+    // Ref: #42 — Backward-compatible decryption with HMAC verification
+    $hmac_key = $config['hmac_key'] ?? '';
+    $allow_legacy = $config['allow_legacy_payloads'] ?? true;
+    $decryptedJson = false;
+
+    // Strategy 1: Try HMAC format (hmac_32 + iv_16 + ciphertext)
+    if (strlen($decodedData) > $hmacLength + $ivLength) {
+        $receivedHmac = substr($decodedData, 0, $hmacLength);
+        $iv_cipher = substr($decodedData, $hmacLength);
+        $expectedHmac = hash_hmac('sha256', $iv_cipher, $hmac_key, true);
+
+        if (hash_equals($expectedHmac, $receivedHmac)) {
+            // HMAC valid — decrypt
+            $iv = substr($iv_cipher, 0, $ivLength);
+            $encryptedJson = substr($iv_cipher, $ivLength);
+            $decryptedJson = openssl_decrypt($encryptedJson, ENCRYPTION_CIPHER, ENCRYPTION_KEY, 0, $iv);
+        }
+    }
+
+    // Strategy 2: Legacy fallback (iv_16 + ciphertext, no HMAC)
+    if ($decryptedJson === false) {
+        if (!$allow_legacy) {
+            showError('資料驗證失敗，請重新產生 iframe URL。');
+        }
+        // Legacy format: first 16 bytes = IV, rest = ciphertext
+        $iv = substr($decodedData, 0, $ivLength);
+        $encryptedJson = substr($decodedData, $ivLength);
+        $decryptedJson = openssl_decrypt($encryptedJson, ENCRYPTION_CIPHER, ENCRYPTION_KEY, 0, $iv);
+        if ($decryptedJson !== false) {
+            error_log('[classroombooking] WARNING: Legacy payload (no HMAC) accepted. Regenerate iframe URL.');
+        }
+    }
 
     if ($decryptedJson === false) {
         showError('參數解密失敗，請確認您的請求來源是否正確。');

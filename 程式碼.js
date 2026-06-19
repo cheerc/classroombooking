@@ -423,6 +423,9 @@ function copySchedule(copyInfo) {
     if (sourceRowIndex === -1) {
       throw new Error(`在索引中找不到來源課表 (ID: ${sourceId})。`);
     }
+    // Ref: #41 — Enforce permission check before copying (same pattern as rename/delete)
+    const createdBy = sourceRowValues[3];
+    _checkPermission(createdBy);
     const sourceIsDraft = sourceRowValues[4] === true;
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
