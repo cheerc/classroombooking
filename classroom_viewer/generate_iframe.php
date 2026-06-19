@@ -1,13 +1,16 @@
 <?php
-ini_set('display_errors', 1);
+define('APP_RUNNING', true);
+$config = require __DIR__ . '/config.php';
+
+ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
 require __DIR__ . '/vendor/autoload.php';
 
 // --- Configuration ---
-define('ENCRYPTION_KEY', 'def000006a78468f258197313832a43f85469991a3294542e93018151994b8f494334a7ac6a78468f258197313832a43f85469991a3294542e93018151994b8f494334a7a');
+define('ENCRYPTION_KEY', $config['encryption_key']);
 define('ENCRYPTION_CIPHER', 'aes-256-cbc');
-$spreadsheetId = '1lWqXsLYhGQiq3vOa55rWw527M2jOfNks0UdtOjGB8Ck';
+$spreadsheetId = $config['spreadsheet_id'];
 $keyFilePath = __DIR__ . '/credentials/service-account-key.json';
 
 $all_schedules = [];
