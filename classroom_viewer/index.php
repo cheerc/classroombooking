@@ -204,8 +204,8 @@ try {
             
             $id = $row[0];
             $name = $row[1];
-            // Column E (index 4) is 'Is Draft'. It's a boolean TRUE/FALSE from the sheet.
-            $isDraft = isset($row[4]) && $row[4] === true;
+            // Ref: #6 — Sheets API FORMATTED_VALUE returns booleans as strings "TRUE"/"FALSE"
+            $isDraft = isset($row[4]) && strtoupper(trim($row[4])) === 'TRUE';
             
             $scheduleDetailsMap[$name] = ['id' => $id, 'isDraft' => $isDraft];
         }
@@ -371,7 +371,8 @@ header('Content-Type: text/html; charset=utf-8');
             const height = contentWrapper.scrollHeight;
             if (window.parent) {
                 const message = { type: 'iframe-resize', height: height };
-                window.parent.postMessage(message, '*');
+                // Ref: #9 — Restrict postMessage to known embedding origin
+                window.parent.postMessage(message, 'https://talented.mido-9.com');
             }
         }
     }
