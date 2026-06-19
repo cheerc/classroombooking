@@ -7,7 +7,8 @@
     "build-css": "node ./node_modules/tailwindcss/lib/cli.js -i ./input.css -o ./output.css",
     "build-tailwind-html": "node -e \"const fs=require('fs'); const css=fs.readFileSync('output.css','utf8'); fs.writeFileSync('Tailwind.html','<style>\\n'+css+'\\n</style>\\n')\"",
     "build": "npm run build-css && npm run build-tailwind-html",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "repository": {
     "type": "git",
@@ -25,6 +26,7 @@
     "eslint": "^8.57.1",
     "eslint-plugin-googleappsscript": "^1.0.5",
     "eslint-plugin-html": "^8.1.4",
-    "tailwindcss": "^3.4.1"
+    "tailwindcss": "^3.4.1",
+    "vitest": "^4.1.9"
   }
 }
