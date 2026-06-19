@@ -37,7 +37,7 @@ function _findScheduleRowInfo(scheduleId, dataSheet) {
 function _checkPermission(createdBy) {
   const currentUser = Session.getActiveUser().getEmail();
   const isAdmin = currentUser.toLowerCase() === (getConfig('ADMIN_EMAIL') || '').toLowerCase();
-  if (!isAdmin && currentUser !== createdBy) {
+  if (!isAdmin && currentUser.toLowerCase() !== createdBy.toLowerCase()) {
     throw new Error("權限不足。只有管理員或建立者才能執行此操作。");
   }
 }
