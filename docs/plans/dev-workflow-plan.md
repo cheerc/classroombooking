@@ -138,7 +138,7 @@ PROJECT.md 需填入的值：
 
 | 欄位 | 值 |
 |------|---|
-| Source | /Users/cheerc/Projects/classroombooking（daemon 不解析 ~）|
+| Source | /path/to/classroombooking（daemon 不解析 ~）|
 | Default branch | main（單分支，無 dev）|
 | GitHub slug | cheerc/classroombooking |
 | from_ref | origin/main |
@@ -154,7 +154,7 @@ PROJECT.md 需填入的值：
 LEAD.md 專案 quirk：
 - Complexity 閾值：Trivial=1 檔/≤15行/純文字設定；Simple=1-2 檔/無核心邏輯；
   Complex+=3+檔/改 JavaScript.html/改 GAS 後端
-- Deploy SOP: cd /Users/cheerc/Projects/classroombooking && npm run build && clasp push
+- Deploy SOP: cd /path/to/classroombooking && npm run build && clasp push
 - Branch model: feature → main（worktree from_ref: origin/main）
 - 無 E2E；TestCases.md 是 operator clasp push 後的手動驗收清單
 
@@ -433,7 +433,7 @@ Phase 3（按需，非緊急）：
 
 ### 5.1 收到需求 → 開始開發
 
-1. Lead 讀 issue，cd /Users/cheerc/Projects/classroombooking
+1. Lead 讀 issue，cd /path/to/classroombooking
 2. Complexity 判定：
    - Trivial: 1 檔/≤15行/純文字設定 → inline 描述直接 dispatch
    - Simple: 1-2 檔/無核心邏輯 → inline bullet dispatch
@@ -460,7 +460,7 @@ Phase 3（按需，非緊急）：
 4. Lead merge gate：確認 CI 綠 + VERIFIED → admin-merge PR → main
 5. Operator 執行 GAS 部署：
    ```
-   cd /Users/cheerc/Projects/classroombooking
+   cd /path/to/classroombooking
    git pull origin main
    npm run build     # 必須在 clasp push 前（Tailwind.html gitignored）
    clasp push

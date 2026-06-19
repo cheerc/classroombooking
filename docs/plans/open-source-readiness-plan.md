@@ -49,7 +49,7 @@
 
 ```javascript
 // 移除第 4 行：
-// const ADMIN_EMAIL = 'cheerc@talented.com.tw';
+// const ADMIN_EMAIL = 'admin@example.com';
 
 // 在檔案開頭（第 3 行 MAX_HISTORY_RECORDS 後面）加入：
 /**
@@ -111,7 +111,7 @@ config.example.js
 
 1. 開啟 https://script.google.com → 對應專案
 2. Project Settings → Script Properties
-3. 新增：Key = `ADMIN_EMAIL`，Value = `cheerc@talented.com.tw`
+3. 新增：Key = `ADMIN_EMAIL`，Value = `admin@example.com`
 4. 儲存
 
 - [ ] **Step 6: 驗證**
@@ -176,7 +176,7 @@ isCurrentUserAdmin: function () {
 
 - [ ] **Step 4: 修改 `UI.js.html` L195 — 移除硬編碼 admin username**
 
-找到 `const isAdmin = currentUser.toLowerCase() === 'cheerc';` 行，替換為：
+找到 `const isAdmin = currentUser.toLowerCase() === 'admin-email';` 行，替換為：
 ```javascript
 const isAdmin = typeof IS_ADMIN !== 'undefined' ? IS_ADMIN : false;
 ```
@@ -249,9 +249,9 @@ return [
 <?php
 defined('APP_RUNNING') or die('Direct access not allowed');
 return [
-    'spreadsheet_id' => '1lWqXsLYhGQiq3vOa55rWw527M2jOfNks0UdtOjGB8Ck',
+    'spreadsheet_id' => 'YOUR_SPREADSHEET_ID',
     'encryption_key' => '<新生成的金鑰>',  // 見 Task 6 金鑰輪換
-    'csp_frame_ancestors' => 'https://talented.mido-9.com',
+    'csp_frame_ancestors' => 'https://your-domain.com',
     'service_account_key_path' => __DIR__ . '/credentials/service-account-key.json',
 ];
 ```
@@ -451,8 +451,8 @@ git commit -m "chore: harden .gitignore and remove deployment config from tracki
 - [ ] **Step 1: 替換所有內部域名**
 
 搜尋替換：
-- `talented.mido-9.com` → `your-domain.com`
-- `talented.com.tw` → `your-domain.com`（若存在）
+- `your-domain.com` → `your-domain.com`
+- `example.com` → `your-domain.com`（若存在）
 
 - [ ] **Step 2: 替換範例中的組織特定內容（可選）**
 
@@ -461,7 +461,7 @@ git commit -m "chore: harden .gitignore and remove deployment config from tracki
 - [ ] **Step 3: 確認無其他內部路徑**
 
 ```bash
-grep -n 'talented\|mido-9\|cheerc' gemini.md
+grep -n 'your-domain\|your-org\|admin-email' gemini.md
 ```
 Expected: 無結果
 
@@ -527,12 +527,12 @@ openssl rand -hex 32
 
 ```bash
 # 在 repo 根目錄執行
-grep -rn 'cheerc@talented' --include='*.js' --include='*.html' --include='*.php' --include='*.json' --include='*.md' .
-grep -rn 'talented.mido-9' --include='*.js' --include='*.html' --include='*.php' --include='*.json' --include='*.md' .
-grep -rn 'talented.com.tw' --include='*.js' --include='*.html' --include='*.php' --include='*.json' --include='*.md' .
+grep -rn 'admin@example' --include='*.js' --include='*.html' --include='*.php' --include='*.json' --include='*.md' .
+grep -rn 'your-domain' --include='*.js' --include='*.html' --include='*.php' --include='*.json' --include='*.md' .
+grep -rn 'example.com' --include='*.js' --include='*.html' --include='*.php' --include='*.json' --include='*.md' .
 grep -rn '1lWqXsLY' --include='*.js' --include='*.html' --include='*.php' --include='*.json' .
 grep -rn '1x3IES_MBAdLyI7j' --include='*.js' --include='*.html' --include='*.php' --include='*.json' .
-grep -rn 'def000006a78468f' --include='*.js' --include='*.html' --include='*.php' --include='*.json' .
+grep -rn 'YOUR_ENCRYPTION_KEY...' --include='*.js' --include='*.html' --include='*.php' --include='*.json' .
 ```
 Expected: 全部無結果（package.json 中的 `cheerc` GitHub username 是例外，因為 repo owner 不變）
 
@@ -583,13 +583,13 @@ rsync -av --exclude='.git' \
           --exclude='.DS_Store' \
           --exclude='.agent/' \
           --exclude='.gemini/' \
-          /Users/cheerc/Projects/classroombooking/ .
+          /path/to/classroombooking/ .
 ```
 
 - [ ] **Step 2: 最終掃描新 repo**
 
 ```bash
-grep -rn 'cheerc@talented\|talented.mido-9\|talented.com.tw\|1lWqXsLY\|1x3IES_MBAdLyI7j\|def000006a78468f' .
+grep -rn 'admin@example\|your-domain\|example.com\|1lWqXsLY\|1x3IES_MBAdLyI7j\|YOUR_ENCRYPTION_KEY...' .
 ```
 Expected: 無結果
 

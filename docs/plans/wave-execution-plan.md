@@ -49,7 +49,7 @@
 3. `git rm --cached .clasp.json output.css`（保留本地檔案）
 4. 清理 `_bmad-output/`（`git rm -r --cached`）
 5. 移除 `classroom_viewer/test_env.php`（`git rm`）
-6. 替換 `gemini.md` 中的 `talented.mido-9.com` → `your-domain.com`
+6. 替換 `gemini.md` 中的 `your-domain.com` → `your-domain.com`
 
 ### 驗證
 
@@ -61,7 +61,7 @@ git ls-files .clasp.json  # 預期：空
 git ls-files output.css  # 預期：空
 
 # 確認 gemini.md 無內部域名
-grep -n 'talented\|mido-9' gemini.md  # 預期：無結果
+grep -n 'your-domain\|your-org' gemini.md  # 預期：無結果
 
 # 確認 test_env.php 已移除
 ls classroom_viewer/test_env.php  # 預期：file not found
@@ -87,7 +87,7 @@ ls classroom_viewer/test_env.php  # 預期：file not found
 ### 前置條件（Operator 手動，PR merge 前完成）
 
 1. 開啟 GAS Script Editor → Project Settings → Script Properties
-2. 新增：`ADMIN_EMAIL` = `cheerc@talented.com.tw`
+2. 新增：`ADMIN_EMAIL` = `admin@example.com`
 3. 儲存
 
 ### 範圍
@@ -104,8 +104,8 @@ ls classroom_viewer/test_env.php  # 預期：file not found
 
 ```bash
 # 無硬編碼 admin email
-grep -rn 'cheerc@talented' --include='*.js' --include='*.html' .  # 預期：無結果
-grep -rn "=== 'cheerc'" --include='*.html' .  # 預期：無結果
+grep -rn 'admin@example' --include='*.js' --include='*.html' .  # 預期：無結果
+grep -rn "=== 'admin'" --include='*.html' .  # 預期：無結果
 
 # workflow.sh 驗證
 ./workflow.sh t6
@@ -148,8 +148,8 @@ grep -rn "=== 'cheerc'" --include='*.html' .  # 預期：無結果
 ```bash
 # 無硬編碼機密
 grep -rn '1lWqXsLY' classroom_viewer/  # 預期：無結果
-grep -rn 'def000006a78468f' classroom_viewer/  # 預期：無結果
-grep -rn 'talented.mido-9' classroom_viewer/  # 預期：無結果
+grep -rn 'YOUR_ENCRYPTION_KEY...' classroom_viewer/  # 預期：無結果
+grep -rn 'your-domain' classroom_viewer/  # 預期：無結果
 
 # config.php 不在 git
 git ls-files classroom_viewer/config.php  # 預期：空
