@@ -258,7 +258,10 @@ function saveData(payload) {
  * @returns {string} The new timestamp for the client to store.
  */
 function checkMetadata(dataSheet, clientTimestamp) {
-  const currentTimestamp = dataSheet.getRange("F1").getValue();
+  // Ref: #38 — Normalize to ISO string before comparing; getValue() may return
+  // a Date object while clientTimestamp is always a string, causing spurious conflicts.
+  const rawValue = dataSheet.getRange("F1").getValue();
+  const currentTimestamp = rawValue ? new Date(rawValue).toISOString() : null;
   if (clientTimestamp && currentTimestamp && clientTimestamp !== currentTimestamp) {
     throw new Error('操作失敗！課表列表已被他人修改，請關閉視窗後重新打開以刷新。');
   }
@@ -495,7 +498,13 @@ function getVersionData(versionId) {
     const historySheet = getSheet(SHEET_HISTORY);
     const data = historySheet.getRange("A:C").getValues();
     
-    const versionRow = data.slice(1).find(row => row[0] && new Date(row[0]).toISOString() === versionId);
+    // Ref: #39 — Validate date before calling toISOString() to prevent crash
+    // on corrupt/invalid date values in the history sheet.
+    const versionRow = data.slice(1).find(row => {
+      if (!row[0]) return false;
+      const d = new Date(row[0]);
+      return !isNaN(d.getTime()) && d.toISOString() === versionId;
+    });
 
     if (versionRow) {
       const scheduleDataSnapshot = JSON.parse(versionRow[2] || '{}');

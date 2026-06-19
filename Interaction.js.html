@@ -183,17 +183,17 @@ function createInteractionModule(app) {
 
         return `
             <button title="取消" class="inline-add-cancel-btn">×</button>
-            <div class="text-lg font-bold text-center text-gray-700 mb-2">${classroom}</div>
+            <div class="text-lg font-bold text-center text-gray-700 mb-2">${escapeHtml(classroom)}</div>
             ${isEditMode ? '' : `<div class="inline-day-selector">${daySelectorHtml}</div>`}
-            <input type="text" placeholder="課程名稱" class="inline-input" name="name" value="${isEditMode ? classItemToEdit.name : ''}" required>
+            <input type="text" placeholder="課程名稱" class="inline-input" name="name" value="${escapeHtml(isEditMode ? classItemToEdit.name : '')}" required>
             <div class="inline-time-inputs">
                 <input type="time" class="inline-input" name="timeStart" value="${isEditMode ? classItemToEdit.timeStart : ''}" required>
                 <span>-</span>
                 <input type="time" class="inline-input" name="timeEnd" value="${isEditMode ? classItemToEdit.timeEnd : ''}" required>
             </div>
-            <input type="text" placeholder="使用人" class="inline-input" name="teacher" value="${isEditMode ? classItemToEdit.teacher : ''}">
+            <input type="text" placeholder="使用人" class="inline-input" name="teacher" value="${escapeHtml(isEditMode ? classItemToEdit.teacher : '')}">
             ${tagEditorHtml}
-            ${app.currentViewMode === 'day' ? `<textarea placeholder="備註 (僅在日檢視顯示/編輯)" class="inline-input" name="notes" style="min-height: 60px;">${isEditMode ? classItemToEdit.notes || '' : ''}</textarea>` : ''}
+            ${app.currentViewMode === 'day' ? `<textarea placeholder="備註 (僅在日檢視顯示/編輯)" class="inline-input" name="notes" style="min-height: 60px;">${escapeHtml(isEditMode ? classItemToEdit.notes || '' : '')}</textarea>` : ''}
             <div class="inline-form-actions">
                 ${isEditMode ? `<button title="複製到" class="copy-inline">📋</button>` : ''}
                 <button title="儲存" class="save-inline">✓</button>
@@ -235,7 +235,7 @@ function createInteractionModule(app) {
             if (name !== originalData.name) {
                 const otherNameOccurrences = app.countOccurrences(item => item.name === originalData.name && item.id !== classItem.id);
                 if (otherNameOccurrences > 0) {
-                    const confirmAll = await app.modals.showConfirm(`找到 ${otherNameOccurrences} 個其他名為 "${originalData.name}" 的課程。<br>要全部一起改名為 "${name}" 嗎？`);
+                    const confirmAll = await app.modals.showConfirm(`找到 ${otherNameOccurrences} 個其他名為 「${escapeHtml(originalData.name)}」 的課程。<br>要全部一起改名為 「${escapeHtml(name)}」 嗎？`);
                     if (confirmAll) {
                         app.updateAllOccurrences(item => item.name === originalData.name, item => item.name = name);
                         const activeFilterIndex = app.activeFilters.findIndex(f => f.type === 'name' && f.value === originalData.name);
@@ -252,7 +252,7 @@ function createInteractionModule(app) {
             if (teacher !== originalData.teacher) {
                 const otherTeacherOccurrences = app.countOccurrences(item => item.name === originalData.name && item.teacher === originalData.teacher && item.id !== classItem.id);
                 if (otherTeacherOccurrences > 0) {
-                    const confirmAll = await app.modals.showConfirm(`找到 ${otherTeacherOccurrences} 堂其他由 "${originalData.teacher}" 上的 "${originalData.name}" 課程。<br>要將使用人一起變更為 "${teacher}" 嗎？`);
+                    const confirmAll = await app.modals.showConfirm(`找到 ${otherTeacherOccurrences} 堂其他由 「${escapeHtml(originalData.teacher)}」 上的 「${escapeHtml(originalData.name)}」 課程。<br>要將使用人一起變更為 「${escapeHtml(teacher)}」 嗎？`);
                     if (confirmAll) {
                         app.updateAllOccurrences(
                             item => item.name === originalData.name && item.teacher === originalData.teacher,
@@ -665,7 +665,7 @@ function createInteractionModule(app) {
         const classroom = btn.dataset.classroom;
         const day = parseInt(btn.dataset.day);
         const className = classElement.querySelector('[data-field="name"]').textContent;
-        if (await app.modals.showConfirm(`確定要刪除課程 "${className}" 嗎？`)) {
+        if (await app.modals.showConfirm(`確定要刪除課程 「${escapeHtml(className)}」 嗎？`)) {
             if (!app.scheduleData[classroom] || !app.scheduleData[classroom][day]) return;
             const classIndex = app.scheduleData[classroom][day].findIndex(c => c.id === classId);
             if (classIndex > -1) {
@@ -739,7 +739,7 @@ function createInteractionModule(app) {
             return;
         }
 
-        if (await app.modals.showConfirm(`確定要刪除${currentConfig.typeName} "${itemName}" 嗎？`)) {
+        if (await app.modals.showConfirm(`確定要刪除${currentConfig.typeName} 「${escapeHtml(itemName)}」 嗎？`)) {
             const itemIndex = currentConfig.sourceArray.indexOf(itemName);
             if (itemIndex > -1) {
                 currentConfig.sourceArray.splice(itemIndex, 1);
