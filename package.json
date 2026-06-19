@@ -5,6 +5,8 @@
   "main": "程式碼.js",
   "scripts": {
     "build-css": "node ./node_modules/tailwindcss/lib/cli.js -i ./input.css -o ./output.css",
+    "build-tailwind-html": "node -e \"const fs=require('fs'); const css=fs.readFileSync('output.css','utf8'); fs.writeFileSync('Tailwind.html','<style>\\n'+css+'\\n</style>\\n')\"",
+    "build": "npm run build-css && npm run build-tailwind-html",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
