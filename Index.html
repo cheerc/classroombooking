@@ -10,6 +10,7 @@
     <script>
         // Pass server-side data to a global JS variable to be picked up by the main script.
         var SCRIPT_USER_EMAIL = "<?= userEmail ?>";
+        var IS_ADMIN = <?= isAdmin ?>;
     </script>
     <?!= HtmlService.createHtmlOutputFromFile('Tailwind').getContent(); ?>
     <?!= HtmlService.createHtmlOutputFromFile('CustomStyles').getContent(); ?>

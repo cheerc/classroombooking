@@ -1,7 +1,15 @@
 const SHEET_DATA = "Data";
 const SHEET_HISTORY = "History";
 const MAX_HISTORY_RECORDS = 20;
-const ADMIN_EMAIL = 'cheerc@talented.com.tw';
+
+/**
+ * Reads a configuration value from Script Properties.
+ * @param {string} key The property key.
+ * @returns {string} The property value.
+ */
+function getConfig(key) {
+  return PropertiesService.getScriptProperties().getProperty(key);
+}
 
 /**
  * Finds the 1-based row index for a given scheduleId in the Data sheet.
@@ -28,7 +36,7 @@ function _findScheduleRowInfo(scheduleId, dataSheet) {
  */
 function _checkPermission(createdBy) {
   const currentUser = Session.getActiveUser().getEmail();
-  const isAdmin = currentUser.toLowerCase() === ADMIN_EMAIL;
+  const isAdmin = currentUser.toLowerCase() === (getConfig('ADMIN_EMAIL') || '').toLowerCase();
   if (!isAdmin && currentUser !== createdBy) {
     throw new Error("權限不足。只有管理員或建立者才能執行此操作。");
   }
@@ -62,7 +70,10 @@ function getSheet(name) {
  */
 function doGet() {
   const template = HtmlService.createTemplateFromFile('Index');
-  template.userEmail = Session.getActiveUser().getEmail();
+  const currentUser = Session.getActiveUser().getEmail();
+  const adminEmail = getConfig('ADMIN_EMAIL') || '';
+  template.userEmail = currentUser;
+  template.isAdmin = currentUser.toLowerCase() === adminEmail.toLowerCase();
   return template.evaluate()
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
