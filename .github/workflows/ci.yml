@@ -22,5 +22,12 @@ jobs:
         run: bash scripts/check-structure.sh
       - name: t5 Tailwind consistency
         run: bash scripts/check-tailwind.sh
-      - name: PHP syntax check
-        run: find classroom_viewer -name '*.php' -exec php -l {} \;
+      - name: t7 PHP syntax check
+        run: find classroom_viewer -name '*.php' ! -path '*/vendor/*' -exec php -l {} \;
+      - name: t8 Vitest
+        run: npm test
+      - name: t9 PHPUnit
+        run: |
+          cd classroom_viewer
+          composer install --no-interaction --prefer-dist
+          vendor/bin/phpunit
