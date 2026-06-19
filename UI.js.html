@@ -192,7 +192,7 @@ function createUIModule(app) {
         const listElement = AppElements.scheduleList;
         listElement.innerHTML = '';
         const currentUser = app.getShortUserName(typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '');
-        const isAdmin = currentUser.toLowerCase() === 'cheerc';
+        const isAdmin = typeof IS_ADMIN !== 'undefined' ? IS_ADMIN : false;
         const sortedScheduleIds = Object.keys(app.schedules).sort();
         for (const id of sortedScheduleIds) {
             const schedule = app.schedules[id];

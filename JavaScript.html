@@ -861,8 +861,7 @@
             },
 
             isCurrentUserAdmin: function () {
-                const fullEmail = typeof SCRIPT_USER_EMAIL !== 'undefined' ? SCRIPT_USER_EMAIL : '';
-                return fullEmail.toLowerCase() === 'cheerc@talented.com.tw';
+                return typeof IS_ADMIN !== 'undefined' ? IS_ADMIN : false;
             },
 
             canManageCurrentScheduleSettings: function () {

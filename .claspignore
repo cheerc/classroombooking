@@ -20,3 +20,4 @@ scripts/
 # System files
 .DS_Store
 classroom_viewer/
+config.example.js

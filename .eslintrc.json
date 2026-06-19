@@ -12,7 +12,8 @@
     "createHistoryModule": "readonly",
     "createUIModule": "readonly",
     "createInteractionModule": "readonly",
-    "SCRIPT_USER_EMAIL": "readonly"
+    "SCRIPT_USER_EMAIL": "readonly",
+    "IS_ADMIN": "readonly"
   },
   "rules": {
     "no-unused-vars": "warn",
