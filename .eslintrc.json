@@ -1,0 +1,29 @@
+{
+  "plugins": ["html", "googleappsscript"],
+  "env": { "browser": true, "es2020": true },
+  "globals": {
+    "google": "readonly",
+    "Tagify": "readonly",
+    "Sortable": "readonly",
+    "AppConfig": "readonly",
+    "AppElements": "readonly",
+    "ServerApi": "readonly",
+    "createModalModule": "readonly",
+    "createHistoryModule": "readonly",
+    "createUIModule": "readonly",
+    "createInteractionModule": "readonly",
+    "SCRIPT_USER_EMAIL": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-undef": "error",
+    "no-console": "off"
+  },
+  "overrides": [
+    {
+      "files": ["程式碼.js"],
+      "plugins": ["googleappsscript"],
+      "env": { "browser": false, "googleappsscript/googleappsscript": true }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - run: npm ci
+      - name: t1 CSS build
+        run: npm run build
+      - name: t2 ESLint frontend
+        run: npx eslint --ext .html .
+      - name: t3 ESLint GAS backend
+        run: npx eslint 程式碼.js
+      - name: t4 Structure check
+        run: bash scripts/check-structure.sh
+      - name: t5 Tailwind consistency
+        run: bash scripts/check-tailwind.sh
+      - name: PHP syntax check
+        run: find classroom_viewer -name '*.php' -exec php -l {} \;

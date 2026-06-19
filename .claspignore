@@ -13,6 +13,9 @@ output.css
 .gitignore
 gemini.md
 TestCases.md
+docs/
+scripts/
+.github/
 
 # System files
 .DS_Store
