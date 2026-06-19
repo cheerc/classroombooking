@@ -11,9 +11,9 @@ function createHistoryModule(app) {
 
   function getCurrentState() {
     return {
-      classrooms: JSON.parse(JSON.stringify(app.classrooms)),
-      scheduleData: JSON.parse(JSON.stringify(app.scheduleData)),
-      tags: JSON.parse(JSON.stringify(app.tags))
+      classrooms: structuredClone(app.classrooms),
+      scheduleData: structuredClone(app.scheduleData),
+      tags: structuredClone(app.tags)
     };
   }
 
@@ -62,9 +62,9 @@ function createHistoryModule(app) {
     },
 
     loadState: function(state) {
-        app.classrooms = JSON.parse(JSON.stringify(state.classrooms));
-        app.scheduleData = JSON.parse(JSON.stringify(state.scheduleData));
-        app.tags = JSON.parse(JSON.stringify(state.tags));
+        app.classrooms = structuredClone(state.classrooms);
+        app.scheduleData = structuredClone(state.scheduleData);
+        app.tags = structuredClone(state.tags);
         
         // These methods still live on the main app object
         app.ui.updateClassroomList();
@@ -87,9 +87,9 @@ function createHistoryModule(app) {
         });
         if (app.schedules[app.activeScheduleId]) {
             app.schedules[app.activeScheduleId].data = {
-                classrooms: JSON.parse(JSON.stringify(app.classrooms)),
-                scheduleData: JSON.parse(JSON.stringify(app.scheduleData)),
-                tags: JSON.parse(JSON.stringify(app.tags))
+                classrooms: structuredClone(app.classrooms),
+                scheduleData: structuredClone(app.scheduleData),
+                tags: structuredClone(app.tags)
             };
             app.saveSchedulesToLocal();
         }

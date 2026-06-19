@@ -1121,10 +1121,10 @@
                     // Step 1: Ensure font data is loaded.
                     if (!this.pdfFontBase64) {
                         this.ui.showLoading('首次列印，正在載入PDF專用字體...');
-                        const fontData = await ServerApi.call('getFontBase64FromDrive');
-                        if (fontData && fontData.error) throw new Error(fontData.error);
-                        if (!fontData) throw new Error('無法從伺服器獲取字體資料(回傳為空)。');
-                        this.pdfFontBase64 = fontData;
+                        // Ref: #47 — getFontBase64FromDrive now returns { success, data/error } envelope
+                        const fontResult = await ServerApi.call('getFontBase64FromDrive');
+                        if (!fontResult || !fontResult.success) throw new Error((fontResult && fontResult.error) || '無法從伺服器獲取字體資料(回傳為空)。');
+                        this.pdfFontBase64 = fontResult.data;
                     }
 
                     this.ui.showLoading('正在生成PDF...');

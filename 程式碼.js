@@ -499,11 +499,16 @@ function getVersionData(versionId) {
       throw new Error("未提供版本ID");
     }
     const historySheet = getSheet(SHEET_HISTORY);
-    const data = historySheet.getRange("A:C").getValues();
+    // Ref: #45 — Use bounded range instead of full-column scan
+    const lastRow = historySheet.getLastRow();
+    if (lastRow < 2) {
+      return { success: false, error: "找不到指定的版本" };
+    }
+    const data = historySheet.getRange(`A2:C${lastRow}`).getValues();
     
     // Ref: #39 — Validate date before calling toISOString() to prevent crash
     // on corrupt/invalid date values in the history sheet.
-    const versionRow = data.slice(1).find(row => {
+    const versionRow = data.find(row => {
       if (!row[0]) return false;
       const d = new Date(row[0]);
       return !isNaN(d.getTime()) && d.toISOString() === versionId;
@@ -549,7 +554,8 @@ function getFontBase64FromDrive() {
     const match = content.match(/const NotoSansTC_Base64 = '([^']+)';/);
     
     if (match && match[1]) {
-      return match[1];
+      // Ref: #47 — Standardized return envelope { success, data }
+      return { success: true, data: match[1] };
     } else {
       throw new Error('無法從 Drive 檔案中提取 Base64 字體資料。請確認檔案格式是否正確。');
     }
