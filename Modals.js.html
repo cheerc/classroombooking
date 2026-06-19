@@ -1,4 +1,16 @@
 <script>
+// Ref: #4 — Global HTML escape utility to prevent stored XSS via innerHTML interpolation.
+// Escapes the 5 critical characters: & < > " '
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function createModalModule(app) {
   const elements = AppElements; // Shortcut to elements
 
@@ -316,9 +328,10 @@ function createModalModule(app) {
             const isChecked = app.activeFilters.some(f => f.value === item && f.type === filterType);
             const div = document.createElement('div');
             div.setAttribute('class', 'flex items-center');
+            const safeItem = escapeHtml(item);
             div.innerHTML = `
-                <input type="checkbox" id="filter-${item}" value="${item}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
-                <label for="filter-${item}" class="ml-2 block text-sm text-gray-900 truncate">${item}</label>
+                <input type="checkbox" id="filter-${safeItem}" value="${safeItem}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
+                <label for="filter-${safeItem}" class="ml-2 block text-sm text-gray-900 truncate">${safeItem}</label>
             `;
             listElement.appendChild(div);
         });
