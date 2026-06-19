@@ -40,7 +40,7 @@ function createUIModule(app) {
 
     showNotification: function(message, type = 'success', duration = 3000) {
         const notification = elements.notification;
-        notification.innerHTML = message;
+        notification.textContent = message;
         notification.classList.remove('success', 'error', 'info');
         notification.classList.add(type, 'show');
         setTimeout(() => notification.classList.remove('show'), duration);
@@ -201,16 +201,19 @@ function createUIModule(app) {
             const canManage = isAdmin || (currentUser === createdBy);
             const li = document.createElement('li');
             li.className = 'schedule-list-item';
-            let buttonsHtml = `<button class="copy-schedule-btn text-green-600 hover:text-green-800 text-sm" data-id="${id}">複製</button>`;
+            const safeId = escapeHtml(id);
+            const safeName = escapeHtml(displayName);
+            const safeOwner = escapeHtml(createdBy);
+            let buttonsHtml = `<button class="copy-schedule-btn text-green-600 hover:text-green-800 text-sm" data-id="${safeId}">複製</button>`;
             if (canManage) {
-                buttonsHtml += `<button class="rename-schedule-btn text-blue-600 hover:text-blue-800 text-sm ml-2" data-id="${id}">編輯</button>`;
-                buttonsHtml += `<button class="delete-schedule-btn text-red-600 hover:text-red-800 text-sm ml-2" data-id="${id}">刪除</button>`;
+                buttonsHtml += `<button class="rename-schedule-btn text-blue-600 hover:text-blue-800 text-sm ml-2" data-id="${safeId}">編輯</button>`;
+                buttonsHtml += `<button class="delete-schedule-btn text-red-600 hover:text-red-800 text-sm ml-2" data-id="${safeId}">刪除</button>`;
             }
             li.innerHTML = (
                 `
                 <div class="schedule-info">
-                    <span class="schedule-name" data-tooltip="${displayName}" data-id="${id}">${displayName}</span>
-                    <span class="schedule-owner">(建立者: ${createdBy})</span>
+                    <span class="schedule-name" data-tooltip="${safeName}" data-id="${safeId}">${safeName}</span>
+                    <span class="schedule-owner">(建立者: ${safeOwner})</span>
                 </div>
                 <div class="schedule-actions">
                     ${buttonsHtml}
@@ -229,10 +232,11 @@ function createUIModule(app) {
         this.renderList(listElement, sortedItems, (item) => {
             const li = document.createElement('li');
             li.className = 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded';
+            const safeItem = escapeHtml(item);
             li.innerHTML = (
                 `
-                <span>${item}</span>
-                <button class="delete-${itemType} text-red-600 hover:text-red-800" data-${itemType}="${item}">
+                <span>${safeItem}</span>
+                <button class="delete-${itemType} text-red-600 hover:text-red-800" data-${itemType}="${safeItem}">
                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             `
@@ -284,12 +288,13 @@ function createUIModule(app) {
             this.renderList(listElement, sortedItems, (item) => {
                 const li = document.createElement('li');
                 li.className = 'flex justify-between items-center py-1 px-2 hover:bg-gray-100 rounded';
+                const safeItem = escapeHtml(item);
                 li.innerHTML = (
                     `
-                    <span>${item}</span>
+                    <span>${safeItem}</span>
                     <div>
-                        <button class="edit-classroom text-blue-600 hover:text-blue-800 text-sm mr-2" data-classroom="${item}">編輯</button>
-                        <button class="delete-classroom text-red-600 hover:text-red-800 text-sm" data-classroom="${item}">刪除</button>
+                        <button class="edit-classroom text-blue-600 hover:text-blue-800 text-sm mr-2" data-classroom="${safeItem}">編輯</button>
+                        <button class="delete-classroom text-red-600 hover:text-red-800 text-sm" data-classroom="${safeItem}">刪除</button>
                     </div>
                 `
                 );
@@ -336,15 +341,15 @@ function createUIModule(app) {
         const hasConflict = app.checkTimeConflict(classroom, day, classItem);
         const conflictIcon = hasConflict ? `<div class="conflict-icon" title="時間衝突"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.752a3 3 0 01-2.598 4.5H4.644a3 3 0 01-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg></div>` : '';
         const bgColor = overrideColor || app.courseColorMap[classItem.name] || '#E2E8F0';
-        const tagsHtml = (classItem.tags || []).map(tag => `<span class="tag-tag-vertical">${tag}</span>`).join('');
-        const allTagsTooltip = (classItem.tags || []).join(', ');
-        const notesHtml = app.currentViewMode === AppConfig.MODES.DAY ? `<div class="course-notes editable" data-field="notes">${classItem.notes || ''}</div>` : '';
+        const tagsHtml = (classItem.tags || []).map(tag => `<span class="tag-tag-vertical">${escapeHtml(tag)}</span>`).join('');
+        const allTagsTooltip = escapeHtml((classItem.tags || []).join(', '));
+        const notesHtml = app.currentViewMode === AppConfig.MODES.DAY ? `<div class="course-notes editable" data-field="notes">${escapeHtml(classItem.notes || '')}</div>` : '';
         
         let contextSpecificHtml = '';
         if (viewContext === 'teacherSort') {
-            contextSpecificHtml = `<div>教室：${classroom}</div>`;
+            contextSpecificHtml = `<div>教室：${escapeHtml(classroom)}</div>`;
         } else {
-            contextSpecificHtml = `<div class="editable" data-field="teacher">${classItem.teacher}</div>`;
+            contextSpecificHtml = `<div class="editable" data-field="teacher">${escapeHtml(classItem.teacher)}</div>`;
         }
 
         const viewModeClass = app.currentViewMode === AppConfig.MODES.DAY ? 'day-view-layout' : '';
@@ -358,13 +363,13 @@ function createUIModule(app) {
         classDiv.innerHTML = (
             `
             <div class="class-item-content">
-                <div class="font-medium editable" data-field="name">${classItem.name}</div>
-                <div class="editable" data-field="time">${classItem.timeStart}-${classItem.timeEnd}</div>
+                <div class="font-medium editable" data-field="name">${escapeHtml(classItem.name)}</div>
+                <div class="editable" data-field="time">${escapeHtml(classItem.timeStart)}-${escapeHtml(classItem.timeEnd)}</div>
                 ${contextSpecificHtml}
             </div>
             <div class="tag-tags-vertical-container editable" data-field="tags" data-tooltip="標籤: ${allTagsTooltip}">${tagsHtml}</div>
             ${notesHtml}
-            <span class="delete-btn" data-classroom="${classroom}" data-day="${day}">×</span>
+            <span class="delete-btn" data-classroom="${escapeHtml(classroom)}" data-day="${day}">×</span>
             ${conflictIcon}
         `
         );
@@ -568,7 +573,7 @@ function createUIModule(app) {
             allCoursesForDay.forEach(course => {
                 const tr = document.createElement('tr');
                 const { scheduleName, classroomName } = classroomMetadataMap.get(course.classroom);
-                tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top classroom-cell-stacked"><span class="schedule-prefix">${scheduleName}</span><span class="classroom-name-main">${classroomName}</span></td>`;
+                tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top classroom-cell-stacked"><span class="schedule-prefix">${escapeHtml(scheduleName)}</span><span class="classroom-name-main">${escapeHtml(classroomName)}</span></td>`;
                 const td = document.createElement('td');
                 td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top readonly-cell');
                 td.dataset.classroom = course.classroom;
@@ -585,7 +590,7 @@ function createUIModule(app) {
             sortedClassrooms.forEach(uniqueClassroomName => {
                 const tr = document.createElement('tr');
                 const { scheduleName, classroomName } = classroomMetadataMap.get(uniqueClassroomName);
-                tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top classroom-cell-stacked"><span class="schedule-prefix">${scheduleName}</span><span class="classroom-name-main">${classroomName}</span></td>`;
+                tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 align-top classroom-cell-stacked"><span class="schedule-prefix">${escapeHtml(scheduleName)}</span><span class="classroom-name-main">${escapeHtml(classroomName)}</span></td>`;
                 const daysToRender = app.currentViewMode === AppConfig.MODES.WEEK ? [0, 1, 2, 3, 4, 5, 6] : [app.currentDayIndex];
                 for (const day of daysToRender) {
                     const td = document.createElement('td');
@@ -638,7 +643,7 @@ function createUIModule(app) {
         allCoursesForDay.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
         allCoursesForDay.forEach(course => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${course.classroom}</span></td>`;
+            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${escapeHtml(course.classroom)}</span></td>`;
             const td = document.createElement('td');
             td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
             td.dataset.classroom = course.classroom;
@@ -666,7 +671,7 @@ function createUIModule(app) {
         sortedTeachers.forEach(teacher => {
             const tr = document.createElement('tr');
             // First cell is the teacher's name
-            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${teacher}</span></td>`;
+            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${escapeHtml(teacher)}</span></td>`;
             
             const daysToRender = app.currentViewMode === AppConfig.MODES.WEEK ? [0, 1, 2, 3, 4, 5, 6] : [app.currentDayIndex];
 
@@ -706,7 +711,7 @@ function createUIModule(app) {
         const sortedClassrooms = app.sortClassrooms(Array.from(classroomsWithSchedule));
         sortedClassrooms.forEach(classroom => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${classroom}</span></td>`;
+            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${escapeHtml(classroom)}</span></td>`;
             const daysToRender = app.currentViewMode === AppConfig.MODES.WEEK ? [0, 1, 2, 3, 4, 5, 6] : [app.currentDayIndex];
             for (const day of daysToRender) {
                 const td = document.createElement('td');
