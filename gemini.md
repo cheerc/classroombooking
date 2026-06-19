@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 #### 3. 安全性限制
 
-`index.php` 檔案已設定 `Content-Security-Policy: frame-ancestors` 標頭，只允許特定網域 (例如 `https://talented.mido-9.com`) 嵌入此 `iframe`，防止未經授權的網站使用。
+`index.php` 檔案已設定 `Content-Security-Policy: frame-ancestors` 標頭，只允許特定網域 (例如 `https://your-domain.com`) 嵌入此 `iframe`，防止未經授權的網站使用。
 
 ---
 

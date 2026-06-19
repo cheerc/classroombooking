@@ -1,5 +1,6 @@
-# BMAD-Mathod
+# BMAD-Method
 _bmad/
+_bmad-output/
 
 # Antigravity Agent
 .agent/
@@ -16,3 +17,12 @@ Tailwind.html
 
 # OS-specific
 .DS_Store
+
+# Deployment configuration (contains project-specific IDs)
+.clasp.json
+
+# Code analysis output
+graphify-out/
+
+# Environment / config files
+*.env
