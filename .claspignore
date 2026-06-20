@@ -21,3 +21,8 @@ scripts/
 .DS_Store
 classroom_viewer/
 config.example.js
+
+# Test infrastructure (Wave 1)
+**/tests/**
+vitest.config.js
+workflow.sh
