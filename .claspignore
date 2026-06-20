@@ -26,3 +26,6 @@ config.example.js
 **/tests/**
 vitest.config.js
 workflow.sh
+
+# Local dev tools
+graphify-out/
