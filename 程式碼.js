@@ -286,7 +286,7 @@ function addSchedule(scheduleInfo) {
     const { id, name, isDraft, metadataTimestamp } = scheduleInfo; // Added isDraft
     if (!id || !name) throw new Error("必須提供課表 ID 和名稱。");
     // Ref: #66 — Validate schedule ID format to prevent arbitrary sheet name injection
-    if (!/^schedule_\d+_[a-z0-9]+$/.test(id)) {
+    if (!/^schedule_\d+$/.test(id)) {
       throw new Error('無效的課表 ID 格式。');
     }
 

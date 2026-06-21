@@ -346,7 +346,7 @@ describe('addSchedule', () => {
     });
 
     const result = gas.addSchedule({
-      id: 'schedule_1234567890_abc123',
+      id: 'schedule_1719000000000',
       name: 'Valid Schedule',
       metadataTimestamp: '2024-01-01T00:00:00.000Z',
     });
