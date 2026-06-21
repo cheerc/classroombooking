@@ -36,6 +36,8 @@ function _findScheduleRowInfo(scheduleId, dataSheet) {
  */
 function _checkPermission(createdBy) {
   const currentUser = Session.getActiveUser().getEmail();
+  // Ref: #62 — Guard against empty email (e.g. time-driven triggers return '')
+  if (!currentUser) throw new Error('未登入，無法執行此操作');
   const isAdmin = currentUser.toLowerCase() === (getConfig('ADMIN_EMAIL') || '').toLowerCase();
   if (!isAdmin && currentUser.toLowerCase() !== createdBy.toLowerCase()) {
     throw new Error("權限不足。只有管理員或建立者才能執行此操作。");
@@ -98,7 +100,8 @@ function getData() {
     Logger.log("以多工作表格式讀取資料。");
     const lastRow = dataSheet.getLastRow();
     if (lastRow < 2) {
-      return { schedules: {}, metadataTimestamp: metadataTimestamp };
+      // Ref: #60 — Include success: true for consistency with normal return path
+      return { success: true, schedules: {}, metadataTimestamp: metadataTimestamp };
     }
     const indexData = dataSheet.getRange(`A2:E${lastRow}`).getValues();
     const schedules = {};
@@ -282,6 +285,10 @@ function addSchedule(scheduleInfo) {
     lock.waitLock(30000);
     const { id, name, isDraft, metadataTimestamp } = scheduleInfo; // Added isDraft
     if (!id || !name) throw new Error("必須提供課表 ID 和名稱。");
+    // Ref: #66 — Validate schedule ID format to prevent arbitrary sheet name injection
+    if (!/^schedule_\d+$/.test(id)) {
+      throw new Error('無效的課表 ID 格式。');
+    }
 
     const dataSheet = getSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);

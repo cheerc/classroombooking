@@ -303,7 +303,7 @@
 
                 if (deleteBtn) {
                     const id = deleteBtn.dataset.id;
-                    if (await this.modals.showConfirm(`確定要刪除課表 "${escapeHtml(this.schedules[id].name)}" 嗎？此操作無法復原。`)) {
+                    if (await this.modals.showConfirm(`確定要刪除課表 "${this.schedules[id].name}" 嗎？此操作無法復原。`)) {
                         this.ui.showLoading('正在刪除課表...');
                         try {
                             const result = await ServerApi.call('deleteSchedule', { id: id, metadataTimestamp: this.activeMetadataTimestamp });
@@ -665,7 +665,7 @@
 
                     // *** STEP 4: Handle new conflict error
                     if (saveResult && saveResult.conflict) {
-                        this.modals.showConfirm(escapeHtml(saveResult.error), true); // Ref: #4 — escape server error to prevent XSS
+                        this.modals.showConfirm(saveResult.error, true); // textContent is XSS-safe; escapeHtml removed to prevent double-escaping
                         this.ui.manageLoadingState('end', { success: false, isConflict: true });
                         return;
                     }
