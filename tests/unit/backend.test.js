@@ -24,7 +24,7 @@ const gasSource = readFileSync(
 function createGasEnv(opts = {}) {
   const sheets = opts.sheets || {};
   const SpreadsheetApp = createMockSpreadsheetApp(sheets);
-  const Session = createMockSession(opts.userEmail || 'test@example.com');
+  const Session = createMockSession(opts.userEmail ?? 'test@example.com');
   const LockService = createMockLockService();
   const PropertiesService = createMockPropertiesService(opts.scriptProps || {});
   const Logger = createMockLogger();
@@ -193,6 +193,15 @@ describe('_checkPermission', () => {
     });
     expect(() => gas._checkPermission('other@school.com')).not.toThrow();
   });
+
+  // Ref: #62 — Empty email guard
+  it('throws when user email is empty (e.g. time-driven trigger)', () => {
+    const gas = createGasEnv({
+      userEmail: '',
+      scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
+    });
+    expect(() => gas._checkPermission('creator@school.com')).toThrow('未登入');
+  });
 });
 
 // ─── copySchedule (#41 permission check) ─────────────────────────────────
@@ -285,5 +294,63 @@ describe('getData', () => {
     expect(result.schedules.schedule_1).toBeDefined();
     expect(result.schedules.schedule_1.name).toBe('Test');
     expect(result.schedules.schedule_1.data.classrooms).toEqual(['room1']);
+  });
+});
+
+// ─── addSchedule (#66 ID format validation) ──────────────────────────────────
+
+describe('addSchedule', () => {
+  it('rejects invalid schedule ID format (Ref: #66)', () => {
+    const dataSheet = createMockSheet('Data', {
+      F1: '2024-01-01T00:00:00.000Z',
+    });
+    const gas = createGasEnv({
+      sheets: { Data: dataSheet },
+      userEmail: 'user@test.com',
+    });
+
+    const result = gas.addSchedule({
+      id: 'malicious<script>alert(1)</script>',
+      name: 'Test',
+      metadataTimestamp: '2024-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('無效的課表 ID');
+  });
+
+  it('rejects schedule ID without proper prefix', () => {
+    const dataSheet = createMockSheet('Data', {
+      F1: '2024-01-01T00:00:00.000Z',
+    });
+    const gas = createGasEnv({
+      sheets: { Data: dataSheet },
+      userEmail: 'user@test.com',
+    });
+
+    const result = gas.addSchedule({
+      id: 'not_a_valid_id',
+      name: 'Test',
+      metadataTimestamp: '2024-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('無效的課表 ID');
+  });
+
+  it('accepts valid schedule ID format', () => {
+    const dataSheet = createMockSheet('Data', {
+      F1: '2024-01-01T00:00:00.000Z',
+    });
+    const gas = createGasEnv({
+      sheets: { Data: dataSheet },
+      userEmail: 'user@test.com',
+    });
+
+    const result = gas.addSchedule({
+      id: 'schedule_1234567890_abc123',
+      name: 'Valid Schedule',
+      metadataTimestamp: '2024-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(true);
+    expect(result.createdBy).toBe('user@test.com');
   });
 });

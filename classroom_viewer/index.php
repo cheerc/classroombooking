@@ -81,8 +81,9 @@ function render_course_item($course, $colorMap) {
         return '<div class="course-item" style="border-left-color: red;">資料錯誤</div>';
     }
 
-    $name = htmlspecialchars($course['name']);
-    $time = htmlspecialchars(($course['timeStart'] ?? '') . ' - ' . ($course['timeEnd'] ?? ''));
+    // Ref: #60 — Add ENT_QUOTES to prevent attribute injection
+    $name = htmlspecialchars($course['name'], ENT_QUOTES, 'UTF-8');
+    $time = htmlspecialchars(($course['timeStart'] ?? '') . ' - ' . ($course['timeEnd'] ?? ''), ENT_QUOTES, 'UTF-8');
 
     $color = $colorMap[$course['name']] ?? '#ccc';
 
@@ -249,7 +250,7 @@ try {
     }
 
     if (empty($targetSheetIds)) {
-        throw new Exception('找不到任何指定的課表: ' . htmlspecialchars(implode(', ', $targetScheduleNames)));
+        throw new Exception('找不到任何指定的課表: ' . htmlspecialchars(implode(', ', $targetScheduleNames), ENT_QUOTES, 'UTF-8'));
     }
 
     // --- 3. Fetch and Combine Data ---

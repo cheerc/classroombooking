@@ -25,7 +25,12 @@ function createModalModule(app) {
         const { modal, textElement, inputElement, okButton, cancelButton, message, defaultValue, isAlert } = config;
 
         if (textElement) {
-            textElement.innerHTML = message;
+            // Ref: #63 — Default to textContent to prevent XSS; opt-in allowHtml for intentional HTML
+            if (config.allowHtml) {
+                textElement.innerHTML = message;
+            } else {
+                textElement.textContent = message;
+            }
         }
         if (inputElement) {
             inputElement.value = defaultValue;
@@ -104,22 +109,29 @@ function createModalModule(app) {
 
     /**
      * Shows a confirmation dialog.
+     * @param {string} message
+     * @param {boolean|object} [isAlertOrOpts=false] Boolean for backward compat, or { isAlert, allowHtml }
      */
-    showConfirm: function(message, isAlert = false) {
+    showConfirm: function(message, isAlertOrOpts = false) {
+        const opts = typeof isAlertOrOpts === 'object' ? isAlertOrOpts : { isAlert: isAlertOrOpts };
         return showModal({
             modal: elements.confirmModal,
             textElement: elements.confirmText,
             okButton: elements.confirmOk,
             cancelButton: elements.confirmCancel,
             message: message,
-            isAlert: isAlert
+            isAlert: opts.isAlert || false,
+            allowHtml: opts.allowHtml || false
         });
     },
 
     /**
      * Shows a prompt dialog with a text input.
+     * @param {string} message
+     * @param {string} [defaultValue='']
+     * @param {object} [opts={}] Options: { allowHtml }
      */
-    showPrompt: function(message, defaultValue = '') {
+    showPrompt: function(message, defaultValue = '', opts = {}) {
         return showModal({
             modal: elements.promptModal,
             textElement: elements.promptText,
@@ -127,12 +139,13 @@ function createModalModule(app) {
             okButton: elements.promptOk,
             cancelButton: elements.promptCancel,
             message: message,
-            defaultValue: defaultValue
+            defaultValue: defaultValue,
+            allowHtml: opts.allowHtml || false
         });
     },
 
-    showAlert: function(message) {
-        return this.showConfirm(message, true);
+    showAlert: function(message, opts = {}) {
+        return this.showConfirm(message, { isAlert: true, allowHtml: opts.allowHtml || false });
     },
 
     showScheduleEditor: function(options = {}) {

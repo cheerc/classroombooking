@@ -141,6 +141,7 @@ class EncryptionTest extends TestCase
         $wrongKey = 'wrong-key-for-testing-wrong-key-32byt!';
         $result = openssl_decrypt($encrypted, self::CIPHER, $wrongKey, 0, $iv);
 
-        $this->assertNotEquals($original, $result);
+        // Ref: #60 — openssl_decrypt returns false on failure, not a different string
+        $this->assertFalse($result);
     }
 }
