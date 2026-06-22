@@ -247,32 +247,11 @@ try {
     $finalSchedule = [];
 
     if (!empty($filterTags) || !empty($excludeTags)) {
-        foreach ($scheduleData as $classroomName => $days) {
-            $filteredDays = [];
-            foreach ($days as $dayIndex => $courses) {
-                $filteredCourses = array_filter($courses, function($course) use ($filterTags, $excludeTags) {
-                    $courseTags = $course['tags'] ?? [];
-                    // Ensure all tags are strings to prevent 'Array to string conversion' warning in array_intersect
-                    $courseTags = array_filter($courseTags, 'is_string');
-                    if (!empty($excludeTags) && !empty(array_intersect($excludeTags, $courseTags))) {
-                        return false;
-                    }
-                    if (!empty($filterTags) && empty(array_intersect($filterTags, $courseTags))) {
-                        return false;
-                    }
-                    return true;
-                });
-                if (!empty($filteredCourses)) {
-                    $filteredDays[$dayIndex] = array_values($filteredCourses);
-                }
-            }
-            if (!empty($filteredDays)) {
-                $finalSchedule[$classroomName] = $filteredDays;
-            }
-        }
+        $finalSchedule = filterScheduleByTags($scheduleData, $filterTags, $excludeTags);
     } else {
         $finalSchedule = $scheduleData;
     }
+
 
     $classroomsToShow = sortClassrooms(array_keys($finalSchedule));
     $courseColorMap = buildCourseColorMap($finalSchedule, $courseColors);
