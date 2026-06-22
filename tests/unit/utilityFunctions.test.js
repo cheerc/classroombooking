@@ -391,8 +391,10 @@ describe('formatTimestampForFilename — GAP', () => {
   it('pads single-digit month and day', () => {
     const ts = '2026-01-05T08:05:00+08:00';
     const result = formatTimestampForFilename(ts);
-    // Should contain '0105' for Jan 5th and '0805' for 08:05
-    expect(result).toMatch(/^20260105_0805$/);
+    // Compute expected from Date to be timezone-independent (CI runs UTC)
+    const date = new Date(ts);
+    const expected = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}_${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}`;
+    expect(result).toBe(expected);
   });
 });
 
