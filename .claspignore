@@ -9,17 +9,17 @@ input.css
 output.css
 
 # Git and documentation
-.git/
+.git/**
 .gitignore
 gemini.md
 TestCases.md
-docs/
-scripts/
-.github/
+docs/**
+scripts/**
+.github/**
 
 # System files
 .DS_Store
-classroom_viewer/
+classroom_viewer/**
 config.example.js
 
 # Test infrastructure (Wave 1)
@@ -28,4 +28,4 @@ vitest.config.js
 workflow.sh
 
 # Local dev tools
-graphify-out/
+graphify-out/**
