@@ -17,7 +17,27 @@ export function createMockSheet(name, data = {}) {
   return {
     getName: () => name,
     setName: (n) => { /* no-op for mock */ },
-    getRange: (rangeStr) => createMockRange(cells, rangeStr),
+    getRange: (...args) => {
+      const cols = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      let rangeStr;
+      if (typeof args[0] === 'number') {
+        // getRange(row, col) or getRange(row, col, numRows, numCols)
+        const row = args[0];
+        const col = args[1];
+        if (args.length >= 4) {
+          // getRange(row, col, numRows, numCols)
+          const numRows = args[2];
+          const numCols = args[3];
+          rangeStr = `${cols[col - 1]}${row}:${cols[col + numCols - 2]}${row + numRows - 1}`;
+        } else {
+          // getRange(row, col) — single cell
+          rangeStr = `${cols[col - 1]}${row}`;
+        }
+      } else {
+        rangeStr = args[0];
+      }
+      return createMockRange(cells, rangeStr);
+    },
     getLastRow: () => {
       // Compute last row from stored cells
       let maxRow = 1;
@@ -41,6 +61,47 @@ export function createMockSheet(name, data = {}) {
       });
     },
     copyTo: () => createMockSheet(`Copy of ${name}`),
+    insertRowBefore: (rowNumber) => {
+      // Shift all rows >= rowNumber down by 1
+      const keys = Object.keys(cells).filter(k => {
+        const m = k.match(/([A-Z]+)(\d+)/);
+        return m && parseInt(m[2]) >= rowNumber;
+      });
+      // Sort descending by row number to avoid overwriting
+      keys.sort((a, b) => {
+        const ra = parseInt(a.match(/\d+/)[0]);
+        const rb = parseInt(b.match(/\d+/)[0]);
+        return rb - ra;
+      });
+      for (const key of keys) {
+        const m = key.match(/([A-Z]+)(\d+)/);
+        const newKey = `${m[1]}${parseInt(m[2]) + 1}`;
+        cells[newKey] = cells[key];
+        delete cells[key];
+      }
+    },
+    deleteRow: (rowIndex) => {
+      // Delete all cells in the row, shift rows above down
+      const cols = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      for (let c = 0; c < 26; c++) {
+        delete cells[`${cols[c]}${rowIndex}`];
+      }
+      // Shift rows > rowIndex up by 1
+      const maxRow = Object.keys(cells).reduce((max, key) => {
+        const m = key.match(/\d+/);
+        return m ? Math.max(max, parseInt(m[0])) : max;
+      }, 0);
+      for (let r = rowIndex + 1; r <= maxRow; r++) {
+        for (let c = 0; c < 26; c++) {
+          const oldKey = `${cols[c]}${r}`;
+          const newKey = `${cols[c]}${r - 1}`;
+          if (cells[oldKey] !== undefined) {
+            cells[newKey] = cells[oldKey];
+            delete cells[oldKey];
+          }
+        }
+      }
+    },
   };
 }
 
@@ -109,6 +170,10 @@ export function createMockSpreadsheetApp(sheets) {
         const sheet = createMockSheet(name);
         sheets[name] = sheet;
         return sheet;
+      },
+      deleteSheet: (sheet) => {
+        const sheetName = sheet.getName();
+        delete sheets[sheetName];
       },
     }),
   };
