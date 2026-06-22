@@ -6,6 +6,7 @@
 
 use PHPUnit\Framework\TestCase;
 
+define('APP_RUNNING', true);
 require_once __DIR__ . '/../functions.php';
 
 class FunctionsTest extends TestCase

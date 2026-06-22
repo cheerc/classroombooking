@@ -1,5 +1,5 @@
 <?php
-defined('APP_RUNNING') or define('APP_RUNNING', true); // Allow standalone require in tests
+defined('APP_RUNNING') or die('Direct access not allowed.');
 /**
  * Pure helper functions extracted from index.php for testability.
  * Ref: #61 — Wave 2 test coverage expansion
