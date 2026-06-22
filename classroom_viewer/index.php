@@ -348,6 +348,9 @@ header('Content-Type: text/html; charset=utf-8');
         <?php echo render_schedule_table($classroomsToShow, $finalSchedule, $weekdays, $courseColorMap); ?>
     </div>
 <script>
+    // Ref: #67.2 — postMessage target origin from config (consistent with CSP frame-ancestors)
+    const PARENT_ORIGIN = '<?= "https://" . htmlspecialchars($config["csp_domain"], ENT_QUOTES, "UTF-8") ?>';
+
     function sendHeight() {
         const contentWrapper = document.querySelector('.container');
         if (contentWrapper) {
@@ -355,7 +358,7 @@ header('Content-Type: text/html; charset=utf-8');
             if (window.parent) {
                 const message = { type: 'iframe-resize', height: height };
                 // Ref: #9 — Restrict postMessage to known embedding origin
-                window.parent.postMessage(message, 'https://talented.mido-9.com');
+                window.parent.postMessage(message, PARENT_ORIGIN);
             }
         }
     }

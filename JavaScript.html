@@ -77,8 +77,8 @@
                     }
                 }, 60 * 1000); // Check every minute
 
-                // Heartbeat to keep the lock alive
-                setInterval(() => this.refreshLockHeartbeat(), 5000); // Refresh lock every 5 seconds
+                // Ref: #67.4 — Heartbeat to keep the lock alive (10s interval reduces unnecessary API calls)
+                setInterval(() => this.refreshLockHeartbeat(), 10000);
             },
 
             // --- DATA & SCHEDULE LOGIC ---
@@ -275,7 +275,7 @@
                         if (hasChanged) {
                             this.ui.showLoading('正在更新課表...');
                             try {
-                                const backendResult = await ServerApi.call('renameSchedule', {
+                                const backendResult = await ServerApi.call('updateScheduleMetadata', {
                                     id: id,
                                     newName: result.name,
                                     isDraft: result.isDraft,

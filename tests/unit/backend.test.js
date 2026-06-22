@@ -38,7 +38,7 @@ function createGasEnv(opts = {}) {
       return {
         getConfig, _findScheduleRowInfo, _checkPermission, _getSs, getSheet, getOrCreateSheet,
         doGet, getData, saveData, checkMetadata, addSchedule,
-        renameSchedule, deleteSchedule, copySchedule,
+        updateScheduleMetadata, deleteSchedule, copySchedule,
         getVersions, getVersionData, getFontBase64FromDrive
       };
     })(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService);
@@ -570,9 +570,9 @@ describe('getVersions', () => {
   });
 });
 
-// ─── renameSchedule ──────────────────────────────────────────────────────
+// ─── updateScheduleMetadata (renamed from renameSchedule, #67.5) ──────────
 
-describe('renameSchedule', () => {
+describe('updateScheduleMetadata', () => {
   function createRenameEnv(overrides = {}) {
     const ts = '2024-06-15T10:30:00.000Z';
     const dataSheet = createMockSheet('Data', {
@@ -589,7 +589,7 @@ describe('renameSchedule', () => {
 
   it('renames schedule successfully', () => {
     const gas = createRenameEnv();
-    const result = gas.renameSchedule({
+    const result = gas.updateScheduleMetadata({
       id: 'schedule_1',
       newName: 'New Name',
       metadataTimestamp: '2024-06-15T10:30:00.000Z',
@@ -600,7 +600,7 @@ describe('renameSchedule', () => {
 
   it('updates isDraft status', () => {
     const gas = createRenameEnv();
-    const result = gas.renameSchedule({
+    const result = gas.updateScheduleMetadata({
       id: 'schedule_1',
       isDraft: true,
       metadataTimestamp: '2024-06-15T10:30:00.000Z',
@@ -610,7 +610,7 @@ describe('renameSchedule', () => {
 
   it('rejects unauthorized user', () => {
     const gas = createRenameEnv({ userEmail: 'hacker@test.com' });
-    const result = gas.renameSchedule({
+    const result = gas.updateScheduleMetadata({
       id: 'schedule_1',
       newName: 'Hacked',
       metadataTimestamp: '2024-06-15T10:30:00.000Z',
