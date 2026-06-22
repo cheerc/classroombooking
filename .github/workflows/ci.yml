@@ -29,6 +29,8 @@ jobs:
       - name: Install pcov for PHP coverage
         run: |
           sudo pecl install pcov
+          PHP_INI_SCAN_DIR=$(php -r 'echo PHP_CONFIG_FILE_SCAN_DIR;')
+          echo "extension=pcov.so" | sudo tee "$PHP_INI_SCAN_DIR/20-pcov.ini"
           php -m | grep pcov
       - name: t9 PHPUnit
         run: |
