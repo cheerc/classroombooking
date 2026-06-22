@@ -353,4 +353,270 @@ describe('addSchedule', () => {
     expect(result.success).toBe(true);
     expect(result.createdBy).toBe('user@test.com');
   });
+
+  it('rejects duplicate schedule ID', () => {
+    const dataSheet = createMockSheet('Data', {
+      F1: '2024-01-01T00:00:00.000Z',
+    });
+    // Pre-create a sheet with the same name to simulate existing schedule
+    const existingSheet = createMockSheet('schedule_1719000000000');
+    const gas = createGasEnv({
+      sheets: { Data: dataSheet, schedule_1719000000000: existingSheet },
+      userEmail: 'user@test.com',
+    });
+
+    const result = gas.addSchedule({
+      id: 'schedule_1719000000000',
+      name: 'Duplicate',
+      metadataTimestamp: '2024-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('已存在');
+  });
+
+  it('rejects on metadata conflict', () => {
+    const dataSheet = createMockSheet('Data', {
+      F1: '2024-01-01T00:00:00.000Z',
+    });
+    const gas = createGasEnv({
+      sheets: { Data: dataSheet },
+      userEmail: 'user@test.com',
+    });
+
+    const result = gas.addSchedule({
+      id: 'schedule_1719000000001',
+      name: 'Test',
+      metadataTimestamp: '1999-01-01T00:00:00.000Z', // stale timestamp
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+  });
 });
+
+// ─── saveData ────────────────────────────────────────────────────────────
+
+describe('saveData', () => {
+  function createSaveEnv(overrides = {}) {
+    const ts = '2024-06-15T10:30:00.000Z';
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'My Schedule', C2: ts, D2: overrides.creator || 'owner@test.com', E2: false,
+    });
+    const scheduleSheet = createMockSheet('schedule_1', {
+      A1: 'Key', B1: 'Value',
+      A2: 'scheduleData', B2: '{}',
+      A3: 'classrooms', B3: '[]',
+      A4: 'tags', B4: '[]',
+    });
+    const historySheet = createMockSheet('History', {
+      A1: 'Timestamp', B1: 'SavedBy', C1: 'Data', D1: 'ScheduleId',
+    });
+    const sheets = {
+      Data: dataSheet,
+      schedule_1: scheduleSheet,
+      History: historySheet,
+      ...overrides.sheets,
+    };
+    return createGasEnv({
+      sheets,
+      userEmail: overrides.userEmail || 'owner@test.com',
+      scriptProps: overrides.scriptProps || { ADMIN_EMAIL: 'admin@test.com' },
+    });
+  }
+
+  it('saves data successfully (happy path)', () => {
+    const gas = createSaveEnv();
+    const result = gas.saveData({
+      scheduleId: 'schedule_1',
+      scheduleData: {
+        scheduleData: { room1: { 1: [{ name: 'Math' }] } },
+        classrooms: ['room1'],
+        tags: ['tag1'],
+      },
+      lastModified: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(true);
+    expect(result.lastModified).toBeTruthy();
+    expect(new Date(result.lastModified).toISOString()).toBe(result.lastModified);
+  });
+
+  it('returns conflict on timestamp mismatch', () => {
+    const gas = createSaveEnv();
+    const result = gas.saveData({
+      scheduleId: 'schedule_1',
+      scheduleData: { scheduleData: {}, classrooms: [], tags: [] },
+      lastModified: '2020-01-01T00:00:00.000Z', // stale
+    });
+    expect(result.success).toBe(false);
+    expect(result.conflict).toBe(true);
+    expect(result.error).toContain('已被他人修改');
+  });
+
+  it('throws when scheduleId does not exist in Data index', () => {
+    const gas = createSaveEnv();
+    const result = gas.saveData({
+      scheduleId: 'schedule_nonexistent',
+      scheduleData: { scheduleData: {}, classrooms: [], tags: [] },
+      lastModified: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('找不到');
+  });
+
+  it('rejects unauthorized user', () => {
+    const gas = createSaveEnv({ userEmail: 'hacker@test.com' });
+    const result = gas.saveData({
+      scheduleId: 'schedule_1',
+      scheduleData: { scheduleData: {}, classrooms: [], tags: [] },
+      lastModified: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('權限不足');
+  });
+
+  it('returns error on invalid payload (missing fields)', () => {
+    const gas = createSaveEnv();
+    const result = gas.saveData({});
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('無效的數據格式');
+  });
+});
+
+// ─── deleteSchedule ──────────────────────────────────────────────────────
+
+describe('deleteSchedule', () => {
+  function createDeleteEnv(overrides = {}) {
+    const ts = '2024-06-15T10:30:00.000Z';
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy',
+      F1: ts,
+      A2: 'schedule_1', B2: 'My Schedule', C2: ts, D2: overrides.creator || 'owner@test.com',
+    });
+    const scheduleSheet = createMockSheet('schedule_1');
+    return createGasEnv({
+      sheets: { Data: dataSheet, schedule_1: scheduleSheet, ...overrides.sheets },
+      userEmail: overrides.userEmail || 'owner@test.com',
+      scriptProps: overrides.scriptProps || { ADMIN_EMAIL: 'admin@test.com' },
+    });
+  }
+
+  it('deletes schedule successfully', () => {
+    const gas = createDeleteEnv();
+    const result = gas.deleteSchedule({
+      id: 'schedule_1',
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(true);
+    expect(result.newMetadataTimestamp).toBeTruthy();
+  });
+
+  it('returns success for non-existent schedule (idempotent)', () => {
+    const gas = createDeleteEnv();
+    const result = gas.deleteSchedule({
+      id: 'schedule_nonexistent',
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects unauthorized user', () => {
+    const gas = createDeleteEnv({ userEmail: 'hacker@test.com' });
+    const result = gas.deleteSchedule({
+      id: 'schedule_1',
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('權限不足');
+  });
+});
+
+// ─── getVersions ─────────────────────────────────────────────────────────
+
+describe('getVersions', () => {
+  it('returns versions for a schedule', () => {
+    const historySheet = createMockSheet('History', {
+      A1: 'Timestamp', B1: 'SavedBy', C1: 'Data', D1: 'ScheduleId',
+      A2: '2024-06-15T10:30:00.000Z', B2: 'user@test.com', C2: '{}', D2: 'schedule_1',
+      A3: '2024-06-15T11:00:00.000Z', B3: 'admin@test.com', C3: '{}', D3: 'schedule_1',
+      A4: '2024-06-15T12:00:00.000Z', B4: 'other@test.com', C4: '{}', D4: 'schedule_2',
+    });
+    const gas = createGasEnv({ sheets: { History: historySheet } });
+
+    const result = gas.getVersions('schedule_1');
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(2);
+    expect(result[0].user).toBe('user@test.com');
+    expect(result[1].user).toBe('admin@test.com');
+  });
+
+  it('returns empty array when no history', () => {
+    const historySheet = createMockSheet('History', {
+      A1: 'Timestamp', B1: 'SavedBy', C1: 'Data', D1: 'ScheduleId',
+    });
+    const gas = createGasEnv({ sheets: { History: historySheet } });
+
+    const result = gas.getVersions('schedule_1');
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(0);
+  });
+
+  it('returns error on missing scheduleId', () => {
+    const gas = createGasEnv({});
+
+    const result = gas.getVersions(null);
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+  });
+});
+
+// ─── renameSchedule ──────────────────────────────────────────────────────
+
+describe('renameSchedule', () => {
+  function createRenameEnv(overrides = {}) {
+    const ts = '2024-06-15T10:30:00.000Z';
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Old Name', C2: ts, D2: overrides.creator || 'owner@test.com', E2: false,
+    });
+    return createGasEnv({
+      sheets: { Data: dataSheet, ...overrides.sheets },
+      userEmail: overrides.userEmail || 'owner@test.com',
+      scriptProps: overrides.scriptProps || { ADMIN_EMAIL: 'admin@test.com' },
+    });
+  }
+
+  it('renames schedule successfully', () => {
+    const gas = createRenameEnv();
+    const result = gas.renameSchedule({
+      id: 'schedule_1',
+      newName: 'New Name',
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(true);
+    expect(result.lastModified).toBeTruthy();
+  });
+
+  it('updates isDraft status', () => {
+    const gas = createRenameEnv();
+    const result = gas.renameSchedule({
+      id: 'schedule_1',
+      isDraft: true,
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects unauthorized user', () => {
+    const gas = createRenameEnv({ userEmail: 'hacker@test.com' });
+    const result = gas.renameSchedule({
+      id: 'schedule_1',
+      newName: 'Hacked',
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('權限不足');
+  });
+});
+
