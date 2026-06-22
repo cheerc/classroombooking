@@ -241,12 +241,91 @@ export function createMockHtmlService() {
 }
 
 /**
+ * Creates a mock DriveApp.
+ * Supports getFileById → file.getBlob().getDataAsString() chain
+ * used by getFontBase64FromDrive (程式碼.js L593-594).
+ * Ref: #89 — unlock #87 getFontBase64 testing
+ *
+ * @param {Object<string, string>} files - Map of fileId → file content string
+ */
+export function createMockDriveApp(files = {}) {
+  return {
+    getFileById: (fileId) => {
+      const content = files[fileId];
+      if (content === undefined) {
+        throw new Error(`File not found: ${fileId}`);
+      }
+      return {
+        getBlob: () => ({
+          getDataAsString: () => content,
+          getBytes: () => [],
+          getContentType: () => 'application/octet-stream',
+          getName: () => fileId,
+        }),
+        getName: () => fileId,
+        getMimeType: () => 'application/octet-stream',
+      };
+    },
+  };
+}
+
+/**
+ * Creates a mock UrlFetchApp.
+ * Supports fetch(url, options) → HTTPResponse chain.
+ * Ref: #89 — future feature mock
+ *
+ * @param {Object<string, { code: number, body: string, headers?: Object }>} responses
+ *   Map of URL → response definition. Unregistered URLs return 404.
+ */
+export function createMockUrlFetchApp(responses = {}) {
+  return {
+    fetch: (url, options = {}) => {
+      const resp = responses[url] || { code: 404, body: 'Not Found' };
+      return {
+        getResponseCode: () => resp.code,
+        getContentText: () => resp.body,
+        getHeaders: () => resp.headers || {},
+        getBlob: () => ({
+          getDataAsString: () => resp.body,
+          getBytes: () => [],
+        }),
+      };
+    },
+  };
+}
+
+/**
+ * Creates a mock Utilities service.
+ * Supports base64Encode/base64Decode and formatDate.
+ * Ref: #89 — future feature mock
+ */
+export function createMockUtilities() {
+  return {
+    base64Encode: (data) => {
+      if (typeof data === 'string') {
+        return Buffer.from(data).toString('base64');
+      }
+      return Buffer.from(data).toString('base64');
+    },
+    base64Decode: (encoded) => {
+      return Buffer.from(encoded, 'base64').toString('utf-8');
+    },
+    formatDate: (date, timeZone, format) => {
+      // Simplified: returns ISO string (tests should mock further if needed)
+      return date.toISOString();
+    },
+  };
+}
+
+/**
  * Installs all GAS mocks as globals, returns a cleanup function.
  */
 export function installGasMocks({
   sheets = {},
   userEmail = 'test@example.com',
   scriptProps = {},
+  driveFiles = {},
+  urlFetchResponses = {},
 } = {}) {
   const mocks = {
     SpreadsheetApp: createMockSpreadsheetApp(sheets),
@@ -255,6 +334,9 @@ export function installGasMocks({
     PropertiesService: createMockPropertiesService(scriptProps),
     Logger: createMockLogger(),
     HtmlService: createMockHtmlService(),
+    DriveApp: createMockDriveApp(driveFiles),
+    UrlFetchApp: createMockUrlFetchApp(urlFetchResponses),
+    Utilities: createMockUtilities(),
   };
 
   for (const [key, val] of Object.entries(mocks)) {
@@ -270,3 +352,4 @@ export function installGasMocks({
     },
   };
 }
+
