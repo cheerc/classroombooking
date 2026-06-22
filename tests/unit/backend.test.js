@@ -36,7 +36,7 @@ function createGasEnv(opts = {}) {
     return (function(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService) {
       ${gasSource}
       return {
-        getConfig, _findScheduleRowInfo, _checkPermission, getSheet,
+        getConfig, _findScheduleRowInfo, _checkPermission, _getSs, getSheet, getOrCreateSheet,
         doGet, getData, saveData, checkMetadata, addSchedule,
         renameSchedule, deleteSchedule, copySchedule,
         getVersions, getVersionData, getFontBase64FromDrive
@@ -620,3 +620,78 @@ describe('renameSchedule', () => {
   });
 });
 
+// ─── _getSs memoization (#64) ────────────────────────────────────────────
+
+describe('_getSs memoization (#64)', () => {
+  it('returns a spreadsheet object', () => {
+    const dataSheet = createMockSheet('Data', {});
+    const gas = createGasEnv({ sheets: { Data: dataSheet } });
+    const ss = gas._getSs();
+    expect(ss).toBeTruthy();
+    expect(typeof ss.getSheetByName).toBe('function');
+  });
+});
+
+// ─── getSheet vs getOrCreateSheet (#44) ──────────────────────────────────
+
+describe('getSheet vs getOrCreateSheet (#44)', () => {
+  it('getSheet returns null for non-existent sheet (read path)', () => {
+    const gas = createGasEnv({ sheets: {} });
+    const result = gas.getSheet('NonExistent');
+    expect(result).toBeNull();
+  });
+
+  it('getSheet returns sheet when it exists', () => {
+    const dataSheet = createMockSheet('Data', {});
+    const gas = createGasEnv({ sheets: { Data: dataSheet } });
+    const result = gas.getSheet('Data');
+    expect(result).toBeTruthy();
+    expect(result.getName()).toBe('Data');
+  });
+
+  it('getOrCreateSheet creates sheet when missing (write path)', () => {
+    const gas = createGasEnv({ sheets: {} });
+    const result = gas.getOrCreateSheet('Data');
+    expect(result).toBeTruthy();
+    expect(result.getName()).toBe('Data');
+  });
+
+  it('getOrCreateSheet returns existing sheet without recreating', () => {
+    const dataSheet = createMockSheet('Data', { A1: 'existing' });
+    const gas = createGasEnv({ sheets: { Data: dataSheet } });
+    const result = gas.getOrCreateSheet('Data');
+    expect(result).toBeTruthy();
+    expect(result.getName()).toBe('Data');
+  });
+});
+
+// ─── getData batch optimization (#15) ────────────────────────────────────
+
+describe('getData batch optimization (#15)', () => {
+  it('returns gracefully when Data sheet does not exist', () => {
+    const gas = createGasEnv({ sheets: {} });
+    const result = gas.getData();
+    expect(result.success).toBe(true);
+    expect(result.schedules).toEqual({});
+  });
+});
+
+// ─── getVersions/getVersionData null sheet guard (#44) ───────────────────
+
+describe('getVersions with null sheet (#44)', () => {
+  it('returns empty array when History sheet does not exist', () => {
+    const gas = createGasEnv({ sheets: {} });
+    const result = gas.getVersions('schedule_1');
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(0);
+  });
+});
+
+describe('getVersionData with null sheet (#44)', () => {
+  it('returns not-found when History sheet does not exist', () => {
+    const gas = createGasEnv({ sheets: {} });
+    const result = gas.getVersionData('2024-01-01T00:00:00.000Z');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('找不到');
+  });
+});

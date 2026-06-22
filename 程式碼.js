@@ -2,6 +2,12 @@ const SHEET_DATA = "Data";
 const SHEET_HISTORY = "History";
 const MAX_HISTORY_RECORDS = 20;
 
+// Ref: #64 — Memoize getActiveSpreadsheet per request (GAS does not share state across requests)
+let _ss = null;
+function _getSs() {
+  return _ss || (_ss = SpreadsheetApp.getActiveSpreadsheet());
+}
+
 /**
  * Reads a configuration value from Script Properties.
  * @param {string} key The property key.
@@ -45,12 +51,21 @@ function _checkPermission(createdBy) {
 }
 
 /**
- * Gets a sheet by name, creating it if it doesn't exist.
+ * Ref: #44 — Gets a sheet by name (read path). Returns null if not found.
+ * @param {string} name The name of the sheet.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet|null} The sheet object, or null.
+ */
+function getSheet(name) {
+  return _getSs().getSheetByName(name);
+}
+
+/**
+ * Ref: #44 — Gets or creates a sheet by name (write path).
  * @param {string} name The name of the sheet.
  * @returns {GoogleAppsScript.Spreadsheet.Sheet} The sheet object.
  */
-function getSheet(name) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function getOrCreateSheet(name) {
+  const ss = _getSs();
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
@@ -87,8 +102,11 @@ function doGet() {
 function getData() {
   try {
     Logger.log("開始獲取數據");
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = _getSs();
     const dataSheet = getSheet(SHEET_DATA);
+    if (!dataSheet) {
+      return { success: true, schedules: {}, metadataTimestamp: new Date().toISOString() };
+    }
     // Metadata timestamp migration
     let metadataTimestamp = dataSheet.getRange("F1").getValue();
     if (!metadataTimestamp) {
@@ -106,6 +124,11 @@ function getData() {
     const indexData = dataSheet.getRange(`A2:E${lastRow}`).getValues();
     const schedules = {};
 
+    // Ref: #15 — Pre-fetch all sheets to avoid N+1 getSheetByName calls
+    const allSheets = ss.getSheets();
+    const sheetMap = {};
+    allSheets.forEach(s => { sheetMap[s.getName()] = s; });
+
     indexData.forEach(row => {
       const scheduleId = row[0];
       const scheduleName = row[1];
@@ -114,7 +137,7 @@ function getData() {
       const isDraft = row[4] === true;
 
       if (scheduleId && scheduleName) {
-        const scheduleSheet = ss.getSheetByName(scheduleId);
+        const scheduleSheet = sheetMap[scheduleId];
         if (scheduleSheet) {
           const sheetDataRange = scheduleSheet.getRange("B2:B4").getValues();
           let scheduleData = {}, classrooms = [], tags = [];
@@ -173,8 +196,8 @@ function saveData(payload) {
       throw new Error("無效的數據格式。數據必須包含 scheduleId, scheduleData, 和 lastModified 時間戳。");
     }
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const dataSheet = getSheet(SHEET_DATA);
+    const ss = _getSs();
+    const dataSheet = getOrCreateSheet(SHEET_DATA);
 
     const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(scheduleId, dataSheet);
     if (rowIndex === -1) {
@@ -194,7 +217,7 @@ function saveData(payload) {
       };
     }
 
-    const scheduleSheet = ss.getSheetByName(scheduleId);
+    const scheduleSheet = _getSs().getSheetByName(scheduleId);
     if (!scheduleSheet) {
       throw new Error(`找不到 ID 為 "${scheduleId}" 的工作表。`);
     }
@@ -217,18 +240,18 @@ function saveData(payload) {
 
     dataSheet.getRange(rowIndex, 3).setValue(timestampISO);
     
-    const historySheet = getSheet(SHEET_HISTORY);
+    const historySheet = getOrCreateSheet(SHEET_HISTORY);
     historySheet.insertRowBefore(2);
     historySheet.getRange("A2:D2").setValues([[timestampISO, userEmail, JSON.stringify(dataToSave), scheduleId]]);
 
-    // Ref: #12 — Per-schedule history limit: only trim excess versions for the current schedule
+    // Ref: #12, #65 — Per-schedule history limit: read only scheduleId column (D) for trimming
     const historyLastRow = historySheet.getLastRow();
     if (historyLastRow > 1) {
-      const allHistory = historySheet.getRange(2, 1, historyLastRow - 1, 4).getValues();
+      const scheduleIdColumn = historySheet.getRange(2, 4, historyLastRow - 1, 1).getValues();
       // Collect 0-based indices (within allHistory) of rows matching this schedule
       const scheduleRows = [];
-      for (let i = 0; i < allHistory.length; i++) {
-        if (allHistory[i][3] === scheduleId) {
+      for (let i = 0; i < scheduleIdColumn.length; i++) {
+        if (scheduleIdColumn[i][0] === scheduleId) {
           scheduleRows.push(i);
         }
       }
@@ -290,10 +313,10 @@ function addSchedule(scheduleInfo) {
       throw new Error('無效的課表 ID 格式。');
     }
 
-    const dataSheet = getSheet(SHEET_DATA);
+    const dataSheet = getOrCreateSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = _getSs();
     if (ss.getSheetByName(id)) {
       throw new Error(`ID 為 \"${id}\" 的工作表已存在。`);
     }
@@ -333,7 +356,7 @@ function renameSchedule(scheduleInfo) { // Now also handles isDraft changes
     const { id, newName, isDraft, metadataTimestamp } = scheduleInfo; // Added isDraft
     if (!id) throw new Error("必須提供課表 ID。");
 
-    const dataSheet = getSheet(SHEET_DATA);
+    const dataSheet = getOrCreateSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
     const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(id, dataSheet);
@@ -380,7 +403,7 @@ function deleteSchedule(scheduleInfo) {
     const { id, metadataTimestamp } = scheduleInfo;
     if (!id) throw new Error("必須提供課表 ID。");
 
-    const dataSheet = getSheet(SHEET_DATA);
+    const dataSheet = getOrCreateSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
     const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(id, dataSheet);
@@ -392,7 +415,7 @@ function deleteSchedule(scheduleInfo) {
     const createdBy = rowValues[3];
     _checkPermission(createdBy);
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = _getSs();
     const scheduleSheet = ss.getSheetByName(id);
     if (scheduleSheet) {
       ss.deleteSheet(scheduleSheet);
@@ -423,7 +446,7 @@ function copySchedule(copyInfo) {
     const { sourceId, newName, metadataTimestamp } = copyInfo;
     if (!sourceId || !newName) throw new Error("必須提供來源課表 ID 和新名稱。");
 
-    const dataSheet = getSheet(SHEET_DATA);
+    const dataSheet = getOrCreateSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
     const { index: sourceRowIndex, values: sourceRowValues } = _findScheduleRowInfo(sourceId, dataSheet);
@@ -435,7 +458,7 @@ function copySchedule(copyInfo) {
     _checkPermission(createdBy);
     const sourceIsDraft = sourceRowValues[4] === true;
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = _getSs();
     const sourceSheet = ss.getSheetByName(sourceId);
     if (!sourceSheet) {
       throw new Error(`找不到來源課表 (ID: ${sourceId})。`);
@@ -478,6 +501,7 @@ function getVersions(scheduleId) {
       throw new Error("必須提供課表 ID 以獲取版本紀錄。");
     }
     const historySheet = getSheet(SHEET_HISTORY);
+    if (!historySheet) return [];
     const lastRow = historySheet.getLastRow();
     if (lastRow < 2) return [];
 
@@ -506,6 +530,9 @@ function getVersionData(versionId) {
       throw new Error("未提供版本ID");
     }
     const historySheet = getSheet(SHEET_HISTORY);
+    if (!historySheet) {
+      return { success: false, error: "找不到指定的版本" };
+    }
     // Ref: #45 — Use bounded range instead of full-column scan
     const lastRow = historySheet.getLastRow();
     if (lastRow < 2) {
