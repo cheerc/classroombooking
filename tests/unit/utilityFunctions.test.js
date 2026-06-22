@@ -423,3 +423,101 @@ describe('sortClassrooms', () => {
     expect(input).toEqual(original);
   });
 });
+
+// ============================================================
+// CYCLE 3 GAP TURN — Adversarial tests by cb-team-impl2
+// ============================================================
+
+describe('sortClassrooms — GAP', () => {
+  // GAP-35: Non-numeric classroom names — regex fallback to '0'.
+  // Production data can include names like '音樂教室' from Set keys.
+  // All non-numeric names get numA=0 → floor=0, remainder=0 → tied.
+  it('handles non-numeric classroom names (CJK) via regex fallback', () => {
+    const input = ['音樂教室', '201', '體育館'];
+    const result = sortClassrooms(input);
+    // '201' → floor 2, remainder 1. Non-numeric → floor 0, remainder 0.
+    // 2xx comes first, then 0xx (non-numeric).
+    expect(result[0]).toBe('201');
+    // The two non-numeric names are tied (both → 0) — order depends on sort stability
+    expect(result.slice(1).sort()).toEqual(['體育館', '音樂教室'].sort());
+  });
+
+  // GAP-36: Mixed text+number names — 'Room 301' → regex matches '301'.
+  it('extracts number from mixed text+number name', () => {
+    const input = ['Room 301', 'Room 101', 'Room 201'];
+    const result = sortClassrooms(input);
+    // 3xx first, then 2xx, then 1xx
+    expect(result).toEqual(['Room 301', 'Room 201', 'Room 101']);
+  });
+
+  // GAP-37: null in array — .match() throws on null → catch branch.
+  // Catch returns classroomList (the original input with null).
+  it('returns original array when null element causes error (catch branch)', () => {
+    const input = ['301', null, '101'];
+    const result = sortClassrooms(input);
+    // catch returns classroomList (the original spread fails before sort completes)
+    // Actually [...input] succeeds (spread null into array is fine), but
+    // null.match() throws TypeError inside sort callback → catch
+    expect(result).toEqual(input); // Returns the original input unchanged
+  });
+
+  // GAP-38: Non-array input (e.g., null) — spread throws → catch returns [] (|| fallback).
+  it('returns empty array for null input (catch branch, || [] fallback)', () => {
+    expect(sortClassrooms(null)).toEqual([]);
+  });
+
+  // GAP-39: undefined input — spread throws → catch returns [] (|| fallback).
+  it('returns empty array for undefined input', () => {
+    expect(sortClassrooms(undefined)).toEqual([]);
+  });
+
+  // GAP-40: 4-digit room numbers — '1001' → hundreds=10, remainder=1.
+  // Different floor semantics than 3-digit rooms. SPEC only tested 1xx-3xx.
+  it('handles 4-digit room numbers (floor = hundreds digit)', () => {
+    const input = ['1001', '301', '501'];
+    const result = sortClassrooms(input);
+    // 1001 → floor 10, 501 → floor 5, 301 → floor 3
+    // Descending by floor: 1001, 501, 301
+    expect(result).toEqual(['1001', '501', '301']);
+  });
+
+  // GAP-41: Same floor, same remainder — tied rooms.
+  // Sort is stable in modern engines but SPEC doesn't verify this.
+  it('handles tied rooms (same number) preserving relative order', () => {
+    const input = ['301', '301', '201'];
+    const result = sortClassrooms(input);
+    // '301' × 2 should both come before '201'
+    expect(result[0]).toBe('301');
+    expect(result[1]).toBe('301');
+    expect(result[2]).toBe('201');
+  });
+
+  // GAP-42: Rooms on same floor — tests remainder ordering.
+  // SPEC tested mixed floors but never tested > 2 rooms on same floor.
+  it('sorts multiple rooms on the same floor by remainder ascending', () => {
+    const input = ['310', '305', '301', '315', '303'];
+    const result = sortClassrooms(input);
+    expect(result).toEqual(['301', '303', '305', '310', '315']);
+  });
+
+  // GAP-43: Ground floor (0xx) rooms — hundreds = 0.
+  // SPEC never tested rooms below 100.
+  it('handles ground floor rooms (0xx, single/double digit)', () => {
+    const input = ['50', '201', '5', '10'];
+    const result = sortClassrooms(input);
+    // 201 → floor 2 (first), then 50 → floor 0 remainder 50,
+    // 10 → floor 0 remainder 10, 5 → floor 0 remainder 5
+    expect(result).toEqual(['201', '5', '10', '50']);
+  });
+
+  // GAP-44: Non-array iterable (string) — spread on string splits chars.
+  // 'abc' → [...'abc'] = ['a','b','c'] → each char.match(/\d+/) = null → all map to 0.
+  // Documents unexpected behavior with wrong input type.
+  it('documents behavior with string input (spread splits chars)', () => {
+    const result = sortClassrooms('301');
+    // [...'301'] = ['3','0','1'], each is a digit
+    // '3' → 3 (floor 0, rem 3), '0' → 0, '1' → 1
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(3);
+  });
+});
