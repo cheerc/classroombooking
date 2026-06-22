@@ -269,20 +269,3 @@ export function installGasMocks({
     },
   };
 }
-
-/**
- * Creates a mock DriveApp for getFontBase64FromDrive testing.
- * @param {Object<string, string>} files - Map of fileId -> file content
- */
-export function createMockDriveApp(files = {}) {
-  return {
-    getFileById: (id) => {
-      if (!files[id]) throw new Error(`File not found: ${id}`);
-      return {
-        getBlob: () => ({
-          getDataAsString: (encoding) => files[id],
-        }),
-      };
-    },
-  };
-}
