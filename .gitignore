@@ -13,6 +13,8 @@ node_modules
 
 # Build artifacts
 output.css
+# Test coverage reports
+coverage/
 # NOTE: Tailwind.html is a build artifact but MUST be tracked in git
 # because clasp push reads .gitignore and would skip it,
 # breaking the GAS web app (Index.html includes it via HtmlService).
