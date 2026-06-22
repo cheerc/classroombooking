@@ -103,3 +103,69 @@ export function sortClassrooms(classroomList) {
     return classroomList || [];
   }
 }
+
+// Ref: JavaScript.html L881-896 — ensureDataIds (data ID補全)
+// Production depends on this.generateUniqueId(); extracted version accepts it as parameter (DI).
+
+/**
+ * Ensures every class item in scheduleData has an `id` property.
+ * Items without an `id` get one assigned via the provided generator.
+ *
+ * @param {object|null|undefined} scheduleData - { [classroom]: { [day]: classItem[] } }
+ * @param {Function} generateId - ID generator function (production: Date.now().toString(36) + random)
+ * @returns {object} The same scheduleData object (mutated in place), or {} if input is falsy.
+ */
+export function ensureDataIds(scheduleData, generateId) {
+  if (!scheduleData) return {};
+  Object.values(scheduleData).forEach(classroom => {
+    if (!classroom) return;
+    Object.values(classroom).forEach(daySchedule => {
+      if (Array.isArray(daySchedule)) {
+        daySchedule.forEach(classItem => {
+          if (classItem && !classItem.id) {
+            classItem.id = generateId();
+          }
+        });
+      }
+    });
+  });
+  return scheduleData;
+}
+
+// Ref: JavaScript.html L910-930 — buildCourseColorMap (課程色彩映射建構)
+// Production depends on this.stringToHashCode + this.courseColorMap + AppConfig.COURSE_COLORS.
+// Extracted version is pure: accepts dataSource + hashFn + colors, returns the map.
+
+/**
+ * Builds a mapping from course names to colors based on hash values.
+ * Collects all unique course names, sorts them, and assigns colors
+ * from the palette using djb2 hash modulo.
+ *
+ * @param {object|null|undefined} dataSource - { [classroom]: { [day]: { name }[] } }
+ * @param {Function} hashFn - Hash function (production: stringToHashCode)
+ * @param {string[]} courseColors - Color palette array (production: AppConfig.COURSE_COLORS)
+ * @returns {object} Map of { [courseName]: colorString }
+ */
+export function buildCourseColorMap(dataSource, hashFn, courseColors) {
+  const colorMap = {};
+  if (!dataSource) return colorMap;
+
+  const allNames = new Set();
+  Object.values(dataSource).forEach(classroom => {
+    if (!classroom) return;
+    Object.values(classroom).forEach(daySchedule => {
+      if (Array.isArray(daySchedule)) {
+        daySchedule.forEach(item => allNames.add(item.name));
+      }
+    });
+  });
+
+  const sortedNames = Array.from(allNames).sort();
+  sortedNames.forEach(name => {
+    const hash = hashFn(name);
+    const colorIndex = Math.abs(hash) % courseColors.length;
+    colorMap[name] = courseColors[colorIndex];
+  });
+
+  return colorMap;
+}

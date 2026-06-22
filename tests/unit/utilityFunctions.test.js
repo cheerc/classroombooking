@@ -1,5 +1,5 @@
-import { stringToHashCode, hexToRgb, getShortUserName, formatTime, formatTimestampForFilename, sortClassrooms } from '../lib/utilityFunctions.js';
-import { describe, it, expect } from 'vitest';
+import { stringToHashCode, hexToRgb, getShortUserName, formatTime, formatTimestampForFilename, sortClassrooms, ensureDataIds, buildCourseColorMap } from '../lib/utilityFunctions.js';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('stringToHashCode', () => {
   it('returns a deterministic hash for a known string', () => {
@@ -521,5 +521,267 @@ describe('sortClassrooms — GAP', () => {
     // '3' → 3 (floor 0, rem 3), '0' → 0, '1' → 1
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBe(3);
+  });
+});
+
+// ============================================================
+// WAVE 1A RESIDUAL — ensureDataIds
+// Ref: #90 residual — data ID 補全
+// ============================================================
+
+describe('ensureDataIds', () => {
+  // Counter-based ID generator for deterministic tests
+  function makeIdGenerator() {
+    let counter = 0;
+    return () => `gen-id-${++counter}`;
+  }
+
+  it('assigns IDs to items that lack them (happy path)', () => {
+    const data = {
+      'Room A': {
+        0: [
+          { name: 'Math' },     // no id → should get one
+          { name: 'English' },  // no id → should get one
+        ]
+      }
+    };
+    const gen = makeIdGenerator();
+    const result = ensureDataIds(data, gen);
+
+    expect(result['Room A'][0][0].id).toBe('gen-id-1');
+    expect(result['Room A'][0][1].id).toBe('gen-id-2');
+  });
+
+  it('preserves existing IDs (does not overwrite)', () => {
+    const data = {
+      'Room A': {
+        0: [
+          { id: 'existing-1', name: 'Math' },
+          { name: 'English' },  // no id
+        ]
+      }
+    };
+    const gen = makeIdGenerator();
+    ensureDataIds(data, gen);
+
+    expect(data['Room A'][0][0].id).toBe('existing-1'); // preserved
+    expect(data['Room A'][0][1].id).toBe('gen-id-1');   // generated
+  });
+
+  it('returns empty object for null input', () => {
+    expect(ensureDataIds(null, () => 'id')).toEqual({});
+  });
+
+  it('returns empty object for undefined input', () => {
+    expect(ensureDataIds(undefined, () => 'id')).toEqual({});
+  });
+
+  it('mutates in place and returns the same reference', () => {
+    const data = { 'Room A': { 0: [{ name: 'Math' }] } };
+    const gen = makeIdGenerator();
+    const result = ensureDataIds(data, gen);
+
+    expect(result).toBe(data); // same reference
+    expect(data['Room A'][0][0].id).toBe('gen-id-1');
+  });
+
+  it('handles multiple classrooms and days', () => {
+    const data = {
+      'Room A': {
+        0: [{ name: 'Math' }],
+        1: [{ name: 'Science' }]
+      },
+      'Room B': {
+        0: [{ name: 'Art' }]
+      }
+    };
+    const gen = makeIdGenerator();
+    ensureDataIds(data, gen);
+
+    expect(data['Room A'][0][0].id).toBe('gen-id-1');
+    expect(data['Room A'][1][0].id).toBe('gen-id-2');
+    expect(data['Room B'][0][0].id).toBe('gen-id-3');
+  });
+
+  it('skips null classroom entries gracefully', () => {
+    const data = {
+      'Room A': null,
+      'Room B': { 0: [{ name: 'Art' }] }
+    };
+    const gen = makeIdGenerator();
+    ensureDataIds(data, gen);
+
+    // Room A skipped (null), Room B processed
+    expect(data['Room B'][0][0].id).toBe('gen-id-1');
+  });
+
+  it('skips non-array day entries (e.g., metadata objects)', () => {
+    const data = {
+      'Room A': {
+        0: [{ name: 'Math' }],
+        meta: { key: 'value' }  // not an array
+      }
+    };
+    const gen = makeIdGenerator();
+    ensureDataIds(data, gen);
+
+    expect(data['Room A'][0][0].id).toBe('gen-id-1');
+    expect(data['Room A'].meta).toEqual({ key: 'value' }); // untouched
+  });
+
+  it('skips null items in day arrays', () => {
+    const data = {
+      'Room A': {
+        0: [null, { name: 'Math' }]
+      }
+    };
+    const gen = makeIdGenerator();
+    ensureDataIds(data, gen);
+
+    // null item skipped, Math gets id
+    expect(data['Room A'][0][0]).toBeNull();
+    expect(data['Room A'][0][1].id).toBe('gen-id-1');
+  });
+
+  it('handles empty scheduleData without calling generator', () => {
+    const gen = vi.fn();
+    ensureDataIds({}, gen);
+    expect(gen).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+// WAVE 1A RESIDUAL — buildCourseColorMap
+// Ref: #90 residual — 課程色彩映射建構
+// ============================================================
+
+// Production color palette from AppConfig
+const COURSE_COLORS = [
+  '#93c5fd', '#73EEDC', '#DBF4A7', '#fca5a5', '#92DBFA',
+  '#C5D8D1', '#B5EBCC', '#FDE74C', '#F5AE80', '#D6D1CD'
+];
+
+describe('buildCourseColorMap', () => {
+  it('maps each unique course name to a color from the palette (happy path)', () => {
+    const data = {
+      'Room A': {
+        0: [
+          { name: 'Math' },
+          { name: 'English' },
+          { name: 'Math' },  // duplicate — should produce same color
+        ]
+      }
+    };
+
+    const result = buildCourseColorMap(data, stringToHashCode, COURSE_COLORS);
+
+    // Should have exactly 2 unique course names
+    expect(Object.keys(result)).toHaveLength(2);
+    expect(result['Math']).toBeDefined();
+    expect(result['English']).toBeDefined();
+
+    // Both should be from the palette
+    expect(COURSE_COLORS).toContain(result['Math']);
+    expect(COURSE_COLORS).toContain(result['English']);
+  });
+
+  it('returns deterministic colors (same name → same color)', () => {
+    const data = {
+      'Room A': { 0: [{ name: 'Math' }] }
+    };
+
+    const result1 = buildCourseColorMap(data, stringToHashCode, COURSE_COLORS);
+    const result2 = buildCourseColorMap(data, stringToHashCode, COURSE_COLORS);
+
+    expect(result1['Math']).toBe(result2['Math']);
+  });
+
+  it('returns empty map for null dataSource', () => {
+    expect(buildCourseColorMap(null, stringToHashCode, COURSE_COLORS)).toEqual({});
+  });
+
+  it('returns empty map for undefined dataSource', () => {
+    expect(buildCourseColorMap(undefined, stringToHashCode, COURSE_COLORS)).toEqual({});
+  });
+
+  it('returns empty map for empty dataSource', () => {
+    expect(buildCourseColorMap({}, stringToHashCode, COURSE_COLORS)).toEqual({});
+  });
+
+  it('collects names from multiple classrooms and days', () => {
+    const data = {
+      'Room A': {
+        0: [{ name: 'Math' }],
+        1: [{ name: 'Science' }]
+      },
+      'Room B': {
+        0: [{ name: 'Art' }, { name: 'Math' }]  // Math appears again
+      }
+    };
+
+    const result = buildCourseColorMap(data, stringToHashCode, COURSE_COLORS);
+
+    expect(Object.keys(result).sort()).toEqual(['Art', 'Math', 'Science']);
+  });
+
+  it('assigns colors using Math.abs(hash) % palette.length', () => {
+    const data = {
+      'Room A': { 0: [{ name: 'TestCourse' }] }
+    };
+
+    const hash = stringToHashCode('TestCourse');
+    const expectedColorIndex = Math.abs(hash) % COURSE_COLORS.length;
+    const expectedColor = COURSE_COLORS[expectedColorIndex];
+
+    const result = buildCourseColorMap(data, stringToHashCode, COURSE_COLORS);
+    expect(result['TestCourse']).toBe(expectedColor);
+  });
+
+  it('skips null classroom entries', () => {
+    const data = {
+      'Room A': null,
+      'Room B': { 0: [{ name: 'Art' }] }
+    };
+
+    const result = buildCourseColorMap(data, stringToHashCode, COURSE_COLORS);
+    expect(Object.keys(result)).toEqual(['Art']);
+  });
+
+  it('handles Chinese (CJK) course names used in production', () => {
+    const data = {
+      '301': { 0: [{ name: '微積分' }, { name: '程式設計' }] }
+    };
+
+    const result = buildCourseColorMap(data, stringToHashCode, COURSE_COLORS);
+
+    expect(Object.keys(result).sort()).toEqual(['微積分', '程式設計'].sort());
+    expect(COURSE_COLORS).toContain(result['微積分']);
+    expect(COURSE_COLORS).toContain(result['程式設計']);
+  });
+
+  it('sorts names alphabetically before assigning (order-independent)', () => {
+    // Same courses in different order should produce same color map
+    const data1 = {
+      'Room A': { 0: [{ name: 'Zebra' }, { name: 'Apple' }] }
+    };
+    const data2 = {
+      'Room A': { 0: [{ name: 'Apple' }, { name: 'Zebra' }] }
+    };
+
+    const result1 = buildCourseColorMap(data1, stringToHashCode, COURSE_COLORS);
+    const result2 = buildCourseColorMap(data2, stringToHashCode, COURSE_COLORS);
+
+    expect(result1).toEqual(result2);
+  });
+
+  it('works with a single-color palette (all names get same color)', () => {
+    const data = {
+      'Room A': { 0: [{ name: 'Math' }, { name: 'Science' }] }
+    };
+    const singleColor = ['#FF0000'];
+
+    const result = buildCourseColorMap(data, stringToHashCode, singleColor);
+    expect(result['Math']).toBe('#FF0000');
+    expect(result['Science']).toBe('#FF0000');
   });
 });
