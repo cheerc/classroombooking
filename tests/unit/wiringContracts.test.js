@@ -185,7 +185,7 @@ describe('程式碼.js wiring contracts (#114)', () => {
   it('tests/lib/ module count should match expected', () => {
     // Current modules: dateUtils, escapeHtml, stateHelpers, utilityFunctions,
     // uiHelpers, interactionHelpers, dataCollectionHelpers, frontendUtils,
-    // historyHelpers, integrationHelpers
-    expect(libFiles.length).toBe(10);
+    // historyHelpers, integrationHelpers, appLifecycleHelpers
+    expect(libFiles.length).toBe(11);
   });
 });
