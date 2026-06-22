@@ -268,3 +268,130 @@ describe('formatTimestampForFilename', () => {
     expect(formatTimestampForFilename('')).toBe('');
   });
 });
+
+// ============================================================
+// GAP TURN (Cycle 2) — Adversarial tests by cb-team-impl
+// ============================================================
+
+describe('getShortUserName — GAP', () => {
+  // GAP-17: Empty string '' is falsy — SPEC tested null/undefined but not ''.
+  // '' hits the !email branch (falsy), returns ''. Distinct from null passthrough.
+  it('returns empty string for empty string input (falsy branch)', () => {
+    expect(getShortUserName('')).toBe('');
+  });
+
+  // GAP-18: Multiple @ in email — split('@')[0] returns first segment.
+  // Production might encounter malformed data; behavior should be documented.
+  it('returns part before first @ when multiple @ signs present', () => {
+    expect(getShortUserName('user@domain@extra')).toBe('user');
+  });
+
+  // GAP-19: No local part — '@domain.com' → split('@')[0] is ''.
+  // Edge case: valid syntax-wise but pathological input.
+  it('returns empty string when @ is the first character', () => {
+    expect(getShortUserName('@domain.com')).toBe('');
+  });
+
+  // GAP-20: Email with special characters (plus-addressing, dots).
+  // Production teachers may use these; ensures split doesn't mangle.
+  it('preserves special characters in local part', () => {
+    expect(getShortUserName('user+tag@domain.com')).toBe('user+tag');
+    expect(getShortUserName('first.last@domain.com')).toBe('first.last');
+  });
+
+  // GAP-21: Whitespace-only string is truthy, has no @ → passthrough.
+  // SPEC never tested truthy-but-meaningless inputs.
+  it('passes through whitespace-only string (truthy, no @)', () => {
+    expect(getShortUserName('   ')).toBe('   ');
+  });
+});
+
+describe('formatTime — GAP', () => {
+  // GAP-22: Already-padded input — SPEC only tested single-digit hour.
+  // Two-digit input should pass through padStart unchanged.
+  it('preserves already-padded time "09:05"', () => {
+    expect(formatTime('09:05', TIME_REGEX)).toBe('09:05');
+  });
+
+  // GAP-23: Two-digit hour — SPEC never tested hours ≥ 10.
+  it('handles two-digit hour without double-padding', () => {
+    expect(formatTime('10:30', TIME_REGEX)).toBe('10:30');
+    expect(formatTime('15:45', TIME_REGEX)).toBe('15:45');
+  });
+
+  // GAP-24: Whitespace-padded input — trim() path was never exercised.
+  // Production input from GAS forms may have trailing whitespace.
+  it('trims whitespace before parsing', () => {
+    expect(formatTime('  9:05  ', TIME_REGEX)).toBe('09:05');
+    expect(formatTime('\t10:30\t', TIME_REGEX)).toBe('10:30');
+  });
+
+  // GAP-25: Midnight boundary — '0:00' is valid (regex allows [01]?[0-9]).
+  it('handles midnight "0:00" → "00:00"', () => {
+    expect(formatTime('0:00', TIME_REGEX)).toBe('00:00');
+  });
+
+  // GAP-26: Max valid time boundary — 23:59.
+  it('handles max valid time "23:59"', () => {
+    expect(formatTime('23:59', TIME_REGEX)).toBe('23:59');
+  });
+
+  // GAP-27: Single-digit minutes — TIME_REGEX requires 2-digit minutes [0-5][0-9].
+  // '9:5' does NOT match → returns '00:00'. Documents regex strictness.
+  it('rejects single-digit minutes (regex requires 2-digit)', () => {
+    expect(formatTime('9:5', TIME_REGEX)).toBe('00:00');
+  });
+
+  // GAP-28: Hour 24 boundary — '24:00' is invalid per regex (max [01]?[0-9]|2[0-3]).
+  it('rejects hour 24 (out of regex range)', () => {
+    expect(formatTime('24:00', TIME_REGEX)).toBe('00:00');
+  });
+
+  // GAP-29: Minutes 60 boundary — '12:60' invalid (max [0-5][0-9]).
+  it('rejects minutes 60', () => {
+    expect(formatTime('12:60', TIME_REGEX)).toBe('00:00');
+  });
+});
+
+describe('formatTimestampForFilename — GAP', () => {
+  // GAP-30: Invalid date string — new Date('not-a-date') → Invalid Date.
+  // getFullYear() returns NaN → template produces NaN-containing string.
+  // Documents silent failure: no guard against Invalid Date.
+  it('produces NaN-containing output for invalid date string (documents bug)', () => {
+    const result = formatTimestampForFilename('not-a-date');
+    expect(result).toContain('NaN');
+  });
+
+  // GAP-31: Epoch number — new Date(ms) is valid. SPEC only tested ISO string.
+  it('handles epoch millisecond number', () => {
+    const epoch = new Date('2026-01-15T10:30:00+08:00').getTime();
+    const result = formatTimestampForFilename(epoch);
+    // Verify format pattern YYYYMMDD_HHmm
+    expect(result).toMatch(/^\d{8}_\d{4}$/);
+    // Verify it matches what Date parses
+    const date = new Date(epoch);
+    const expected = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}_${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}`;
+    expect(result).toBe(expected);
+  });
+
+  // GAP-32: 0 is falsy — !0 is true → returns ''.
+  // But new Date(0) is valid (epoch start 1970-01-01).
+  // Documents limitation: epoch 0 treated as no-timestamp.
+  it('returns empty string for 0 (falsy, documents epoch-0 limitation)', () => {
+    expect(formatTimestampForFilename(0)).toBe('');
+  });
+
+  // GAP-33: false is falsy → returns ''.
+  it('returns empty string for false (falsy)', () => {
+    expect(formatTimestampForFilename(false)).toBe('');
+  });
+
+  // GAP-34: Single-digit month/day padding — January 5th tests padStart(2, '0').
+  // SPEC only tested June (2-digit month). Ensures padding logic works for all months.
+  it('pads single-digit month and day', () => {
+    const ts = '2026-01-05T08:05:00+08:00';
+    const result = formatTimestampForFilename(ts);
+    // Should contain '0105' for Jan 5th and '0805' for 08:05
+    expect(result).toMatch(/^20260105_0805$/);
+  });
+});
