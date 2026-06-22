@@ -175,6 +175,7 @@ export function createMockSpreadsheetApp(sheets) {
         const sheetName = sheet.getName();
         delete sheets[sheetName];
       },
+      getSheets: () => Object.values(sheets),
     }),
   };
 }
