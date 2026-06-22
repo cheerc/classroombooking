@@ -1,4 +1,4 @@
-import { forEachCourse, countOccurrences, updateAllOccurrences, handleEditClassroom } from '../lib/stateHelpers.js';
+import { forEachCourse, countOccurrences, updateAllOccurrences, handleEditClassroom, findNextUpcomingClasses, saveDataToServer } from '../lib/stateHelpers.js';
 import { describe, it, expect, vi } from 'vitest';
 
 // ── Helper: build a scheduleData fixture ──────────────────────────
@@ -274,3 +274,257 @@ describe('handleEditClassroom', () => {
     );
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// findNextUpcomingClasses
+// ═══════════════════════════════════════════════════════════════════
+
+const APP_CONFIG = { MODES: { DAY: 'day', WEEK: 'week' } };
+
+// Helper: simple timeToMinutes matching production logic
+function timeToMinutes(timeStr) {
+  try {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+  } catch {
+    return 0;
+  }
+}
+
+// Helper: build a findNextUpcomingClasses context
+function makeFindCtx(overrides = {}) {
+  // Default: Monday (getDay()=1 → todayIndex=0), DAY mode, viewing day 0
+  return {
+    nextUpcomingClassIds: overrides.nextUpcomingClassIds ?? new Set(),
+    currentViewMode: overrides.currentViewMode ?? 'day',
+    currentDayIndex: overrides.currentDayIndex ?? 0,
+    scheduleData: overrides.scheduleData ?? {},
+    timeToMinutes: overrides.timeToMinutes ?? timeToMinutes,
+  };
+}
+
+describe('findNextUpcomingClasses', () => {
+  it('adds future courses within 30min threshold (happy path, DAY mode + today)', () => {
+    // Monday 10:00 — courses at 10:15 (within 30min) and 11:00 (outside)
+    const now = new Date('2026-06-22T10:00:00'); // Monday (getDay()=1 → todayIndex=0)
+    const ctx = makeFindCtx({
+      currentDayIndex: 0,
+      scheduleData: {
+        'Room A': {
+          0: [
+            { id: 'c1', timeStart: '10:15' },  // 15min away → within threshold
+            { id: 'c2', timeStart: '11:00' },  // 60min away → outside threshold
+          ],
+        },
+      },
+    });
+
+    findNextUpcomingClasses(ctx, APP_CONFIG, now);
+
+    // Only c1 is within the 30min threshold
+    expect(ctx.nextUpcomingClassIds.has('c1')).toBe(true);
+    expect(ctx.nextUpcomingClassIds.has('c2')).toBe(false);
+    expect(ctx.nextUpcomingClassIds.size).toBe(1);
+  });
+
+  it('clears set and returns when not in DAY mode', () => {
+    const now = new Date('2026-06-22T10:00:00');
+    const ctx = makeFindCtx({
+      currentViewMode: 'week',
+      currentDayIndex: 0,
+    });
+    ctx.nextUpcomingClassIds.add('stale-id');
+
+    findNextUpcomingClasses(ctx, APP_CONFIG, now);
+
+    // Set should be cleared
+    expect(ctx.nextUpcomingClassIds.size).toBe(0);
+  });
+
+  it('clears set and returns when viewing a different day than today', () => {
+    // Monday (todayIndex=0) but viewing day 3
+    const now = new Date('2026-06-22T10:00:00');
+    const ctx = makeFindCtx({
+      currentDayIndex: 3, // not today
+      scheduleData: {
+        'Room A': { 3: [{ id: 'c1', timeStart: '10:15' }] },
+      },
+    });
+    ctx.nextUpcomingClassIds.add('stale-id');
+
+    findNextUpcomingClasses(ctx, APP_CONFIG, now);
+
+    expect(ctx.nextUpcomingClassIds.size).toBe(0);
+  });
+
+  it('falls back to Rule 2 (nearest next) when no courses within 30min threshold', () => {
+    // Monday 08:00 — courses at 09:00 (60min) and 10:00 (120min)
+    const now = new Date('2026-06-22T08:00:00');
+    const ctx = makeFindCtx({
+      currentDayIndex: 0,
+      scheduleData: {
+        'Room A': {
+          0: [
+            { id: 'c1', timeStart: '09:00' },  // 60min → outside threshold
+            { id: 'c2', timeStart: '10:00' },  // 120min → outside threshold
+          ],
+        },
+      },
+    });
+
+    findNextUpcomingClasses(ctx, APP_CONFIG, now);
+
+    // Rule 2: nearest next = 09:00 (c1)
+    expect(ctx.nextUpcomingClassIds.has('c1')).toBe(true);
+    expect(ctx.nextUpcomingClassIds.has('c2')).toBe(false);
+    expect(ctx.nextUpcomingClassIds.size).toBe(1);
+  });
+
+  it('adds multiple courses with the same nearest start time (Rule 2)', () => {
+    // Monday 08:00 — two courses at 09:00 in different classrooms
+    const now = new Date('2026-06-22T08:00:00');
+    const ctx = makeFindCtx({
+      currentDayIndex: 0,
+      scheduleData: {
+        'Room A': {
+          0: [{ id: 'c1', timeStart: '09:00' }],
+        },
+        'Room B': {
+          0: [{ id: 'c2', timeStart: '09:00' }],
+        },
+      },
+    });
+
+    findNextUpcomingClasses(ctx, APP_CONFIG, now);
+
+    // Both courses share the nearest start time
+    expect(ctx.nextUpcomingClassIds.has('c1')).toBe(true);
+    expect(ctx.nextUpcomingClassIds.has('c2')).toBe(true);
+    expect(ctx.nextUpcomingClassIds.size).toBe(2);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// saveDataToServer
+// ═══════════════════════════════════════════════════════════════════
+
+// Helper: build a saveDataToServer context
+function makeSaveCtx(overrides = {}) {
+  return {
+    isConnecting: overrides.isConnecting ?? false,
+    activeScheduleId: overrides.activeScheduleId ?? 'sched-1',
+    scheduleLastModified: overrides.scheduleLastModified ?? { 'sched-1': '2026-01-01T00:00:00Z' },
+    classrooms: overrides.classrooms ?? ['Room A'],
+    scheduleData: overrides.scheduleData ?? { 'Room A': { 0: [] } },
+    tags: overrides.tags ?? ['tag1'],
+    lastSyncTime: overrides.lastSyncTime ?? null,
+    ui: {
+      manageLoadingState: overrides.manageLoadingState ?? vi.fn(),
+    },
+    historyModule: {
+      updateCleanSnapshot: overrides.updateCleanSnapshot ?? vi.fn(),
+      checkDirty: overrides.checkDirty ?? vi.fn(),
+    },
+    modals: {
+      showConfirm: overrides.showConfirm ?? vi.fn(),
+    },
+  };
+}
+
+describe('saveDataToServer', () => {
+  it('saves successfully and updates state (happy path)', async () => {
+    const ctx = makeSaveCtx();
+    const mockApi = {
+      call: vi.fn().mockResolvedValue({ success: true, lastModified: '2026-06-22T12:00:00Z' }),
+    };
+
+    await saveDataToServer(ctx, mockApi);
+
+    // ServerApi called with correct data
+    expect(mockApi.call).toHaveBeenCalledWith('saveData', expect.objectContaining({
+      scheduleId: 'sched-1',
+      lastModified: '2026-01-01T00:00:00Z',
+    }));
+    // State updated
+    expect(ctx.scheduleLastModified['sched-1']).toBe('2026-06-22T12:00:00Z');
+    expect(ctx.lastSyncTime).toBeInstanceOf(Date);
+    // History callbacks
+    expect(ctx.historyModule.updateCleanSnapshot).toHaveBeenCalledOnce();
+    expect(ctx.historyModule.checkDirty).toHaveBeenCalledOnce();
+    // Loading state: start then end(success)
+    expect(ctx.ui.manageLoadingState).toHaveBeenCalledTimes(2);
+    expect(ctx.ui.manageLoadingState).toHaveBeenNthCalledWith(1, 'start', expect.any(Object));
+    expect(ctx.ui.manageLoadingState).toHaveBeenNthCalledWith(2, 'end', expect.objectContaining({ success: true }));
+    // isConnecting reset
+    expect(ctx.isConnecting).toBe(false);
+  });
+
+  it('returns immediately when isConnecting is true (guard)', async () => {
+    const ctx = makeSaveCtx({ isConnecting: true });
+    const mockApi = { call: vi.fn() };
+
+    await saveDataToServer(ctx, mockApi);
+
+    // ServerApi never called
+    expect(mockApi.call).not.toHaveBeenCalled();
+    expect(ctx.ui.manageLoadingState).not.toHaveBeenCalled();
+  });
+
+  it('handles conflict response (showConfirm + loading end with isConflict)', async () => {
+    const ctx = makeSaveCtx();
+    const mockApi = {
+      call: vi.fn().mockResolvedValue({ conflict: true, error: 'Version conflict!' }),
+    };
+
+    await saveDataToServer(ctx, mockApi);
+
+    // Conflict UI shown
+    expect(ctx.modals.showConfirm).toHaveBeenCalledWith('Version conflict!', true);
+    // Loading ended with isConflict
+    expect(ctx.ui.manageLoadingState).toHaveBeenLastCalledWith('end', expect.objectContaining({
+      success: false,
+      isConflict: true,
+    }));
+    // History NOT updated (conflict = no save)
+    expect(ctx.historyModule.updateCleanSnapshot).not.toHaveBeenCalled();
+    // isConnecting reset
+    expect(ctx.isConnecting).toBe(false);
+  });
+
+  it('handles error thrown by ServerApi.call', async () => {
+    const ctx = makeSaveCtx();
+    const mockApi = {
+      call: vi.fn().mockRejectedValue(new Error('Network failure')),
+    };
+
+    await saveDataToServer(ctx, mockApi);
+
+    // Loading ended with failure message
+    expect(ctx.ui.manageLoadingState).toHaveBeenLastCalledWith('end', expect.objectContaining({
+      success: false,
+      message: expect.stringContaining('Network failure'),
+    }));
+    // isConnecting reset in finally
+    expect(ctx.isConnecting).toBe(false);
+  });
+
+  it('throws when scheduleLastModified has no timestamp for active schedule', async () => {
+    const ctx = makeSaveCtx({
+      scheduleLastModified: {}, // missing timestamp for sched-1
+    });
+    const mockApi = { call: vi.fn() };
+
+    await saveDataToServer(ctx, mockApi);
+
+    // ServerApi never called (throw before call)
+    expect(mockApi.call).not.toHaveBeenCalled();
+    // Loading ended with error
+    expect(ctx.ui.manageLoadingState).toHaveBeenLastCalledWith('end', expect.objectContaining({
+      success: false,
+      message: expect.stringContaining('找不到當前課表的版本資訊'),
+    }));
+    // isConnecting reset in finally
+    expect(ctx.isConnecting).toBe(false);
+  });
+});
+
