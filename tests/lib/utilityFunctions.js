@@ -78,3 +78,28 @@ export function formatTimestampForFilename(timestamp) {
   return `${YYYY}${MM}${DD}_${HH}${mm}`;
 }
 
+// Ref: JavaScript.html L932-946 — sortClassrooms (classroom list sorting, pure)
+// Sort order: hundreds digit descending (3xx > 2xx > 1xx), then remainder ascending (01, 02, ...)
+
+/**
+ * Sorts a list of classroom names by floor (hundreds digit) descending,
+ * then by room number (remainder) ascending.
+ * Uses regex to extract the first numeric sequence from each name.
+ * @param {string[]} classroomList - Array of classroom name strings.
+ * @returns {string[]} A new sorted array. Returns original or [] on error.
+ */
+export function sortClassrooms(classroomList) {
+  try {
+    return [...classroomList].sort((a, b) => {
+      const numA = parseInt((a.match(/\d+/) || ['0'])[0]);
+      const numB = parseInt((b.match(/\d+/) || ['0'])[0]);
+      const hundredsA = Math.floor(numA / 100);
+      const hundredsB = Math.floor(numB / 100);
+      if (hundredsA !== hundredsB) return hundredsB - hundredsA;
+      return (numA % 100) - (numB % 100);
+    });
+  } catch (e) {
+    console.error('排序教室失敗:', e);
+    return classroomList || [];
+  }
+}

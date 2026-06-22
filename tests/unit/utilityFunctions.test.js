@@ -1,4 +1,4 @@
-import { stringToHashCode, hexToRgb, getShortUserName, formatTime, formatTimestampForFilename } from '../lib/utilityFunctions.js';
+import { stringToHashCode, hexToRgb, getShortUserName, formatTime, formatTimestampForFilename, sortClassrooms } from '../lib/utilityFunctions.js';
 import { describe, it, expect } from 'vitest';
 
 describe('stringToHashCode', () => {
@@ -393,5 +393,33 @@ describe('formatTimestampForFilename — GAP', () => {
     const result = formatTimestampForFilename(ts);
     // Should contain '0105' for Jan 5th and '0805' for 08:05
     expect(result).toMatch(/^20260105_0805$/);
+  });
+});
+
+// ============================================================
+// CYCLE 3 SPEC TURN — by cb-team-impl
+// ============================================================
+
+describe('sortClassrooms', () => {
+  it('sorts classrooms by floor descending then room ascending', () => {
+    const input = ['101', '302', '201', '301', '102', '202'];
+    const result = sortClassrooms(input);
+    // 3xx first (descending hundreds), then within floor ascending
+    expect(result).toEqual(['301', '302', '201', '202', '101', '102']);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(sortClassrooms([])).toEqual([]);
+  });
+
+  it('returns single-element array unchanged', () => {
+    expect(sortClassrooms(['205'])).toEqual(['205']);
+  });
+
+  it('does not mutate the original array', () => {
+    const input = ['201', '101', '301'];
+    const original = [...input];
+    sortClassrooms(input);
+    expect(input).toEqual(original);
   });
 });
