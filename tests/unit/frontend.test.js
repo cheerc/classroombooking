@@ -1,6 +1,6 @@
 /**
- * Frontend tests — Wave A: P0 pure logic + P1 mock infra + Wave B: P2 server-dependent
- * Ref: #72, #73, #74, #75, #76, #77, #78, #79, #80
+ * Frontend tests — Wave A + Wave B + Wave C
+ * Ref: #72, #73, #74, #75, #76, #77, #78, #79, #80, #81
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
@@ -12,6 +12,9 @@ import {
   extractTimestamps,
   aggregateScheduleData,
   validateCourseForm,
+  parseConfirmOptions,
+  getModalContentMethod,
+  resolveModalAction,
 } from '../lib/frontendUtils.js';
 import {
   createMockServerApi,
@@ -585,5 +588,77 @@ describe('validateCourseForm (#80)', () => {
 
   it('rejects equal start and end time', () => {
     expect(validateCourseForm({ ...validForm, timeStart: '09:00', timeEnd: '09:00' }, timeToMinutes)).toContain('開始時間');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #81 — Modals Promise flow
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('parseConfirmOptions (#81)', () => {
+  it('handles boolean true (backward compat)', () => {
+    const opts = parseConfirmOptions(true);
+    expect(opts.isAlert).toBe(true);
+    expect(opts.allowHtml).toBe(false);
+  });
+
+  it('handles boolean false (backward compat)', () => {
+    const opts = parseConfirmOptions(false);
+    expect(opts.isAlert).toBe(false);
+    expect(opts.allowHtml).toBe(false);
+  });
+
+  it('handles object with allowHtml', () => {
+    const opts = parseConfirmOptions({ isAlert: false, allowHtml: true });
+    expect(opts.isAlert).toBe(false);
+    expect(opts.allowHtml).toBe(true);
+  });
+
+  it('handles object with isAlert', () => {
+    const opts = parseConfirmOptions({ isAlert: true });
+    expect(opts.isAlert).toBe(true);
+    expect(opts.allowHtml).toBe(false);
+  });
+
+  it('defaults to false/false when called with no args', () => {
+    const opts = parseConfirmOptions();
+    expect(opts.isAlert).toBe(false);
+    expect(opts.allowHtml).toBe(false);
+  });
+});
+
+describe('getModalContentMethod (#81)', () => {
+  it('returns innerHTML when allowHtml is true', () => {
+    expect(getModalContentMethod(true)).toBe('innerHTML');
+  });
+
+  it('returns textContent when allowHtml is false', () => {
+    expect(getModalContentMethod(false)).toBe('textContent');
+  });
+
+  it('returns textContent when allowHtml is undefined', () => {
+    expect(getModalContentMethod(undefined)).toBe('textContent');
+  });
+});
+
+describe('resolveModalAction (#81)', () => {
+  it('OK on confirm (no input) resolves true', () => {
+    expect(resolveModalAction('ok', false)).toBe(true);
+  });
+
+  it('Cancel on confirm (no input) resolves false', () => {
+    expect(resolveModalAction('cancel', false)).toBe(false);
+  });
+
+  it('OK on prompt (with input) resolves input value', () => {
+    expect(resolveModalAction('ok', true, 'user input')).toBe('user input');
+  });
+
+  it('Cancel on prompt (with input) resolves null', () => {
+    expect(resolveModalAction('cancel', true, 'user input')).toBeNull();
+  });
+
+  it('OK on prompt with empty input resolves empty string', () => {
+    expect(resolveModalAction('ok', true, '')).toBe('');
   });
 });

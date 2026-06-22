@@ -171,3 +171,48 @@ export function validateCourseForm(formData, timeToMinutesFn) {
   if (timeToMinutesFn(timeStart) >= timeToMinutesFn(timeEnd)) return '開始時間不能晚於或等於結束時間！';
   return null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Wave C: Modals Promise flow extractions
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Parses showConfirm's backward-compatible isAlertOrOpts parameter.
+ * Ref: Modals.js.html L115-126
+ * @param {boolean|object} isAlertOrOpts - Boolean for backward compat, or { isAlert, allowHtml }
+ * @returns {{ isAlert: boolean, allowHtml: boolean }}
+ */
+export function parseConfirmOptions(isAlertOrOpts = false) {
+  const opts = typeof isAlertOrOpts === 'object' ? isAlertOrOpts : { isAlert: isAlertOrOpts };
+  return {
+    isAlert: opts.isAlert || false,
+    allowHtml: opts.allowHtml || false,
+  };
+}
+
+/**
+ * Determines how to set modal text content based on allowHtml flag.
+ * Ref: Modals.js.html L27-33
+ * Returns 'innerHTML' or 'textContent' as the property to use.
+ * @param {boolean} allowHtml
+ * @returns {'innerHTML' | 'textContent'}
+ */
+export function getModalContentMethod(allowHtml) {
+  return allowHtml ? 'innerHTML' : 'textContent';
+}
+
+/**
+ * Determines the resolve value for a modal action.
+ * Ref: Modals.js.html L53-61
+ * @param {'ok' | 'cancel'} action - The user's action
+ * @param {boolean} hasInput - Whether the modal has an input element
+ * @param {string} [inputValue] - The input value if hasInput is true
+ * @returns {boolean | string | null}
+ */
+export function resolveModalAction(action, hasInput, inputValue = '') {
+  if (action === 'ok') {
+    return hasInput ? inputValue : true;
+  }
+  // cancel
+  return hasInput ? null : false;
+}
