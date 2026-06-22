@@ -10,7 +10,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { createMockSheet, createMockSpreadsheetApp, createMockSession,
          createMockLockService, createMockPropertiesService, createMockLogger,
-         createMockHtmlService } from '../mocks/gasMocks.js';
+         createMockHtmlService, createMockDriveApp } from '../mocks/gasMocks.js';
 
 const gasSource = readFileSync(
   resolve(import.meta.dirname, '../../程式碼.js'),
@@ -25,15 +25,16 @@ function createGasEnv(opts = {}) {
   const sheets = opts.sheets || {};
   const SpreadsheetApp = createMockSpreadsheetApp(sheets);
   const Session = createMockSession(opts.userEmail ?? 'test@example.com');
-  const LockService = createMockLockService();
+  const LockService = opts.LockService || createMockLockService();
   const PropertiesService = createMockPropertiesService(opts.scriptProps || {});
   const Logger = createMockLogger();
   const HtmlService = createMockHtmlService();
+  const DriveApp = createMockDriveApp(opts.driveFiles || {});
 
   // Wrap the GAS source so that all top-level functions become properties
   // of an object we can return. We inject the GAS globals as local variables.
   const wrappedSource = `
-    return (function(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService) {
+    return (function(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService, DriveApp) {
       ${gasSource}
       return {
         getConfig, _findScheduleRowInfo, _checkPermission, _getSs, getSheet, getOrCreateSheet,
@@ -41,15 +42,15 @@ function createGasEnv(opts = {}) {
         updateScheduleMetadata, deleteSchedule, copySchedule,
         getVersions, getVersionData, getFontBase64FromDrive
       };
-    })(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService);
+    })(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService, DriveApp);
   `;
 
   const factory = new Function(
-    'SpreadsheetApp', 'Session', 'LockService', 'PropertiesService', 'Logger', 'HtmlService',
+    'SpreadsheetApp', 'Session', 'LockService', 'PropertiesService', 'Logger', 'HtmlService', 'DriveApp',
     wrappedSource
   );
 
-  return factory(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService);
+  return factory(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService, DriveApp);
 }
 
 // ─── checkMetadata ───────────────────────────────────────────────────────
@@ -693,5 +694,447 @@ describe('getVersionData with null sheet (#44)', () => {
     const result = gas.getVersionData('2024-01-01T00:00:00.000Z');
     expect(result.success).toBe(false);
     expect(result.error).toContain('找不到');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// WAVE 2A: #85 — Backend mutating error paths
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── #85.1: Lock waitLock failure across mutating functions ──────
+
+describe('Lock waitLock failure path (#85)', () => {
+  /** Create a LockService that throws on waitLock */
+  function createFailingLockService() {
+    return {
+      getScriptLock: () => ({
+        waitLock: () => { throw new Error('Cannot obtain lock'); },
+        releaseLock: () => { /* no-op */ },
+      }),
+    };
+  }
+
+  function createLockFailEnv(extraOpts = {}) {
+    const ts = '2024-06-15T10:30:00.000Z';
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Test', C2: ts, D2: 'owner@test.com', E2: false,
+    });
+    const scheduleSheet = createMockSheet('schedule_1');
+    return createGasEnv({
+      sheets: { Data: dataSheet, schedule_1: scheduleSheet, ...extraOpts.sheets },
+      userEmail: 'owner@test.com',
+      scriptProps: { ADMIN_EMAIL: 'admin@test.com' },
+      LockService: createFailingLockService(),
+      ...extraOpts,
+    });
+  }
+
+  it('saveData returns busy error when lock fails', () => {
+    const gas = createLockFailEnv();
+    const result = gas.saveData({
+      scheduleId: 'schedule_1',
+      scheduleData: { scheduleData: {}, classrooms: [], tags: [] },
+      lastModified: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('伺服器正忙');
+  });
+
+  it('addSchedule returns error when lock fails', () => {
+    const gas = createLockFailEnv();
+    const result = gas.addSchedule({
+      id: 'schedule_new',
+      name: 'New',
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+  });
+
+  it('deleteSchedule returns error when lock fails', () => {
+    const gas = createLockFailEnv();
+    const result = gas.deleteSchedule({
+      id: 'schedule_1',
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+  });
+
+  it('updateScheduleMetadata returns error when lock fails', () => {
+    const gas = createLockFailEnv();
+    const result = gas.updateScheduleMetadata({
+      id: 'schedule_1',
+      newName: 'Renamed',
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+  });
+
+  it('copySchedule returns error when lock fails', () => {
+    const gas = createLockFailEnv();
+    const result = gas.copySchedule({
+      sourceId: 'schedule_1',
+      newName: 'Copy',
+      metadataTimestamp: '2024-06-15T10:30:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+  });
+});
+
+// ─── #85.2: saveData missing schedule sheet ─────────────────────
+
+describe('saveData missing schedule sheet (#85)', () => {
+  it('returns error when schedule sheet does not exist', () => {
+    const ts = '2024-06-15T10:30:00.000Z';
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Test', C2: ts, D2: 'owner@test.com', E2: false,
+    });
+    const historySheet = createMockSheet('History', {
+      A1: 'Timestamp', B1: 'SavedBy', C1: 'Data', D1: 'ScheduleId',
+    });
+    // Intentionally NO schedule_1 sheet
+    const gas = createGasEnv({
+      sheets: { Data: dataSheet, History: historySheet },
+      userEmail: 'owner@test.com',
+      scriptProps: { ADMIN_EMAIL: 'admin@test.com' },
+    });
+
+    const result = gas.saveData({
+      scheduleId: 'schedule_1',
+      scheduleData: { scheduleData: {}, classrooms: [], tags: [] },
+      lastModified: ts,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('找不到');
+    expect(result.error).toContain('schedule_1');
+  });
+});
+
+// ─── #85.3: copySchedule missing source sheet ───────────────────
+
+describe('copySchedule missing source sheet (#85)', () => {
+  it('returns error when source schedule sheet does not exist', () => {
+    const ts = '2024-06-15T10:30:00.000Z';
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Source', C2: ts, D2: 'owner@test.com', E2: false,
+    });
+    // Data sheet has index entry but NO actual schedule_1 sheet
+    const gas = createGasEnv({
+      sheets: { Data: dataSheet },
+      userEmail: 'owner@test.com',
+      scriptProps: { ADMIN_EMAIL: 'admin@test.com' },
+    });
+
+    const result = gas.copySchedule({
+      sourceId: 'schedule_1',
+      newName: 'Copy',
+      metadataTimestamp: ts,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('找不到來源課表');
+  });
+});
+
+// ─── #85.4: getOrCreateSheet header initialization ──────────────
+
+describe('getOrCreateSheet header initialization (#85)', () => {
+  it('initializes Data sheet with 5-column header and frozen row', () => {
+    const sheets = {};
+    const gas = createGasEnv({ sheets });
+
+    const result = gas.getOrCreateSheet('Data');
+    expect(result).toBeTruthy();
+    expect(result.getName()).toBe('Data');
+    // Sheet was created (added to sheets map by mock)
+    expect(sheets['Data']).toBeTruthy();
+  });
+
+  it('initializes History sheet with 4-column header and frozen row', () => {
+    const sheets = {};
+    const gas = createGasEnv({ sheets });
+
+    const result = gas.getOrCreateSheet('History');
+    expect(result).toBeTruthy();
+    expect(result.getName()).toBe('History');
+    expect(sheets['History']).toBeTruthy();
+  });
+
+  it('creates generic sheet without special headers for unknown name', () => {
+    const sheets = {};
+    const gas = createGasEnv({ sheets });
+
+    const result = gas.getOrCreateSheet('CustomSheet');
+    expect(result).toBeTruthy();
+    expect(result.getName()).toBe('CustomSheet');
+    expect(sheets['CustomSheet']).toBeTruthy();
+  });
+});
+
+// ─── #85.5: saveData history trimming ────────────────────────────
+
+describe('saveData history trimming (#85)', () => {
+  it('trims history when exceeding MAX_HISTORY_RECORDS (20) for a schedule', () => {
+    const ts = '2024-06-15T10:30:00.000Z';
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Test', C2: ts, D2: 'owner@test.com', E2: false,
+    });
+    const scheduleSheet = createMockSheet('schedule_1', {
+      A1: 'Key', B1: 'Value',
+      A2: 'scheduleData', B2: '{}',
+      A3: 'classrooms', B3: '[]',
+      A4: 'tags', B4: '[]',
+    });
+
+    // Pre-populate history with 20 existing rows for schedule_1 (at capacity)
+    const historyData = {
+      A1: 'Timestamp', B1: 'SavedBy', C1: 'Data', D1: 'ScheduleId',
+    };
+    for (let i = 0; i < 20; i++) {
+      const row = i + 2;
+      historyData[`A${row}`] = `2024-06-${String(15 - i).padStart(2, '0')}T00:00:00.000Z`;
+      historyData[`B${row}`] = 'user@test.com';
+      historyData[`C${row}`] = '{}';
+      historyData[`D${row}`] = 'schedule_1';
+    }
+    const historySheet = createMockSheet('History', historyData);
+
+    const gas = createGasEnv({
+      sheets: { Data: dataSheet, schedule_1: scheduleSheet, History: historySheet },
+      userEmail: 'owner@test.com',
+      scriptProps: { ADMIN_EMAIL: 'admin@test.com' },
+    });
+
+    const result = gas.saveData({
+      scheduleId: 'schedule_1',
+      scheduleData: { scheduleData: { new: true }, classrooms: [], tags: [] },
+      lastModified: ts,
+    });
+
+    expect(result.success).toBe(true);
+    // After trimming, history should have header + 20 rows (the new one replaces oldest)
+  });
+
+  it('does not trim when history count is at boundary (exactly 20)', () => {
+    const ts = '2024-06-15T10:30:00.000Z';
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Test', C2: ts, D2: 'owner@test.com', E2: false,
+    });
+    const scheduleSheet = createMockSheet('schedule_1', {
+      A1: 'Key', B1: 'Value', B2: '{}', B3: '[]', B4: '[]',
+    });
+
+    // Pre-populate history with 19 rows (below capacity — save adds 1 = 20 total, no trim)
+    const historyData = { A1: 'Timestamp', B1: 'SavedBy', C1: 'Data', D1: 'ScheduleId' };
+    for (let i = 0; i < 19; i++) {
+      const row = i + 2;
+      historyData[`A${row}`] = `2024-06-${String(15 - i).padStart(2, '0')}T00:00:00.000Z`;
+      historyData[`B${row}`] = 'user@test.com';
+      historyData[`C${row}`] = '{}';
+      historyData[`D${row}`] = 'schedule_1';
+    }
+    const historySheet = createMockSheet('History', historyData);
+
+    const gas = createGasEnv({
+      sheets: { Data: dataSheet, schedule_1: scheduleSheet, History: historySheet },
+      userEmail: 'owner@test.com',
+      scriptProps: { ADMIN_EMAIL: 'admin@test.com' },
+    });
+
+    const result = gas.saveData({
+      scheduleId: 'schedule_1',
+      scheduleData: { scheduleData: {}, classrooms: [], tags: [] },
+      lastModified: ts,
+    });
+
+    expect(result.success).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// WAVE 2A: #87 — Backend utility zero-coverage
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── #87.1: doGet — web entry point ─────────────────────────────
+
+describe('doGet (#87)', () => {
+  it('renders template with isAdmin=true for admin user', () => {
+    const gas = createGasEnv({
+      userEmail: 'admin@school.com',
+      scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
+    });
+
+    const result = gas.doGet();
+    // HtmlService mock returns a template evaluate chain
+    expect(result).toBeTruthy();
+  });
+
+  it('renders template with isAdmin=false for non-admin user', () => {
+    const gas = createGasEnv({
+      userEmail: 'teacher@school.com',
+      scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
+    });
+
+    const result = gas.doGet();
+    expect(result).toBeTruthy();
+  });
+
+  it('case-insensitive admin comparison', () => {
+    const gas = createGasEnv({
+      userEmail: 'Admin@School.COM',
+      scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
+    });
+
+    // Should not throw — case-insensitive match
+    const result = gas.doGet();
+    expect(result).toBeTruthy();
+  });
+
+  it('handles missing ADMIN_EMAIL gracefully (defaults to empty)', () => {
+    const gas = createGasEnv({
+      userEmail: 'user@school.com',
+      scriptProps: {},  // no ADMIN_EMAIL
+    });
+
+    const result = gas.doGet();
+    expect(result).toBeTruthy();
+  });
+});
+
+// ─── #87.2: getFontBase64FromDrive ──────────────────────────────
+
+describe('getFontBase64FromDrive (#87)', () => {
+  it('extracts base64 font data from Drive file (happy path)', () => {
+    const fontContent = "const NotoSansTC_Base64 = 'AQEBAQE=';";
+    const gas = createGasEnv({
+      scriptProps: { font_drive_file_id: 'file-123' },
+      driveFiles: { 'file-123': fontContent },
+    });
+
+    const result = gas.getFontBase64FromDrive();
+    expect(result.success).toBe(true);
+    expect(result.data).toBe('AQEBAQE=');
+  });
+
+  it('returns error when font_drive_file_id config is missing', () => {
+    const gas = createGasEnv({
+      scriptProps: {},  // no font_drive_file_id
+      driveFiles: {},
+    });
+
+    const result = gas.getFontBase64FromDrive();
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('尚未設定字體檔案');
+  });
+
+  it('returns error when Drive file content does not match regex', () => {
+    const gas = createGasEnv({
+      scriptProps: { font_drive_file_id: 'file-123' },
+      driveFiles: { 'file-123': 'some other content without base64 marker' },
+    });
+
+    const result = gas.getFontBase64FromDrive();
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('無法從 Drive 檔案中提取');
+  });
+
+  it('returns error when Drive file does not exist', () => {
+    const gas = createGasEnv({
+      scriptProps: { font_drive_file_id: 'nonexistent-file' },
+      driveFiles: {},  // file not in mock
+    });
+
+    const result = gas.getFontBase64FromDrive();
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('File not found');
+  });
+});
+
+// ─── #87.3: getData JSON parse error collection ─────────────────
+
+describe('getData JSON parse error collection (#87)', () => {
+  it('collects parse errors and still returns partial data', () => {
+    const ts = new Date().toISOString();
+    // scheduleData field has invalid JSON
+    const scheduleSheet = createMockSheet('schedule_1', {
+      B2: '{invalid-json}',    // scheduleData — will fail parse
+      B3: JSON.stringify(['room1']),  // classrooms — valid
+      B4: '{also-invalid}',    // tags — will fail parse
+    });
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Test', C2: ts, D2: 'user@test.com', E2: false,
+    });
+
+    const gas = createGasEnv({ sheets: { Data: dataSheet, schedule_1: scheduleSheet } });
+
+    const result = gas.getData();
+    expect(result.success).toBe(true);
+    expect(result.schedules.schedule_1).toBeDefined();
+    // parseErrors should be present with 2 errors (scheduleData + tags)
+    expect(result.schedules.schedule_1.parseErrors).toBeDefined();
+    expect(result.schedules.schedule_1.parseErrors.length).toBe(2);
+    // Partial data: classrooms parsed successfully
+    expect(result.schedules.schedule_1.data.classrooms).toEqual(['room1']);
+    // Failed fields default to empty
+    expect(result.schedules.schedule_1.data.scheduleData).toEqual({});
+    expect(result.schedules.schedule_1.data.tags).toEqual([]);
+  });
+
+  it('does not include parseErrors when all fields parse successfully', () => {
+    const ts = new Date().toISOString();
+    const scheduleSheet = createMockSheet('schedule_1', {
+      B2: JSON.stringify({ room1: {} }),
+      B3: JSON.stringify(['room1']),
+      B4: JSON.stringify(['tag1']),
+    });
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Test', C2: ts, D2: 'user@test.com', E2: false,
+    });
+
+    const gas = createGasEnv({ sheets: { Data: dataSheet, schedule_1: scheduleSheet } });
+
+    const result = gas.getData();
+    expect(result.success).toBe(true);
+    expect(result.schedules.schedule_1.parseErrors).toBeUndefined();
+  });
+
+  it('handles all three fields failing to parse', () => {
+    const ts = new Date().toISOString();
+    const scheduleSheet = createMockSheet('schedule_1', {
+      B2: 'bad1',
+      B3: 'bad2',
+      B4: 'bad3',
+    });
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy', E1: 'Draft',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Test', C2: ts, D2: 'user@test.com', E2: false,
+    });
+
+    const gas = createGasEnv({ sheets: { Data: dataSheet, schedule_1: scheduleSheet } });
+
+    const result = gas.getData();
+    expect(result.success).toBe(true);
+    expect(result.schedules.schedule_1.parseErrors.length).toBe(3);
+    // All fields fall back to defaults
+    expect(result.schedules.schedule_1.data.scheduleData).toEqual({});
+    expect(result.schedules.schedule_1.data.classrooms).toEqual([]);
+    expect(result.schedules.schedule_1.data.tags).toEqual([]);
   });
 });
