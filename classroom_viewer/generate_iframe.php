@@ -15,6 +15,7 @@ ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
 require __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/functions.php';
 
 // --- Configuration ---
 define('ENCRYPTION_KEY', $config['encryption_key']);
@@ -206,8 +207,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <script src="https://cdn.jsdelivr.net/npm/@yaireo/tagify"></script>
     <script>
-        const allSchedules = <?= json_encode($all_schedules) ?>;
-        const allTags = <?= json_encode($all_tags) ?>;
+        const allSchedules = <?= jsonEncodeSafe($all_schedules) ?>;
+        const allTags = <?= jsonEncodeSafe($all_tags) ?>;
 
         // Helper to initialize Tagify
         function initTagify(selector, whitelist) {
