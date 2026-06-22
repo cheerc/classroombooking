@@ -21,9 +21,12 @@ return [
     'hmac_key' => 'YOUR_HMAC_KEY_HERE',
 
     // 過渡期允許舊格式（無 HMAC）的 payload。
-    // 部署後先設為 true，待所有 iframe URL 更新後改為 false。
-    'allow_legacy_payloads' => true,
+    // Ref: #67.1 — 預設 false：除非仍有未更新的 iframe URL，否則應關閉舊格式支援。
+    'allow_legacy_payloads' => false,
 
-    // CSP 允許的主機名（frame-ancestors）
+    // CSP 允許的主機名（frame-ancestors + postMessage target origin）
     'csp_domain' => 'your-domain.com',
+
+    // Ref: #37 — generate_iframe.php 存取 token（防止未授權的 iframe 產生）
+    'access_token' => 'YOUR_RANDOM_ACCESS_TOKEN_HERE',
 ];

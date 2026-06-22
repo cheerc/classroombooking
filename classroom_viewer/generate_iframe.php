@@ -2,6 +2,15 @@
 define('APP_RUNNING', true);
 $config = require __DIR__ . '/config.php';
 
+// Ref: #37 — Access control: require valid token to prevent unauthorized iframe generation
+$valid_token = $config['access_token'] ?? null;
+$provided_token = $_GET['token'] ?? '';
+
+if (!$valid_token || !hash_equals($valid_token, $provided_token)) {
+    http_response_code(403);
+    die('Forbidden: invalid or missing access token.');
+}
+
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 

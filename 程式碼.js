@@ -97,6 +97,10 @@ function doGet() {
 
 /**
  * Retrieves all schedule data. It now reads from dedicated sheets for each schedule.
+ * Ref: #67.3 — Design note: getData returns all schedules without per-user filtering.
+ * This is intentional: the spreadsheet is domain-scoped (oauthScopes: spreadsheets),
+ * and access control is enforced at the GAS webapp level (DOMAIN access in appsscript.json).
+ * Fine-grained read ACL is not needed for this use case.
  * @returns {object} An object containing schedules, and lastModified time, or an error object.
  */
 function getData() {
@@ -345,11 +349,12 @@ function addSchedule(scheduleInfo) {
 }
 
 /**
- * Renames a schedule. Only admin or the creator can rename.
- * @param {object} scheduleInfo Object containing id, newName, and metadataTimestamp.
+ * Ref: #67.5 — Renamed from renameSchedule to reflect its actual scope:
+ * Updates schedule metadata (name and/or isDraft flag).
+ * @param {object} scheduleInfo Object containing id, newName, isDraft, and metadataTimestamp.
  * @returns {object} A success object or an error object.
  */
-function renameSchedule(scheduleInfo) { // Now also handles isDraft changes
+function updateScheduleMetadata(scheduleInfo) { // Ref: #67.5 — Renamed from renameSchedule
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(30000);
@@ -408,6 +413,8 @@ function deleteSchedule(scheduleInfo) {
 
     const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(id, dataSheet);
     if (rowIndex === -1) {
+      // Ref: #67.6 — Intentional idempotent design: if schedule is already gone from index,
+      // return success rather than error. This handles race conditions and retries gracefully.
       Logger.log(`嘗試刪除一個在索引中不存在的課表: ${id}`);
       return { success: true, newMetadataTimestamp: newMetaTimestamp };
     }
@@ -577,7 +584,8 @@ function getVersionData(versionId) {
  */
 function getFontBase64FromDrive() {
   try {
-    const fileId = PropertiesService.getScriptProperties().getProperty('font_drive_file_id');
+    // Ref: #29 — Unified access via getConfig() instead of direct PropertiesService call
+    const fileId = getConfig('font_drive_file_id');
     if (!fileId) {
       throw new Error('尚未設定字體檔案的 Google Drive ID。請先執行 _setup_saveFontFileId。');
     }
