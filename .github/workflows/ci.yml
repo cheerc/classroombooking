@@ -26,6 +26,10 @@ jobs:
         run: find classroom_viewer -name '*.php' ! -path '*/vendor/*' -exec php -l {} \;
       - name: t8 Vitest
         run: npm test
+      - name: Install pcov for PHP coverage
+        run: |
+          sudo pecl install pcov
+          php -m | grep pcov
       - name: t9 PHPUnit
         run: |
           cd classroom_viewer
