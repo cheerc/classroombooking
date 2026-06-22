@@ -1,25 +1,8 @@
 import { forEachCourse, countOccurrences, updateAllOccurrences, handleEditClassroom, findNextUpcomingClasses, saveDataToServer } from '../lib/stateHelpers.js';
 import { describe, it, expect, vi } from 'vitest';
+import { makeScheduleData, makeEditCtx, APP_CONFIG, makeFindCtx, makeSaveCtx } from './stateHelpers.fixtures.js';
 
-// ── Helper: build a scheduleData fixture ──────────────────────────
-function makeScheduleData() {
-  return {
-    'Room A': {
-      0: [
-        { id: '1', name: 'Math', teacher: 'Alice', tags: ['core'] },
-        { id: '2', name: 'English', teacher: 'Bob', tags: ['elective'] },
-      ],
-      1: [
-        { id: '3', name: 'Math', teacher: 'Alice', tags: ['core'] },
-      ],
-    },
-    'Room B': {
-      0: [
-        { id: '4', name: 'Art', teacher: 'Carol', tags: ['elective'] },
-      ],
-    },
-  };
-}
+// Fixtures imported from stateHelpers.fixtures.js
 
 // ═══════════════════════════════════════════════════════════════════
 // forEachCourse
@@ -130,29 +113,11 @@ describe('updateAllOccurrences', () => {
 // handleEditClassroom
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Helper: build a mock context for handleEditClassroom ──────────
-function makeCtx(overrides = {}) {
-  return {
-    classrooms: overrides.classrooms ?? ['Room A', 'Room B', 'Room C'],
-    scheduleData: overrides.scheduleData ?? {
-      'Room A': { 0: [{ id: '1', name: 'Math' }] },
-      'Room B': { 0: [{ id: '2', name: 'Art' }] },
-    },
-    ui: {
-      showNotification: overrides.showNotification ?? vi.fn(),
-      updateClassroomList: overrides.updateClassroomList ?? vi.fn(),
-      renderScheduleTable: overrides.renderScheduleTable ?? vi.fn(),
-    },
-    saveDataToLocal: overrides.saveDataToLocal ?? vi.fn(),
-    historyModule: {
-      saveState: overrides.saveState ?? vi.fn(),
-    },
-  };
-}
+// makeEditCtx imported from stateHelpers.fixtures.js
 
 describe('handleEditClassroom', () => {
   it('renames classroom in array, scheduleData key, and calls all side effects', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     handleEditClassroom('Room A', 'Room Z', ctx);
 
     // classrooms array updated
@@ -178,7 +143,7 @@ describe('handleEditClassroom', () => {
   });
 
   it('shows error and returns when newName is empty string', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     const originalClassrooms = [...ctx.classrooms];
     const originalData = JSON.parse(JSON.stringify(ctx.scheduleData));
 
@@ -199,7 +164,7 @@ describe('handleEditClassroom', () => {
   });
 
   it('shows error and returns when newName already exists in classrooms', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     const originalClassrooms = [...ctx.classrooms];
     const originalData = JSON.parse(JSON.stringify(ctx.scheduleData));
 
@@ -219,7 +184,7 @@ describe('handleEditClassroom', () => {
   });
 
   it('proceeds without array change when oldName not in classrooms (but still renames scheduleData)', () => {
-    const ctx = makeCtx({
+    const ctx = makeEditCtx({
       classrooms: ['Room B', 'Room C'],  // Room A not in array
       scheduleData: {
         'Room A': { 0: [{ id: '1', name: 'Math' }] },
@@ -241,7 +206,7 @@ describe('handleEditClassroom', () => {
   });
 
   it('proceeds without scheduleData change when oldName not in scheduleData (but still renames array)', () => {
-    const ctx = makeCtx({
+    const ctx = makeEditCtx({
       classrooms: ['Room A', 'Room B'],
       scheduleData: {
         'Room B': { 0: [{ id: '2', name: 'Art' }] },
@@ -265,7 +230,7 @@ describe('handleEditClassroom', () => {
   });
 
   it('success notification includes both old and new names', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     handleEditClassroom('Room A', '大教室', ctx);
 
     // Verify notification message format with Chinese characters
@@ -279,29 +244,7 @@ describe('handleEditClassroom', () => {
 // findNextUpcomingClasses
 // ═══════════════════════════════════════════════════════════════════
 
-const APP_CONFIG = { MODES: { DAY: 'day', WEEK: 'week' } };
-
-// Helper: simple timeToMinutes matching production logic
-function timeToMinutes(timeStr) {
-  try {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return hours * 60 + minutes;
-  } catch {
-    return 0;
-  }
-}
-
-// Helper: build a findNextUpcomingClasses context
-function makeFindCtx(overrides = {}) {
-  // Default: Monday (getDay()=1 → todayIndex=0), DAY mode, viewing day 0
-  return {
-    nextUpcomingClassIds: overrides.nextUpcomingClassIds ?? new Set(),
-    currentViewMode: overrides.currentViewMode ?? 'day',
-    currentDayIndex: overrides.currentDayIndex ?? 0,
-    scheduleData: overrides.scheduleData ?? {},
-    timeToMinutes: overrides.timeToMinutes ?? timeToMinutes,
-  };
-}
+// APP_CONFIG, makeFindCtx imported from stateHelpers.fixtures.js
 
 describe('findNextUpcomingClasses', () => {
   it('adds future courses within 30min threshold (happy path, DAY mode + today)', () => {
@@ -408,28 +351,7 @@ describe('findNextUpcomingClasses', () => {
 // saveDataToServer
 // ═══════════════════════════════════════════════════════════════════
 
-// Helper: build a saveDataToServer context
-function makeSaveCtx(overrides = {}) {
-  return {
-    isConnecting: overrides.isConnecting ?? false,
-    activeScheduleId: overrides.activeScheduleId ?? 'sched-1',
-    scheduleLastModified: overrides.scheduleLastModified ?? { 'sched-1': '2026-01-01T00:00:00Z' },
-    classrooms: overrides.classrooms ?? ['Room A'],
-    scheduleData: overrides.scheduleData ?? { 'Room A': { 0: [] } },
-    tags: overrides.tags ?? ['tag1'],
-    lastSyncTime: overrides.lastSyncTime ?? null,
-    ui: {
-      manageLoadingState: overrides.manageLoadingState ?? vi.fn(),
-    },
-    historyModule: {
-      updateCleanSnapshot: overrides.updateCleanSnapshot ?? vi.fn(),
-      checkDirty: overrides.checkDirty ?? vi.fn(),
-    },
-    modals: {
-      showConfirm: overrides.showConfirm ?? vi.fn(),
-    },
-  };
-}
+// makeSaveCtx imported from stateHelpers.fixtures.js
 
 describe('saveDataToServer', () => {
   it('saves successfully and updates state (happy path)', async () => {

@@ -1,51 +1,8 @@
 import { findNextUpcomingClasses, saveDataToServer } from '../lib/stateHelpers.js';
 import { describe, it, expect, vi } from 'vitest';
+import { APP_CONFIG, timeToMinutes, makeFindCtx, makeSaveCtx } from './stateHelpers.fixtures.js';
 
-// ── GAP tests: Cycle 3 adversarial edge cases ─────────────────────
-
-const APP_CONFIG = { MODES: { DAY: 'day', WEEK: 'week' } };
-
-// Simple timeToMinutes matching production logic
-function timeToMinutes(timeStr) {
-  try {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return hours * 60 + minutes;
-  } catch {
-    return 0;
-  }
-}
-
-function makeFindCtx(overrides = {}) {
-  return {
-    nextUpcomingClassIds: overrides.nextUpcomingClassIds ?? new Set(),
-    currentViewMode: overrides.currentViewMode ?? 'day',
-    currentDayIndex: overrides.currentDayIndex ?? 0,
-    scheduleData: overrides.scheduleData ?? {},
-    timeToMinutes: overrides.timeToMinutes ?? timeToMinutes,
-  };
-}
-
-function makeSaveCtx(overrides = {}) {
-  return {
-    isConnecting: overrides.isConnecting ?? false,
-    activeScheduleId: overrides.activeScheduleId ?? 'sched-1',
-    scheduleLastModified: overrides.scheduleLastModified ?? { 'sched-1': '2026-01-01T00:00:00Z' },
-    classrooms: overrides.classrooms ?? ['Room A'],
-    scheduleData: overrides.scheduleData ?? { 'Room A': { 0: [] } },
-    tags: overrides.tags ?? ['tag1'],
-    lastSyncTime: overrides.lastSyncTime ?? null,
-    ui: {
-      manageLoadingState: overrides.manageLoadingState ?? vi.fn(),
-    },
-    historyModule: {
-      updateCleanSnapshot: overrides.updateCleanSnapshot ?? vi.fn(),
-      checkDirty: overrides.checkDirty ?? vi.fn(),
-    },
-    modals: {
-      showConfirm: overrides.showConfirm ?? vi.fn(),
-    },
-  };
-}
+// Fixtures imported from stateHelpers.fixtures.js
 
 // ═══════════════════════════════════════════════════════════════════
 // findNextUpcomingClasses — GAP

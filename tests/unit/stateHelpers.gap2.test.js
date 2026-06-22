@@ -1,38 +1,21 @@
 import { handleEditClassroom } from '../lib/stateHelpers.js';
 import { describe, it, expect, vi } from 'vitest';
+import { makeEditCtx } from './stateHelpers.fixtures.js';
 
-// ── Helper: build a mock context for handleEditClassroom GAP tests ──
-function makeCtx(overrides = {}) {
-  return {
-    classrooms: overrides.classrooms ?? ['Room A', 'Room B', 'Room C'],
-    scheduleData: overrides.scheduleData ?? {
-      'Room A': { 0: [{ id: '1', name: 'Math' }] },
-      'Room B': { 0: [{ id: '2', name: 'Art' }] },
-    },
-    ui: {
-      showNotification: overrides.showNotification ?? vi.fn(),
-      updateClassroomList: overrides.updateClassroomList ?? vi.fn(),
-      renderScheduleTable: overrides.renderScheduleTable ?? vi.fn(),
-    },
-    saveDataToLocal: overrides.saveDataToLocal ?? vi.fn(),
-    historyModule: {
-      saveState: overrides.saveState ?? vi.fn(),
-    },
-  };
-}
+// makeEditCtx imported from stateHelpers.fixtures.js
 
 describe('handleEditClassroom — GAP', () => {
   // ── Falsy newName guard: SPEC only tested '', these cover other falsy values ──
 
   it('shows error when newName is null', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     handleEditClassroom('Room A', null, ctx);
     expect(ctx.ui.showNotification).toHaveBeenCalledWith('教室名稱不能為空！', 'error');
     expect(ctx.ui.updateClassroomList).not.toHaveBeenCalled();
   });
 
   it('shows error when newName is undefined', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     handleEditClassroom('Room A', undefined, ctx);
     expect(ctx.ui.showNotification).toHaveBeenCalledWith('教室名稱不能為空！', 'error');
     expect(ctx.saveDataToLocal).not.toHaveBeenCalled();
@@ -41,7 +24,7 @@ describe('handleEditClassroom — GAP', () => {
   // ── Rename to self: oldName === newName ──
   // classrooms already contains oldName, so includes(newName) triggers duplicate guard
   it('treats rename-to-self as duplicate (oldName === newName)', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     handleEditClassroom('Room A', 'Room A', ctx);
     expect(ctx.ui.showNotification).toHaveBeenCalledWith(
       '教室名稱 "Room A" 已存在！', 'error'
@@ -56,7 +39,7 @@ describe('handleEditClassroom — GAP', () => {
   // Production code: updateClassroomList → renderScheduleTable → saveDataToLocal → saveState → showNotification(success)
   it('calls side effects in the correct order', () => {
     const callOrder = [];
-    const ctx = makeCtx({
+    const ctx = makeEditCtx({
       showNotification: vi.fn(() => callOrder.push('showNotification')),
       updateClassroomList: vi.fn(() => callOrder.push('updateClassroomList')),
       renderScheduleTable: vi.fn(() => callOrder.push('renderScheduleTable')),
@@ -77,7 +60,7 @@ describe('handleEditClassroom — GAP', () => {
   // After rename, the value at the new key should be the SAME reference (not a deep copy)
   it('preserves scheduleData value reference after rename (not a copy)', () => {
     const dayData = { 0: [{ id: '1', name: 'Math' }] };
-    const ctx = makeCtx({
+    const ctx = makeEditCtx({
       scheduleData: { 'Room A': dayData },
     });
     handleEditClassroom('Room A', 'Room Z', ctx);
@@ -86,7 +69,7 @@ describe('handleEditClassroom — GAP', () => {
 
   // ── Success notification has no type arg (unlike error which passes 'error') ──
   it('success notification is called without a type argument', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     handleEditClassroom('Room A', 'Room Z', ctx);
     // showNotification is called twice: never for error in success path, just once for success
     expect(ctx.ui.showNotification).toHaveBeenCalledTimes(1);
@@ -100,7 +83,7 @@ describe('handleEditClassroom — GAP', () => {
   // ── Whitespace-only newName passes the falsy guard ──
   // '  ' is truthy, so !newName is false → proceeds with rename (documenting behavior)
   it('allows whitespace-only newName (truthy, passes guard)', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     handleEditClassroom('Room A', '   ', ctx);
     // Should proceed (no error notification for empty-guard)
     // classrooms array updated
@@ -114,7 +97,7 @@ describe('handleEditClassroom — GAP', () => {
   // ── Both oldName missing from classrooms AND scheduleData ──
   // Side effects still fire even when neither state structure contains oldName
   it('fires side effects even when oldName is in neither classrooms nor scheduleData', () => {
-    const ctx = makeCtx({
+    const ctx = makeEditCtx({
       classrooms: ['Room B', 'Room C'],
       scheduleData: {
         'Room B': { 0: [{ id: '2', name: 'Art' }] },
@@ -139,7 +122,7 @@ describe('handleEditClassroom — GAP', () => {
   // ── Duplicate check is case-sensitive ──
   // 'room a' !== 'Room A' per includes() default behavior
   it('duplicate check is case-sensitive (allows case-different name)', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     handleEditClassroom('Room A', 'room a', ctx);
     // Should succeed (no error)
     expect(ctx.classrooms).toContain('room a');
@@ -148,7 +131,7 @@ describe('handleEditClassroom — GAP', () => {
 
   // ── scheduleData with multiple classrooms: only target key renamed ──
   it('only renames the target classroom key, leaves others intact', () => {
-    const ctx = makeCtx();
+    const ctx = makeEditCtx();
     const roomBDataBefore = ctx.scheduleData['Room B'];
     handleEditClassroom('Room A', 'Room Z', ctx);
     // Room B untouched (same reference)
