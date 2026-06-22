@@ -66,3 +66,54 @@ export function updateAllOccurrences(scheduleData, predicate, updateFn) {
     }
   });
 }
+
+/**
+ * Handle renaming a classroom (state mutation + side-effect callbacks).
+ *
+ * Original: App.handleEditClassroom (JavaScript.html L118-144).
+ * Dependencies (injected via `ctx`):
+ *   - ctx.classrooms       — Array of classroom names (mutated in place)
+ *   - ctx.scheduleData     — Object keyed by classroom name (mutated in place)
+ *   - ctx.ui.showNotification(msg, type) — UI notification callback
+ *   - ctx.ui.updateClassroomList()       — UI refresh callback
+ *   - ctx.ui.renderScheduleTable()       — UI refresh callback
+ *   - ctx.saveDataToLocal()              — Persistence callback
+ *   - ctx.historyModule.saveState()      — History/undo callback
+ *
+ * Behavior:
+ *   1. Empty newName → showNotification error + return (no state change)
+ *   2. newName already in classrooms → showNotification error + return
+ *   3. Normal: rename in classrooms array + scheduleData key rename +
+ *      UI updates + save + history + success notification
+ *
+ * @param {string} oldName - Current classroom name.
+ * @param {string} newName - Desired new classroom name.
+ * @param {object} ctx - Dependency injection context (see above).
+ */
+export function handleEditClassroom(oldName, newName, ctx) {
+  if (!newName) {
+    ctx.ui.showNotification('教室名稱不能為空！', 'error');
+    return;
+  }
+  if (ctx.classrooms.includes(newName)) {
+    ctx.ui.showNotification(`教室名稱 "${newName}" 已存在！`, 'error');
+    return;
+  }
+
+  const index = ctx.classrooms.indexOf(oldName);
+  if (index > -1) {
+    ctx.classrooms[index] = newName;
+  }
+
+  // Rename the key in the scheduleData object
+  if (ctx.scheduleData[oldName]) {
+    ctx.scheduleData[newName] = ctx.scheduleData[oldName];
+    delete ctx.scheduleData[oldName];
+  }
+
+  ctx.ui.updateClassroomList();
+  ctx.ui.renderScheduleTable();
+  ctx.saveDataToLocal();
+  ctx.historyModule.saveState();
+  ctx.ui.showNotification(`教室名稱已從 "${oldName}" 更新為 "${newName}"`);
+}

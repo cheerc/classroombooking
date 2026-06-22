@@ -1,5 +1,5 @@
-import { forEachCourse, countOccurrences, updateAllOccurrences } from '../lib/stateHelpers.js';
-import { describe, it, expect } from 'vitest';
+import { forEachCourse, countOccurrences, updateAllOccurrences, handleEditClassroom } from '../lib/stateHelpers.js';
+import { describe, it, expect, vi } from 'vitest';
 
 // ── Helper: build a scheduleData fixture ──────────────────────────
 function makeScheduleData() {
@@ -123,5 +123,154 @@ describe('updateAllOccurrences', () => {
     // Same reference, mutated
     expect(courseRef.name).toBe('Music');
     expect(data['Room B'][0][0]).toBe(courseRef);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// handleEditClassroom
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Helper: build a mock context for handleEditClassroom ──────────
+function makeCtx(overrides = {}) {
+  return {
+    classrooms: overrides.classrooms ?? ['Room A', 'Room B', 'Room C'],
+    scheduleData: overrides.scheduleData ?? {
+      'Room A': { 0: [{ id: '1', name: 'Math' }] },
+      'Room B': { 0: [{ id: '2', name: 'Art' }] },
+    },
+    ui: {
+      showNotification: overrides.showNotification ?? vi.fn(),
+      updateClassroomList: overrides.updateClassroomList ?? vi.fn(),
+      renderScheduleTable: overrides.renderScheduleTable ?? vi.fn(),
+    },
+    saveDataToLocal: overrides.saveDataToLocal ?? vi.fn(),
+    historyModule: {
+      saveState: overrides.saveState ?? vi.fn(),
+    },
+  };
+}
+
+describe('handleEditClassroom', () => {
+  it('renames classroom in array, scheduleData key, and calls all side effects', () => {
+    const ctx = makeCtx();
+    handleEditClassroom('Room A', 'Room Z', ctx);
+
+    // classrooms array updated
+    expect(ctx.classrooms).toContain('Room Z');
+    expect(ctx.classrooms).not.toContain('Room A');
+    expect(ctx.classrooms).toHaveLength(3);
+
+    // scheduleData key renamed
+    expect(ctx.scheduleData['Room Z']).toBeDefined();
+    expect(ctx.scheduleData['Room Z']).toEqual({ 0: [{ id: '1', name: 'Math' }] });
+    expect(ctx.scheduleData['Room A']).toBeUndefined();
+
+    // All side-effect callbacks called
+    expect(ctx.ui.updateClassroomList).toHaveBeenCalledOnce();
+    expect(ctx.ui.renderScheduleTable).toHaveBeenCalledOnce();
+    expect(ctx.saveDataToLocal).toHaveBeenCalledOnce();
+    expect(ctx.historyModule.saveState).toHaveBeenCalledOnce();
+
+    // Success notification
+    expect(ctx.ui.showNotification).toHaveBeenCalledWith(
+      '教室名稱已從 "Room A" 更新為 "Room Z"'
+    );
+  });
+
+  it('shows error and returns when newName is empty string', () => {
+    const ctx = makeCtx();
+    const originalClassrooms = [...ctx.classrooms];
+    const originalData = JSON.parse(JSON.stringify(ctx.scheduleData));
+
+    handleEditClassroom('Room A', '', ctx);
+
+    // Error notification with correct message
+    expect(ctx.ui.showNotification).toHaveBeenCalledWith('教室名稱不能為空！', 'error');
+
+    // State unchanged
+    expect(ctx.classrooms).toEqual(originalClassrooms);
+    expect(ctx.scheduleData).toEqual(originalData);
+
+    // No side effects called
+    expect(ctx.ui.updateClassroomList).not.toHaveBeenCalled();
+    expect(ctx.ui.renderScheduleTable).not.toHaveBeenCalled();
+    expect(ctx.saveDataToLocal).not.toHaveBeenCalled();
+    expect(ctx.historyModule.saveState).not.toHaveBeenCalled();
+  });
+
+  it('shows error and returns when newName already exists in classrooms', () => {
+    const ctx = makeCtx();
+    const originalClassrooms = [...ctx.classrooms];
+    const originalData = JSON.parse(JSON.stringify(ctx.scheduleData));
+
+    handleEditClassroom('Room A', 'Room B', ctx);
+
+    // Error notification with duplicate name
+    expect(ctx.ui.showNotification).toHaveBeenCalledWith(
+      '教室名稱 "Room B" 已存在！', 'error'
+    );
+
+    // State unchanged
+    expect(ctx.classrooms).toEqual(originalClassrooms);
+    expect(ctx.scheduleData).toEqual(originalData);
+
+    // No side effects called
+    expect(ctx.ui.updateClassroomList).not.toHaveBeenCalled();
+  });
+
+  it('proceeds without array change when oldName not in classrooms (but still renames scheduleData)', () => {
+    const ctx = makeCtx({
+      classrooms: ['Room B', 'Room C'],  // Room A not in array
+      scheduleData: {
+        'Room A': { 0: [{ id: '1', name: 'Math' }] },
+      },
+    });
+
+    handleEditClassroom('Room A', 'Room Z', ctx);
+
+    // classrooms array unchanged (Room A wasn't in it)
+    expect(ctx.classrooms).toEqual(['Room B', 'Room C']);
+
+    // scheduleData still renamed
+    expect(ctx.scheduleData['Room Z']).toBeDefined();
+    expect(ctx.scheduleData['Room A']).toBeUndefined();
+
+    // Side effects still called
+    expect(ctx.ui.updateClassroomList).toHaveBeenCalledOnce();
+    expect(ctx.saveDataToLocal).toHaveBeenCalledOnce();
+  });
+
+  it('proceeds without scheduleData change when oldName not in scheduleData (but still renames array)', () => {
+    const ctx = makeCtx({
+      classrooms: ['Room A', 'Room B'],
+      scheduleData: {
+        'Room B': { 0: [{ id: '2', name: 'Art' }] },
+        // Room A not in scheduleData
+      },
+    });
+
+    handleEditClassroom('Room A', 'Room Z', ctx);
+
+    // classrooms array updated
+    expect(ctx.classrooms).toContain('Room Z');
+    expect(ctx.classrooms).not.toContain('Room A');
+
+    // scheduleData unchanged (Room A wasn't in it, no Room Z added)
+    expect(ctx.scheduleData['Room Z']).toBeUndefined();
+    expect(ctx.scheduleData['Room B']).toBeDefined();
+
+    // Side effects still called
+    expect(ctx.ui.renderScheduleTable).toHaveBeenCalledOnce();
+    expect(ctx.historyModule.saveState).toHaveBeenCalledOnce();
+  });
+
+  it('success notification includes both old and new names', () => {
+    const ctx = makeCtx();
+    handleEditClassroom('Room A', '大教室', ctx);
+
+    // Verify notification message format with Chinese characters
+    expect(ctx.ui.showNotification).toHaveBeenCalledWith(
+      '教室名稱已從 "Room A" 更新為 "大教室"'
+    );
   });
 });
