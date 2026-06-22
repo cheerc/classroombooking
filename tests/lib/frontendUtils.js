@@ -105,3 +105,69 @@ export function filterDataByActiveFilters(data, activeFilters) {
     return nameMatch && tagMatch && teacherMatch;
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Wave B: Server-dependent pure logic extractions
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extracts per-schedule timestamps from getData result and cleans them from schedule data.
+ * Ref: JavaScript.html L616-624 — loadDataFromServer timestamp extraction
+ * @param {object} schedules - Raw schedules from server { id: { name, data, lastModified, ... } }
+ * @returns {{ cleanedSchedules: object, timestamps: object }}
+ */
+export function extractTimestamps(schedules) {
+  const timestamps = {};
+  const cleanedSchedules = { ...schedules };
+  for (const id in cleanedSchedules) {
+    if (cleanedSchedules[id].lastModified) {
+      timestamps[id] = cleanedSchedules[id].lastModified;
+      // Clone to avoid mutating input
+      cleanedSchedules[id] = { ...cleanedSchedules[id] };
+      delete cleanedSchedules[id].lastModified;
+    }
+  }
+  return { cleanedSchedules, timestamps };
+}
+
+/**
+ * Aggregates schedule data from all non-draft schedules into a merged view.
+ * Ref: JavaScript.html L370-383 — handleScheduleSelectChange global view
+ * @param {object} schedules - { id: { name, isDraft, data: { scheduleData } } }
+ * @returns {object} Merged schedule data { classroom: { day: [courses] } }
+ */
+export function aggregateScheduleData(schedules) {
+  const allSchedulesData = {};
+  Object.values(schedules)
+    .filter(schedule => !schedule.isDraft)
+    .forEach(schedule => {
+      if (schedule.data && schedule.data.scheduleData) {
+        Object.entries(schedule.data.scheduleData).forEach(([classroom, days]) => {
+          if (!allSchedulesData[classroom]) allSchedulesData[classroom] = {};
+          Object.entries(days).forEach(([day, courses]) => {
+            if (!allSchedulesData[classroom][day]) allSchedulesData[classroom][day] = [];
+            allSchedulesData[classroom][day].push(...courses);
+          });
+        });
+      }
+    });
+  return allSchedulesData;
+}
+
+/**
+ * Validates course form data and returns error messages.
+ * Ref: Interaction.js.html L216-224 — handleCourseFormSave validation
+ * @param {object} formData - { name, teacher, tags, selectedDays, timeStart, timeEnd }
+ * @param {function} timeToMinutesFn - Function to convert "HH:MM" to minutes
+ * @returns {string|null} Error message string, or null if valid.
+ */
+export function validateCourseForm(formData, timeToMinutesFn) {
+  const { name, teacher, tags, selectedDays, timeStart, timeEnd } = formData;
+  if (!name) return '課程名稱不能為空！';
+  if (!teacher) return '使用人不能為空！';
+  if (!tags || tags.length === 0) return '請至少設定一個標籤！';
+  if (!selectedDays || selectedDays.length === 0) return '請至少選擇一個星期！';
+  if (!timeStart || !timeEnd) return '請輸入完整的開始與結束時間！';
+  if (timeToMinutesFn(timeStart) >= timeToMinutesFn(timeEnd)) return '開始時間不能晚於或等於結束時間！';
+  return null;
+}

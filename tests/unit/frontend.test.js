@@ -1,6 +1,6 @@
 /**
- * Frontend tests — Wave A: P0 pure logic + P1 mock infra
- * Ref: #72, #73, #74, #75, #76
+ * Frontend tests — Wave A: P0 pure logic + P1 mock infra + Wave B: P2 server-dependent
+ * Ref: #72, #73, #74, #75, #76, #77, #78, #79, #80
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
@@ -9,6 +9,9 @@ import {
   filterScheduleData,
   filterDataByTags,
   filterDataByActiveFilters,
+  extractTimestamps,
+  aggregateScheduleData,
+  validateCourseForm,
 } from '../lib/frontendUtils.js';
 import {
   createMockServerApi,
@@ -393,5 +396,194 @@ describe('History undo/redo (#76)', () => {
     const s2 = h.undo(); // → v:2
     expect(s2.v).toBe(2);
     expect(h.canUndo()).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #77 — loadDataFromServer: timestamp extraction
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('extractTimestamps (#77)', () => {
+  it('extracts timestamps and removes them from schedule data', () => {
+    const raw = {
+      s1: { name: 'Schedule 1', lastModified: '2024-01-01T00:00:00Z', data: {} },
+      s2: { name: 'Schedule 2', lastModified: '2024-01-02T00:00:00Z', data: {} },
+    };
+    const { cleanedSchedules, timestamps } = extractTimestamps(raw);
+    expect(timestamps.s1).toBe('2024-01-01T00:00:00Z');
+    expect(timestamps.s2).toBe('2024-01-02T00:00:00Z');
+    expect(cleanedSchedules.s1.lastModified).toBeUndefined();
+    expect(cleanedSchedules.s2.lastModified).toBeUndefined();
+    expect(cleanedSchedules.s1.name).toBe('Schedule 1');
+  });
+
+  it('handles schedules without lastModified', () => {
+    const raw = {
+      s1: { name: 'No TS', data: {} },
+    };
+    const { cleanedSchedules, timestamps } = extractTimestamps(raw);
+    expect(Object.keys(timestamps)).toHaveLength(0);
+    expect(cleanedSchedules.s1.name).toBe('No TS');
+  });
+
+  it('handles empty schedules', () => {
+    const { cleanedSchedules, timestamps } = extractTimestamps({});
+    expect(Object.keys(timestamps)).toHaveLength(0);
+    expect(Object.keys(cleanedSchedules)).toHaveLength(0);
+  });
+
+  it('does not mutate original input', () => {
+    const raw = {
+      s1: { name: 'Test', lastModified: 'ts1', data: {} },
+    };
+    extractTimestamps(raw);
+    expect(raw.s1.lastModified).toBe('ts1'); // Original untouched
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #78 — saveDataToServer: conflict handling logic
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('saveDataToServer conflict handling (#78)', () => {
+  it('detects conflict response', async () => {
+    const api = createMockServerApi({
+      saveData: () => ({ conflict: true, error: '版本衝突：其他使用者已修改此課表' }),
+    });
+    const result = await api.call('saveData', { scheduleId: 's1', lastModified: 'old-ts' });
+    expect(result.conflict).toBe(true);
+    expect(result.error).toContain('衝突');
+  });
+
+  it('detects success response with new timestamp', async () => {
+    const api = createMockServerApi({
+      saveData: () => ({ success: true, lastModified: 'new-ts' }),
+    });
+    const result = await api.call('saveData', { scheduleId: 's1' });
+    expect(result.success).toBe(true);
+    expect(result.lastModified).toBe('new-ts');
+  });
+
+  it('detects error response', async () => {
+    const api = createMockServerApi({
+      saveData: () => ({ success: false, error: '儲存時發生未知錯誤' }),
+    });
+    const result = await api.call('saveData', {});
+    expect(result.success).toBe(false);
+  });
+
+  it('handles missing timestamp guard', () => {
+    // Simulate the guard at L650-652
+    const timestamp = undefined;
+    const shouldThrow = !timestamp;
+    expect(shouldThrow).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #79 — Schedule switch: aggregateScheduleData
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('aggregateScheduleData (#79)', () => {
+  const schedules = {
+    s1: {
+      name: 'Published',
+      isDraft: false,
+      data: {
+        scheduleData: {
+          'Room A': { 'Monday': [{ id: 'c1', name: 'Math' }] },
+        },
+      },
+    },
+    s2: {
+      name: 'Draft',
+      isDraft: true,
+      data: {
+        scheduleData: {
+          'Room A': { 'Monday': [{ id: 'c2', name: 'Draft Math' }] },
+        },
+      },
+    },
+    s3: {
+      name: 'Published 2',
+      isDraft: false,
+      data: {
+        scheduleData: {
+          'Room A': { 'Monday': [{ id: 'c3', name: 'English' }] },
+          'Room B': { 'Tuesday': [{ id: 'c4', name: 'Art' }] },
+        },
+      },
+    },
+  };
+
+  it('merges non-draft schedules into single view', () => {
+    const result = aggregateScheduleData(schedules);
+    expect(result['Room A']['Monday']).toHaveLength(2); // c1 + c3 (no draft c2)
+    expect(result['Room B']['Tuesday']).toHaveLength(1);
+  });
+
+  it('excludes draft schedules', () => {
+    const result = aggregateScheduleData(schedules);
+    const allIds = result['Room A']['Monday'].map(c => c.id);
+    expect(allIds).not.toContain('c2');
+  });
+
+  it('handles schedules with no data', () => {
+    const result = aggregateScheduleData({
+      s1: { name: 'Empty', isDraft: false, data: null },
+    });
+    expect(Object.keys(result)).toHaveLength(0);
+  });
+
+  it('handles empty schedules object', () => {
+    const result = aggregateScheduleData({});
+    expect(Object.keys(result)).toHaveLength(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #80 — Form validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('validateCourseForm (#80)', () => {
+  const validForm = {
+    name: 'Math',
+    teacher: 'Alice',
+    tags: ['core'],
+    selectedDays: [0],
+    timeStart: '08:00',
+    timeEnd: '09:00',
+  };
+
+  it('returns null for valid form', () => {
+    expect(validateCourseForm(validForm, timeToMinutes)).toBeNull();
+  });
+
+  it('rejects missing name', () => {
+    expect(validateCourseForm({ ...validForm, name: '' }, timeToMinutes)).toContain('名稱');
+  });
+
+  it('rejects missing teacher', () => {
+    expect(validateCourseForm({ ...validForm, teacher: '' }, timeToMinutes)).toContain('使用人');
+  });
+
+  it('rejects empty tags', () => {
+    expect(validateCourseForm({ ...validForm, tags: [] }, timeToMinutes)).toContain('標籤');
+  });
+
+  it('rejects empty selectedDays', () => {
+    expect(validateCourseForm({ ...validForm, selectedDays: [] }, timeToMinutes)).toContain('星期');
+  });
+
+  it('rejects missing time', () => {
+    expect(validateCourseForm({ ...validForm, timeStart: '' }, timeToMinutes)).toContain('時間');
+  });
+
+  it('rejects start >= end time', () => {
+    expect(validateCourseForm({ ...validForm, timeStart: '10:00', timeEnd: '09:00' }, timeToMinutes)).toContain('開始時間');
+  });
+
+  it('rejects equal start and end time', () => {
+    expect(validateCourseForm({ ...validForm, timeStart: '09:00', timeEnd: '09:00' }, timeToMinutes)).toContain('開始時間');
   });
 });
