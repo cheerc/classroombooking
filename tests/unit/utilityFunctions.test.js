@@ -1,4 +1,4 @@
-import { stringToHashCode, hexToRgb } from '../lib/utilityFunctions.js';
+import { stringToHashCode, hexToRgb, getShortUserName, formatTime, formatTimestampForFilename } from '../lib/utilityFunctions.js';
 import { describe, it, expect } from 'vitest';
 
 describe('stringToHashCode', () => {
@@ -209,5 +209,62 @@ describe('hexToRgb — GAP', () => {
     expect(hexToRgb('#010101')).toEqual([1, 1, 1]);
     expect(hexToRgb('#FEFEFE')).toEqual([254, 254, 254]);
     expect(hexToRgb('#800080')).toEqual([128, 0, 128]); // purple
+  });
+});
+
+// ============================================================
+// CYCLE 2 SPEC TURN — by cb-team-impl2
+// ============================================================
+
+// Production TIME_REGEX from AppConfig (Config.js.html L4)
+const TIME_REGEX = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+
+describe('getShortUserName', () => {
+  it('extracts username from a standard email', () => {
+    expect(getShortUserName('teacher@school.edu')).toBe('teacher');
+  });
+
+  it('returns the input unchanged when no @ is present', () => {
+    expect(getShortUserName('just-a-name')).toBe('just-a-name');
+  });
+
+  it('returns null/undefined as-is for falsy input', () => {
+    expect(getShortUserName(null)).toBe(null);
+    expect(getShortUserName(undefined)).toBe(undefined);
+  });
+});
+
+describe('formatTime', () => {
+  it('pads single-digit hour ("9:05" → "09:05")', () => {
+    expect(formatTime('9:05', TIME_REGEX)).toBe('09:05');
+  });
+
+  it('returns "00:00" for null/empty input', () => {
+    expect(formatTime(null, TIME_REGEX)).toBe('00:00');
+    expect(formatTime('', TIME_REGEX)).toBe('00:00');
+  });
+
+  it('returns "00:00" for invalid time format', () => {
+    expect(formatTime('25:00', TIME_REGEX)).toBe('00:00');
+    expect(formatTime('abc', TIME_REGEX)).toBe('00:00');
+  });
+});
+
+describe('formatTimestampForFilename', () => {
+  it('formats a Date-parseable timestamp to YYYYMMDD_HHmm', () => {
+    // Use a fixed UTC timestamp and convert to local expectation
+    const ts = '2026-06-22T18:30:00+08:00';
+    const date = new Date(ts);
+    const expected = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}_${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}`;
+    expect(formatTimestampForFilename(ts)).toBe(expected);
+  });
+
+  it('returns empty string for null/undefined', () => {
+    expect(formatTimestampForFilename(null)).toBe('');
+    expect(formatTimestampForFilename(undefined)).toBe('');
+  });
+
+  it('returns empty string for empty string', () => {
+    expect(formatTimestampForFilename('')).toBe('');
   });
 });
