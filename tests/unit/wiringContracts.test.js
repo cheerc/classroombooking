@@ -142,9 +142,15 @@ describe('程式碼.js wiring contracts (#114)', () => {
     // These are the backend functions that have direct extracted copies
     // in tests/lib/ (not all do — some are GAS-specific and only tested
     // via the factory mock approach in backend.test.js)
+    //
+    // Exclude frontend DI extractions (scheduleListHelpers.js) — those
+    // extract from JavaScript.html, not 程式碼.js, and intentionally have
+    // different arity (DI ctx+deps pattern vs backend single-arg).
+    const FRONTEND_DI_MODULES = new Set(['scheduleListHelpers.js']);
     const libFunctionNames = new Set(
       [...libExports.entries()]
         .filter(([, v]) => v.arity !== null) // exclude const exports
+        .filter(([, v]) => !FRONTEND_DI_MODULES.has(v.file)) // exclude frontend DI
         .map(([k]) => k)
     );
 
@@ -185,7 +191,8 @@ describe('程式碼.js wiring contracts (#114)', () => {
   it('tests/lib/ module count should match expected', () => {
     // Current modules: dateUtils, escapeHtml, stateHelpers, utilityFunctions,
     // uiHelpers, interactionHelpers, dataCollectionHelpers, frontendUtils,
-    // historyHelpers, integrationHelpers, appLifecycleHelpers
-    expect(libFiles.length).toBe(11);
+    // historyHelpers, integrationHelpers, appLifecycleHelpers,
+    // scheduleListHelpers (#131 — frontend DI extraction from JavaScript.html)
+    expect(libFiles.length).toBe(12);
   });
 });
