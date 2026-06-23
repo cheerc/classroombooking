@@ -40,7 +40,7 @@ t4() { run_step "t4" "Structure check" bash scripts/check-structure.sh; }
 t5() { run_step "t5" "Tailwind consistency" bash scripts/check-tailwind.sh; }
 t7() { run_step "t7" "PHP lint" find classroom_viewer -name '*.php' ! -path '*/vendor/*' -exec php -l {} \;; }
 t8() { run_step "t8" "Vitest" npm test; }
-t9() { run_step "t9" "PHPUnit" bash -c 'cd classroom_viewer && vendor/bin/phpunit'; }
+t9() { run_step "t9" "PHPUnit" bash -c 'cd classroom_viewer && composer install --quiet 2>/dev/null && vendor/bin/phpunit'; }
 
 t6() {
   t1
