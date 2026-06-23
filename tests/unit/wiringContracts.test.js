@@ -193,7 +193,8 @@ describe('程式碼.js wiring contracts (#114)', () => {
     // uiHelpers, interactionHelpers, dataCollectionHelpers, frontendUtils,
     // historyHelpers, integrationHelpers, appLifecycleHelpers,
     // scheduleListHelpers (#131 — frontend DI extraction from JavaScript.html),
-    // filterHelpers (#132 — filter pipeline DI extraction from JavaScript.html)
-    expect(libFiles.length).toBe(13);
+    // filterHelpers (#132 — filter pipeline DI extraction from JavaScript.html),
+    // lockHelpers (#136 — lock management DI extraction from JavaScript.html)
+    expect(libFiles.length).toBe(14);
   });
 });
