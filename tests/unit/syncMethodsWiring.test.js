@@ -19,6 +19,12 @@ const jsHtmlSource = readFileSync(
   'utf-8'
 );
 
+// LockManager methods moved to separate IIFE module (Phase 1 PR2)
+const lockManagerSource = readFileSync(
+  resolve(import.meta.dirname, '../../LockManager.js.html'),
+  'utf-8'
+);
+
 // ─── Helpers (shared pattern from Wave 2) ────────────────────────────────
 
 /**
@@ -30,7 +36,16 @@ function extractMethodBody(source, methodName) {
   const declPattern = new RegExp(
     `${methodName}\\s*:\\s*(?:async\\s+)?function\\s*\\([^)]*\\)\\s*\\{`
   );
-  const match = declPattern.exec(source);
+  let match = declPattern.exec(source);
+
+  // Also try IIFE-extracted pattern: App.methodName = function(...) {
+  if (!match) {
+    const iifePattern = new RegExp(
+      `App\\.${methodName}\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{`
+    );
+    match = iifePattern.exec(source);
+  }
+
   if (!match) return null;
 
   const startIdx = match.index + match[0].length;
@@ -117,15 +132,15 @@ const SYNC_METHOD_WIRING = [
     'gemini_schedule_locks',
   ]],
   ['releaseCurrentLock', [
-    'this\\.releaseLock',
-    'this\\.activeScheduleId',
+    'App\\.releaseLock',
+    'App\\.activeScheduleId',
   ]],
   ['refreshLockHeartbeat', [
-    'this\\.isReadOnly',
-    'this\\.activeScheduleId',
+    'App\\.isReadOnly',
+    'App\\.activeScheduleId',
     'AppConfig\\.ALL_SCHEDULES_ID',
-    'this\\._getLocks',
-    'this\\._saveLocks',
+    'App\\._getLocks',
+    'App\\._saveLocks',
     'Date\\.now',
   ]],
 ];
@@ -133,15 +148,15 @@ const SYNC_METHOD_WIRING = [
 // Also verify these helper methods that support the lock system
 const LOCK_HELPER_METHODS = [
   ['acquireLock', [
-    'this\\._getLocks',
-    'this\\._saveLocks',
-    'this\\.tabId',
+    'App\\._getLocks',
+    'App\\._saveLocks',
+    'App\\.tabId',
     'Date\\.now',
   ]],
   ['releaseLock', [
-    'this\\._getLocks',
-    'this\\._saveLocks',
-    'this\\.tabId',
+    'App\\._getLocks',
+    'App\\._saveLocks',
+    'App\\.tabId',
   ]],
 ];
 
@@ -153,11 +168,28 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
 
   // ─── 1. Method existence ──────────────────────────────────────────────
 
-  describe('all sync methods exist in JavaScript.html', () => {
-    it.each(ALL_METHODS)(
-      '%s is declared as a method',
+  describe('all sync methods exist in JavaScript.html or IIFE modules', () => {
+    // Non-lock methods from JavaScript.html
+    const jsHtmlMethods = SYNC_METHOD_WIRING.filter(([n]) =>
+      !['_getLocks', '_saveLocks', 'releaseCurrentLock', 'refreshLockHeartbeat'].includes(n)
+    );
+    it.each(jsHtmlMethods)(
+      '%s is declared in JavaScript.html',
       (methodName, _patterns) => {
         const body = extractMethodBody(jsHtmlSource, methodName);
+        expect(body).not.toBeNull();
+      }
+    );
+
+    // Lock methods from LockManager.js.html
+    const lockMethods = [...ALL_METHODS.filter(([n]) =>
+      ['_getLocks', '_saveLocks', 'acquireLock', 'releaseLock',
+       'releaseCurrentLock', 'refreshLockHeartbeat'].includes(n)
+    )];
+    it.each(lockMethods)(
+      '%s is declared in LockManager.js.html',
+      (methodName, _patterns) => {
+        const body = extractMethodBody(lockManagerSource, methodName);
         expect(body).not.toBeNull();
       }
     );
@@ -231,7 +263,8 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
       const entry = ALL_METHODS.find(([n]) => n === methodName);
       if (!entry) continue;
       const [, patterns] = entry;
-      const body = extractMethodBody(jsHtmlSource, methodName);
+      // Lock methods now in LockManager.js.html
+      const body = extractMethodBody(lockManagerSource, methodName);
 
       describe(methodName, () => {
         it.each(patterns)(
@@ -264,16 +297,16 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
     });
 
     it('releaseCurrentLock delegates to releaseLock (thin wrapper)', () => {
-      const body = extractMethodBody(jsHtmlSource, 'releaseCurrentLock');
+      const body = extractMethodBody(lockManagerSource, 'releaseCurrentLock');
       expect(body).not.toBeNull();
       const lines = body.split('\n').filter(l => l.trim().length > 0);
       expect(lines.length).toBeLessThanOrEqual(5);
-      expect(containsCall(body, 'this\\.releaseLock\\(this\\.activeScheduleId\\)')).toBe(true);
+      expect(containsCall(body, 'App\\.releaseLock\\(App\\.activeScheduleId\\)')).toBe(true);
     });
 
     it('_getLocks and _saveLocks use the same localStorage key', () => {
-      const getBody = extractMethodBody(jsHtmlSource, '_getLocks');
-      const saveBody = extractMethodBody(jsHtmlSource, '_saveLocks');
+      const getBody = extractMethodBody(lockManagerSource, '_getLocks');
+      const saveBody = extractMethodBody(lockManagerSource, '_saveLocks');
       expect(getBody).not.toBeNull();
       expect(saveBody).not.toBeNull();
 
