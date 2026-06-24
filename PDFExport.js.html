@@ -1,0 +1,338 @@
+<script>
+/**
+ * PDFExport.js.html — PDF generation and export
+ *
+ * Part of #129 Phase 1 (PR7): IIFE-wrapped domain separation.
+ * Extracts printScheduleToPdf — the last remaining heavy method from
+ * JavaScript.html. After this extraction, JavaScript.html contains
+ * only init + applyTagFilters (2 methods).
+ *
+ * Load order: after ScheduleManager.js.html, before App.init() trigger.
+ *
+ * Dependencies: UtilityFunctions (App.hexToRgb, App.formatTimestampForFilename),
+ * ServerApi, AppConfig, window.jspdf, document (DOM scraping)
+ */
+(function(App) {
+
+  App.printScheduleToPdf = async function(pdfOptions) {
+    App.ui.showLoading('正在準備下載，請稍候...');
+
+    try {
+      // Step 1: Ensure font data is loaded.
+      if (!App.pdfFontBase64) {
+        App.ui.showLoading('首次列印，正在載入PDF專用字體...');
+        // Ref: #47 — getFontBase64FromDrive now returns { success, data/error } envelope
+        const fontResult = await ServerApi.call('getFontBase64FromDrive');
+        if (!fontResult || !fontResult.success) throw new Error((fontResult && fontResult.error) || '無法從伺服器獲取字體資料(回傳為空)。');
+        App.pdfFontBase64 = fontResult.data;
+      }
+
+      App.ui.showLoading('正在生成PDF...');
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({
+        orientation: pdfOptions.orientation,
+        unit: 'mm',
+        format: pdfOptions.format
+      });
+
+      // Step 2: Define titles and filenames
+      const isAllSchedules = App.activeScheduleId === AppConfig.ALL_SCHEDULES_ID;
+      const scheduleNameForPdf = isAllSchedules
+        ? '所有課表'
+        : (App.schedules[App.activeScheduleId]?.name || '未命名');
+
+      const hasCustomTitle = pdfOptions.customTitle && pdfOptions.customTitle.length > 0;
+      const finalTitle = hasCustomTitle ? pdfOptions.customTitle : `課表: ${scheduleNameForPdf}`;
+
+      // Step 3: Add font to the jsPDF instance.
+      doc.addFileToVFS("NotoSansTC-Regular.ttf", App.pdfFontBase64);
+      doc.addFont("NotoSansTC-Regular.ttf", "NotoSansTC", "normal");
+      doc.setFont("NotoSansTC");
+
+      // Shared function for drawing header/footer on each page
+      const didDrawPage = (data) => {
+        const pageWidth = doc.internal.pageSize.getWidth();
+        doc.setFont('NotoSansTC', 'normal');
+        doc.setFontSize(16);
+        doc.text(finalTitle, pageWidth / 2, 10, { align: 'center' });
+
+        if (!hasCustomTitle) {
+          const activeTags = App.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
+          if (activeTags.length > 0) {
+            doc.setFontSize(8);
+            const tagsText = `篩選標籤: ${activeTags.join(', ')}`;
+            const rightMargin = data.settings.margin.right;
+            doc.text(tagsText, pageWidth - rightMargin, 10, { align: 'right' });
+          }
+        }
+      };
+
+      const didDrawCellHooks = (data) => {
+        if (data.section === 'head' && data.column.index === 0) {
+          const { x, y, width, height } = data.cell;
+          doc.setDrawColor(200, 200, 200);
+          doc.setLineWidth(0.1);
+          doc.line(x, y, x + width, y + height);
+
+          doc.setFont('NotoSansTC', 'normal');
+          const isDayView = App.currentViewMode === AppConfig.MODES.DAY;
+          const fontSize = isDayView ? 12 : 7;
+          doc.setFontSize(fontSize);
+          doc.setTextColor(0, 0, 0);
+
+          // Calculate baseline offsets
+          const topY = y + (fontSize * 0.35) + 1; // Approx 1mm padding from top
+          const bottomY = y + height - 1.5; // 1.5mm padding from bottom
+
+          // "星期" right-aligned at top
+          doc.text('星期', x + width - 1.5, topY, { align: 'right' });
+
+          // "教室/老師" left-aligned at bottom
+          const bottomText = App.viewSortMode === 'teacher' ? '老師' : '教室';
+          doc.text(bottomText, x + 1.5, bottomY, { align: 'left' });
+        }
+      };
+
+      // Step 4: Build and render the table based on view mode.
+      if (App.currentViewMode === AppConfig.MODES.DAY) {
+        // --- DAY VIEW PDF LOGIC (WYSIWYG) ---
+        const table = document.getElementById('schedule-table');
+        if (!table) throw new Error('找不到課表表格元素。');
+
+        // 1. Scrape Headers for WYSIWYG
+        const thead = table.querySelector('thead');
+        let head = [];
+        if (thead) {
+          const secondHeader = thead.querySelectorAll('th')[1]?.textContent.trim() || AppConfig.WEEKDAYS[App.currentDayIndex];
+          head.push(['', secondHeader, '備註']); // First cell empty for diagonal
+        } else {
+          const dayName = AppConfig.WEEKDAYS[App.currentDayIndex];
+          head.push(['', dayName, '備註']);
+        }
+
+        // 2. Scrape Body for WYSIWYG order and content lookup
+        const body = [];
+        const tbody = table.querySelector('tbody');
+        if (tbody) {
+          tbody.querySelectorAll('tr').forEach(row => {
+            try {
+              if (!pdfOptions.includeEmpty) {
+                const contentCell = row.cells[1];
+                if (!contentCell || contentCell.querySelectorAll('.class-item').length === 0) {
+                  return;
+                }
+              }
+
+              const identifierCell = row.cells[0];
+              const contentCell = row.cells[1];
+              if (!identifierCell || !contentCell) return;
+
+              const prefix = identifierCell.querySelector('.schedule-prefix')?.textContent.trim() || '';
+              const mainName = identifierCell.querySelector('.classroom-name-main')?.textContent.trim() || identifierCell.textContent.trim();
+              const identifier = prefix ? `[${prefix}] ${mainName}` : mainName;
+
+              const classItems = contentCell.querySelectorAll('.class-item');
+
+              if (classItems.length === 0) {
+                body.push([identifier, '', '']);
+                return;
+              }
+
+              const pdfRowsForThisHtmlRow = [];
+              for (let i = 0; i < classItems.length; i++) {
+                pdfRowsForThisHtmlRow.push([]);
+              }
+
+              pdfRowsForThisHtmlRow[0].push({
+                content: identifier,
+                rowSpan: classItems.length,
+                styles: { valign: 'middle' }
+              });
+
+              classItems.forEach((classItemEl, index) => {
+                const courseId = classItemEl.dataset.id;
+                const classroomName = classItemEl.dataset.classroom;
+                const dayIndex = parseInt(classItemEl.dataset.day, 10);
+                const course = App.scheduleData[classroomName]?.[dayIndex]?.find(c => c.id === courseId);
+
+                if (course) {
+                  const timeStr = `${course.timeStart} - ${course.timeEnd}`;
+                  const bottomText = App.viewSortMode === 'teacher' ? `(教室：${classroomName})` : `(${course.teacher})`;
+                  const mainContent = `${course.name}\n${timeStr}\n${bottomText}`;
+                  const color = App.courseColorMap[course.name];
+                  const courseCell = {
+                    content: mainContent,
+                    styles: { fillColor: App.hexToRgb(color) }
+                  };
+                  const notes = course.notes || '';
+                  pdfRowsForThisHtmlRow[index].push(courseCell, notes);
+                } else {
+                  pdfRowsForThisHtmlRow[index].push('(資料錯誤)', '');
+                }
+              });
+
+              body.push(...pdfRowsForThisHtmlRow);
+
+            } catch (e) {
+              console.error("Error processing a PDF row:", e, row);
+            }
+          });
+        }
+
+        // 3. Manual width calculation
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 15;
+        const usableWidth = pageWidth - (margin * 2);
+        const fixedColumnWidth = 40;
+        const remainingWidth = usableWidth - fixedColumnWidth;
+        const sharedWidth = remainingWidth / 2;
+
+        doc.autoTable({
+          head: head,
+          body: body,
+          startY: 20,
+          margin: { left: margin, right: margin },
+          theme: 'grid',
+          showHead: 'everyPage',
+          headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle', font: 'NotoSansTC' },
+          styles: { fontSize: 16, cellPadding: 3, valign: 'middle', font: 'NotoSansTC', textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [180, 180, 180] },
+          columnStyles: {
+            0: { cellWidth: fixedColumnWidth, fontStyle: 'bold', halign: 'center' },
+            1: { cellWidth: sharedWidth, halign: 'center' },
+            2: { cellWidth: sharedWidth },
+          },
+          didDrawPage: didDrawPage,
+          didDrawCell: didDrawCellHooks
+        });
+
+      } else {
+        // --- WEEK VIEW PDF LOGIC (Original, untouched) ---
+        const table = document.getElementById('schedule-table');
+        if (!table) throw new Error('找不到課表表格元素。');
+
+        const head = [];
+        const thead = table.querySelector('thead');
+        if (thead) {
+          const headerRow = ['']; // First cell empty for diagonal
+          const ths = thead.querySelectorAll('th');
+          for (let i = 1; i < ths.length; i++) {
+            headerRow.push(ths[i].textContent.trim());
+          }
+          head.push(headerRow);
+        }
+
+        const body = [];
+        const tbody = table.querySelector('tbody');
+        if (tbody) {
+          tbody.querySelectorAll('tr').forEach(tr => {
+            if (!pdfOptions.includeEmpty) {
+              const classItemsInRow = tr.querySelectorAll('.class-item');
+              if (classItemsInRow.length === 0) {
+                return; // Skip this empty row
+              }
+            }
+            const htmlRow = tr.cells;
+            let maxCoursesInRow = 0;
+            for (let i = 1; i < htmlRow.length; i++) {
+              maxCoursesInRow = Math.max(maxCoursesInRow, htmlRow[i].querySelectorAll('.class-item').length);
+            }
+            maxCoursesInRow = Math.max(1, maxCoursesInRow); // Ensure at least one row is created
+
+            const pdfRowsForThisHtmlRow = [];
+            for (let i = 0; i < maxCoursesInRow; i++) {
+              pdfRowsForThisHtmlRow.push([]);
+            }
+
+            pdfRowsForThisHtmlRow[0].push({
+              content: htmlRow[0].textContent.trim(),
+              rowSpan: maxCoursesInRow,
+              styles: { valign: 'middle' }
+            });
+
+            for (let colIndex = 1; colIndex < htmlRow.length; colIndex++) {
+              const cell = htmlRow[colIndex];
+              const classItems = cell.querySelectorAll('.class-item');
+              for (let courseIndex = 0; courseIndex < maxCoursesInRow; courseIndex++) {
+                const item = classItems[courseIndex];
+                if (item) {
+                  const name = item.querySelector('[data-field="name"]')?.textContent.trim() || '';
+                  const time = item.querySelector('[data-field="time"]')?.textContent.trim() || '';
+                  const refTeacher = item.querySelector('[data-field="teacher"]')?.textContent.trim() || '';
+
+                  let bottomObj = `(${refTeacher})`;
+                  if (App.viewSortMode === 'teacher') {
+                    const cRoom = item.dataset.classroom || '';
+                    bottomObj = `(教室：${cRoom})`;
+                  }
+
+                  const content = `${name}\n${time}\n${bottomObj}`;
+                  const color = App.courseColorMap[name];
+                  pdfRowsForThisHtmlRow[courseIndex].push({
+                    content: content,
+                    styles: { fillColor: App.hexToRgb(color) }
+                  });
+                } else {
+                  pdfRowsForThisHtmlRow[courseIndex].push('');
+                }
+              }
+            }
+            body.push(...pdfRowsForThisHtmlRow);
+          });
+        }
+
+        doc.autoTable({
+          head: head,
+          body: body,
+          startY: 20,
+          theme: 'grid',
+          showHead: 'everyPage',
+          headStyles: {
+            fillColor: [240, 240, 240],
+            textColor: [0, 0, 0],
+            fontStyle: 'bold',
+            halign: 'center',
+            valign: 'middle',
+            font: 'NotoSansTC',
+          },
+          styles: {
+            fontSize: 7,
+            cellPadding: 2,
+            halign: 'center',
+            valign: 'middle',
+            font: 'NotoSansTC',
+            fontStyle: 'bold',
+            textColor: [0, 0, 0],
+            lineWidth: 0.1,
+            lineColor: [200, 200, 200],
+          },
+          columnStyles: {
+            0: { fontStyle: 'bold', fillColor: [240, 240, 240], valign: 'middle', cellWidth: 16 },
+          },
+          didDrawPage: didDrawPage,
+          didDrawCell: didDrawCellHooks
+        });
+      }
+
+      // Step 6: Save the PDF with the correct filename
+      const activeTags = App.activeFilters.filter(f => f.type === 'tag').map(f => f.value);
+      const tagSuffix = activeTags.length > 0 ? ` (${activeTags.join(', ')})` : '';
+      const lastModifiedTimestamp = isAllSchedules ? Date.now() : App.scheduleLastModified[App.activeScheduleId];
+      const timestampSuffix = lastModifiedTimestamp ? `-${App.formatTimestampForFilename(lastModifiedTimestamp)}` : '';
+
+      const filename = hasCustomTitle
+        ? `${pdfOptions.customTitle}${timestampSuffix}.pdf`
+        : `課表_${scheduleNameForPdf}${tagSuffix}${timestampSuffix}.pdf`;
+
+      doc.save(filename);
+      App.ui.showNotification('PDF已成功生成並下載！', 'success');
+
+    } catch (error) {
+      console.error('生成PDF失敗:', error);
+      App.ui.showNotification(`下載PDF失敗: ${error.message}`, 'error');
+    } finally {
+      App.ui.hideLoading();
+    }
+  };
+
+})(App);
+</script>
