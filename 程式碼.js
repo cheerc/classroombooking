@@ -603,3 +603,18 @@ function getFontBase64FromDrive() {
     return { success: false, error: e.toString() };
   }
 }
+
+// Ref: #107 — Enable vitest v8 coverage instrumentation.
+// GAS runtime has no `module` global, so this export block is a no-op in production.
+/* eslint-disable no-undef */
+if (typeof module !== 'undefined') {
+  module.exports = {
+    _getSs, getConfig, _findScheduleRowInfo, _checkPermission,
+    getSheet, getOrCreateSheet, doGet, getData, saveData, checkMetadata,
+    addSchedule, updateScheduleMetadata, deleteSchedule, copySchedule,
+    getVersions, getVersionData, getFontBase64FromDrive,
+    // Test-only: allow resetting memoized spreadsheet reference between tests
+    _resetSs: () => { _ss = null; },
+  };
+}
+/* eslint-enable no-undef */

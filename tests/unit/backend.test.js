@@ -2,24 +2,29 @@
  * Backend GAS function tests using mock runtime.
  * Ref: #51 — Wave 5 GAS mock testing phase 2
  *
- * Strategy: Wrap 程式碼.js source in a factory function that receives mock
- * objects as params, returning the declared functions for direct testing.
+ * Strategy: Install GAS mocks as globals via vi.stubGlobal, then require()
+ * 程式碼.js directly so v8 can instrument it for coverage. Module cache is
+ * invalidated between calls to get a fresh evaluation (matching the old
+ * sandbox-per-test behavior).
+ *
+ * Ref: #107 — Migrated from new Function() sandbox to direct require() for
+ * v8 coverage instrumentation.
  */
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { describe, it, expect, vi } from 'vitest';
+import { createRequire } from 'module';
 import { createMockSheet, createMockSpreadsheetApp, createMockSession,
          createMockLockService, createMockPropertiesService, createMockLogger,
          createMockHtmlService, createMockDriveApp } from '../mocks/gasMocks.js';
 
-const gasSource = readFileSync(
-  resolve(import.meta.dirname, '../../程式碼.js'),
-  'utf-8'
-);
+const _require = createRequire(import.meta.url);
+const backendPath = _require.resolve('../../程式碼.js');
 
 /**
- * Create a sandboxed GAS environment — wraps 程式碼.js in a function that
- * receives GAS globals as parameters and returns all declared functions.
+ * Create a GAS environment — installs mocks as globals, then require()s
+ * 程式碼.js with a fresh module evaluation (cache invalidated).
+ *
+ * Ref: #107 — replaced new Function() sandbox with direct require() so
+ * v8 coverage provider can instrument 程式碼.js.
  */
 function createGasEnv(opts = {}) {
   const sheets = opts.sheets || {};
@@ -31,26 +36,19 @@ function createGasEnv(opts = {}) {
   const HtmlService = createMockHtmlService();
   const DriveApp = createMockDriveApp(opts.driveFiles || {});
 
-  // Wrap the GAS source so that all top-level functions become properties
-  // of an object we can return. We inject the GAS globals as local variables.
-  const wrappedSource = `
-    return (function(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService, DriveApp) {
-      ${gasSource}
-      return {
-        getConfig, _findScheduleRowInfo, _checkPermission, _getSs, getSheet, getOrCreateSheet,
-        doGet, getData, saveData, checkMetadata, addSchedule,
-        updateScheduleMetadata, deleteSchedule, copySchedule,
-        getVersions, getVersionData, getFontBase64FromDrive
-      };
-    })(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService, DriveApp);
-  `;
+  // Install GAS globals so 程式碼.js's top-level code can find them
+  vi.stubGlobal('SpreadsheetApp', SpreadsheetApp);
+  vi.stubGlobal('Session', Session);
+  vi.stubGlobal('LockService', LockService);
+  vi.stubGlobal('PropertiesService', PropertiesService);
+  vi.stubGlobal('Logger', Logger);
+  vi.stubGlobal('HtmlService', HtmlService);
+  vi.stubGlobal('DriveApp', DriveApp);
 
-  const factory = new Function(
-    'SpreadsheetApp', 'Session', 'LockService', 'PropertiesService', 'Logger', 'HtmlService', 'DriveApp',
-    wrappedSource
-  );
+  // Invalidate module cache to get a fresh evaluation (resets _ss memoization)
+  delete _require.cache[backendPath];
 
-  return factory(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService, DriveApp);
+  return _require(backendPath);
 }
 
 // ─── checkMetadata ───────────────────────────────────────────────────────
