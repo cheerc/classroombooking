@@ -19,12 +19,12 @@ export default defineConfig({
       // production JS surface. See #110 for details.
       include: ['程式碼.js', 'tests/lib/**/*.js'],
       thresholds: {
-        // Ratcheted from 55/65/75/55 to actual values minus ~3% buffer (#107 P0).
-        // Actuals at time of ratchet (2026-06-24): Stmts 70.71%, Branch 77.38%, Funcs 84.94%, Lines 70.06%.
-        lines: 67,
-        functions: 82,
-        branches: 74,
-        statements: 67,
+        // Re-ratcheted from 67/74/82/67 after backend branch gap fill (#107 P1).
+        // Actuals (2026-06-24): Stmts ~98%, Branch ~93%, Funcs ~98%, Lines ~99%.
+        lines: 95,
+        functions: 95,
+        branches: 90,
+        statements: 95,
       },
     },
   },

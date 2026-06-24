@@ -142,6 +142,19 @@ describe('getVersionData', () => {
     expect(result.error).toBeTruthy();
   });
 
+  // Ref: #107 — L542-543 branch: empty history sheet (lastRow < 2)
+  it('returns not-found when history sheet is empty (no data rows)', () => {
+    const historySheet = createMockSheet('History', {
+      A1: 'Timestamp', B1: 'SavedBy', C1: 'Data',
+      // No data rows — lastRow will be 1 (header only)
+    });
+    const gas = createGasEnv({ sheets: { History: historySheet } });
+
+    const result = gas.getVersionData('2024-01-01T00:00:00.000Z');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('找不到');
+  });
+
   it('skips invalid date rows without crashing (Ref: #39)', () => {
     const validTs = '2024-06-15T10:30:00.000Z';
     const historySheet = createMockSheet('History', {
@@ -256,6 +269,28 @@ describe('copySchedule', () => {
     expect(result.success).toBe(true);
     expect(result.newId).toMatch(/^schedule_/);
     expect(result.createdBy).toBe('owner@school.com');
+  });
+
+  // Ref: #107 — L458 branch: sourceId not found in Data index
+  it('returns error when source schedule not found in Data index', () => {
+    const ts = '2024-01-01T00:00:00.000Z';
+    const dataSheet = createMockSheet('Data', {
+      A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy',
+      F1: ts,
+      A2: 'schedule_1', B2: 'Existing', C2: ts, D2: 'owner@test.com',
+    });
+    const gas = createGasEnv({
+      userEmail: 'owner@test.com',
+      scriptProps: { ADMIN_EMAIL: 'admin@test.com' },
+      sheets: { Data: dataSheet },
+    });
+    const result = gas.copySchedule({
+      sourceId: 'schedule_nonexistent',
+      newName: 'Copy',
+      metadataTimestamp: ts,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('找不到來源課表');
   });
 });
 
