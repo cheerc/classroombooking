@@ -61,15 +61,9 @@ const privateMethods = extractPrivateMethods(jsHtmlSource);
  */
 const EXTRACTED_TO_LIB = new Set([
   // stateHelpers.js
-  'handleEditClassroom', 'findNextUpcomingClasses', 'saveDataToServer',
-  'countOccurrences', 'updateAllOccurrences',
-  // utilityFunctions.js (remaining in JavaScript.html)
-  'sortClassrooms', 'ensureDataIds',
-  'buildCourseColorMap',
-  // dataCollectionHelpers.js
-  'getAllTags', 'getGlobalAllTags', 'getGlobalAllCourseNames', 'getGlobalAllTeachers',
+  'handleEditClassroom', 'saveDataToServer',
   // frontendUtils.js
-  'checkTimeConflict', 'filterDataByTags', 'filterDataByActiveFilters',
+  'filterDataByTags', 'filterDataByActiveFilters',
   // interactionHelpers.js (handleDrop → applyDrop)
   'handleDrop',
   // appLifecycleHelpers.js (new — this wave)
@@ -105,9 +99,6 @@ const NOT_EXTRACTABLE = new Set([
  * These are tested indirectly through their public callers.
  */
 const PRIVATE_HELPERS = new Set([
-  '_collectFromScheduleData',
-  '_collectFromAllCourses',
-  '_forEachCourse',
   '_filterScheduleData',
 ]);
 
@@ -123,6 +114,13 @@ const IIFE_EXTRACTED = new Set([
   // LockManager.js.html (PR2)
   '_getLocks', '_saveLocks', 'acquireLock', 'releaseLock',
   'releaseCurrentLock', 'refreshLockHeartbeat',
+  // DataCollection.js.html (PR3)
+  'findNextUpcomingClasses', 'countOccurrences', 'updateAllOccurrences',
+  'sortClassrooms', 'ensureDataIds', 'buildCourseColorMap',
+  'getAllTags', 'getGlobalAllTags', 'getGlobalAllCourseNames', 'getGlobalAllTeachers',
+  'checkTimeConflict',
+  // DataCollection.js.html (PR3) — private helpers also IIFE-extracted
+  '_forEachCourse', '_collectFromScheduleData', '_collectFromAllCourses',
 ]);
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -135,8 +133,8 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
   it('should have expected total App method count', () => {
     // All public methods (excluding underscore-prefixed private helpers)
     const publicMethods = appMethods.filter(m => !m.startsWith('_'));
-    // 48 original - 7 PR1 - 4 PR2 public = 37 remaining in JavaScript.html
-    expect(publicMethods.length).toBe(37);
+    // 48 original - 7 PR1 - 4 PR2 public - 11 PR3 public = 26 remaining in JavaScript.html
+    expect(publicMethods.length).toBe(26);
   });
 
   it('every public App method should be classified (extracted OR not-extractable)', () => {

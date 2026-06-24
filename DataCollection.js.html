@@ -1,0 +1,231 @@
+<script>
+/**
+ * DataCollection.js.html — Data traversal, collection, and transformation methods
+ *
+ * Part of #129 Phase 1 (PR3/7): IIFE-wrapped domain separation.
+ * These methods handle schedule data iteration, tag/course/teacher collection,
+ * data ID management, color mapping, sorting, conflict detection, and
+ * upcoming class identification.
+ *
+ * Load order: after JavaScript.html + UtilityFunctions.js (which creates
+ * window.App and utility methods), before App.init() trigger.
+ *
+ * Dependencies: UtilityFunctions.js (App.stringToHashCode, App.generateUniqueId,
+ * App.timeToMinutes), AppConfig (COURSE_COLORS, MODES, TIME_REGEX)
+ */
+(function(App) {
+
+  // --- Private helpers ---
+
+  App._forEachCourse = function(dataSource, callback) {
+    if (!dataSource) return;
+    for (const classroom in dataSource) {
+      for (const day in dataSource[classroom]) {
+        dataSource[classroom][day].forEach(course => {
+          callback(course, classroom, day);
+        });
+      }
+    }
+  };
+
+  App._collectFromScheduleData = function(dataSource, collectorFn) {
+    const resultSet = new Set();
+    App._forEachCourse(dataSource, (course) => {
+      collectorFn(course, resultSet);
+    });
+    return Array.from(resultSet).sort();
+  };
+
+  App._collectFromAllCourses = function(collectorFn) {
+    const resultSet = new Set();
+    if (!App.schedules) return [];
+
+    Object.values(App.schedules).forEach(schedule => {
+      if (schedule.data && schedule.data.scheduleData) {
+        Object.values(schedule.data.scheduleData).forEach(classroom => {
+          if (!classroom) return;
+          Object.values(classroom).forEach(daySchedule => {
+            if (Array.isArray(daySchedule)) {
+              daySchedule.forEach(classItem => {
+                collectorFn(classItem, resultSet);
+              });
+            }
+          });
+        });
+      }
+    });
+    return Array.from(resultSet).sort();
+  };
+
+  // --- Public methods ---
+
+  App.getAllTags = function() {
+    return App._collectFromScheduleData(App.scheduleData, (classItem, resultSet) => {
+      if (classItem.tags && Array.isArray(classItem.tags)) {
+        classItem.tags.forEach(tag => resultSet.add(tag));
+      }
+    });
+  };
+
+  App.getGlobalAllTags = function() {
+    return App._collectFromAllCourses((classItem, resultSet) => {
+      if (classItem.tags && Array.isArray(classItem.tags)) {
+        classItem.tags.forEach(tag => resultSet.add(tag));
+      }
+    });
+  };
+
+  App.getGlobalAllCourseNames = function() {
+    return App._collectFromAllCourses((classItem, resultSet) => {
+      if (classItem.name) {
+        resultSet.add(classItem.name);
+      }
+    });
+  };
+
+  App.getGlobalAllTeachers = function() {
+    return App._collectFromAllCourses((classItem, resultSet) => {
+      if (classItem.teacher) {
+        resultSet.add(classItem.teacher);
+      }
+    });
+  };
+
+  App.ensureDataIds = function(scheduleData) {
+    if (!scheduleData) return {};
+    Object.values(scheduleData).forEach(classroom => {
+      if (!classroom) return;
+      Object.values(classroom).forEach(daySchedule => {
+        if (Array.isArray(daySchedule)) {
+          daySchedule.forEach(classItem => {
+            if (classItem && !classItem.id) {
+              classItem.id = App.generateUniqueId();
+            }
+          });
+        }
+      });
+    });
+    return scheduleData;
+  };
+
+  App.buildCourseColorMap = function(dataSource) {
+    if (dataSource === undefined) dataSource = App.scheduleData;
+    App.courseColorMap = {};
+    const allNames = new Set();
+    if (!dataSource) return;
+
+    Object.values(dataSource).forEach(classroom => {
+      if (!classroom) return;
+      Object.values(classroom).forEach(daySchedule => {
+        if (Array.isArray(daySchedule)) {
+          daySchedule.forEach(item => allNames.add(item.name));
+        }
+      });
+    });
+
+    const sortedNames = Array.from(allNames).sort();
+    sortedNames.forEach(name => {
+      const hash = App.stringToHashCode(name);
+      const colorIndex = Math.abs(hash) % AppConfig.COURSE_COLORS.length;
+      App.courseColorMap[name] = AppConfig.COURSE_COLORS[colorIndex];
+    });
+  };
+
+  App.sortClassrooms = function(classroomList) {
+    try {
+      return [...classroomList].sort((a, b) => {
+        const numA = parseInt((a.match(/\d+/) || ['0'])[0]);
+        const numB = parseInt((b.match(/\d+/) || ['0'])[0]);
+        const hundredsA = Math.floor(numA / 100);
+        const hundredsB = Math.floor(numB / 100);
+        if (hundredsA !== hundredsB) return hundredsB - hundredsA;
+        return (numA % 100) - (numB % 100);
+      });
+    } catch (e) {
+      console.error('排序教室失敗:', e);
+      return classroomList || [];
+    }
+  };
+
+  App.checkTimeConflict = function(classroom, day, newClass) {
+    if (!App.scheduleData[classroom]?.[day]) return false;
+    const newStart = App.timeToMinutes(newClass.timeStart);
+    const newEnd = App.timeToMinutes(newClass.timeEnd);
+    return App.scheduleData[classroom][day].some((existingClass) => {
+      if (existingClass.id === newClass.id) return false;
+      const existingStart = App.timeToMinutes(existingClass.timeStart);
+      const existingEnd = App.timeToMinutes(existingClass.timeEnd);
+      return newStart < existingEnd && newEnd > existingStart;
+    });
+  };
+
+  App.countOccurrences = function(predicate) {
+    let count = 0;
+    App._forEachCourse(App.scheduleData, course => {
+      if (predicate(course)) {
+        count++;
+      }
+    });
+    return count;
+  };
+
+  App.updateAllOccurrences = function(predicate, updateFn) {
+    App._forEachCourse(App.scheduleData, course => {
+      if (predicate(course)) {
+        updateFn(course);
+      }
+    });
+  };
+
+  App.findNextUpcomingClasses = function() {
+    App.nextUpcomingClassIds.clear();
+
+    const today = new Date();
+    const todayIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
+
+    // This feature is only active when viewing today in day mode.
+    if (App.currentViewMode !== AppConfig.MODES.DAY || App.currentDayIndex !== todayIndex) {
+      return;
+    }
+
+    const nowInMinutes = today.getHours() * 60 + today.getMinutes();
+    const thresholdInMinutes = 30;
+    let futureClasses = [];
+
+    // First, find all classes in the future for today
+    for (const classroom in App.scheduleData) {
+      if (App.scheduleData[classroom]?.[todayIndex]) {
+        App.scheduleData[classroom][todayIndex].forEach(course => {
+          const startTimeInMinutes = App.timeToMinutes(course.timeStart);
+          if (startTimeInMinutes >= nowInMinutes) {
+            futureClasses.push(course);
+          }
+        });
+      }
+    }
+
+    if (futureClasses.length > 0) {
+      // Rule 1: Prioritize classes within the 30-minute threshold
+      const withinThresholdClasses = futureClasses.filter(course => {
+        const startTimeInMinutes = App.timeToMinutes(course.timeStart);
+        const timeDifference = startTimeInMinutes - nowInMinutes;
+        return timeDifference >= 0 && timeDifference <= thresholdInMinutes;
+      });
+
+      if (withinThresholdClasses.length > 0) {
+        withinThresholdClasses.forEach(course => App.nextUpcomingClassIds.add(course.id));
+      } else {
+        // Rule 2: If none in threshold, find the very next one(s)
+        const nextStartTime = Math.min(...futureClasses.map(c => App.timeToMinutes(c.timeStart)));
+        futureClasses.forEach(course => {
+          if (App.timeToMinutes(course.timeStart) === nextStartTime) {
+            App.nextUpcomingClassIds.add(course.id);
+          }
+        });
+      }
+    }
+    // This function no longer needs to return a value; it just updates the state.
+  };
+
+})(App);
+</script>
