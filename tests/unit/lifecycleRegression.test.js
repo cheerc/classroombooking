@@ -20,6 +20,7 @@ import {
 // ─── Source loading ──────────────────────────────────────────────────────
 
 const jsHtmlSource = loadSource(import.meta.dirname, '../../JavaScript.html');
+const dataIOSource = loadSource(import.meta.dirname, '../../DataIO.js.html');
 const interactionSource = loadSource(import.meta.dirname, '../../Interaction.js.html');
 const uiSource = loadSource(import.meta.dirname, '../../UI.js.html');
 
@@ -80,7 +81,7 @@ describe('Lifecycle Regression — init → load → render → interact → sav
   // ═══════════════════════════════════════════════════════════════════════
 
   describe('Phase B: load — data flow from server', () => {
-    const loadBody = extractMethodBody(jsHtmlSource, 'loadDataFromServer');
+    const loadBody = extractMethodBody(dataIOSource, 'loadDataFromServer');
 
     it('loadDataFromServer method exists', () => {
       expect(loadBody).not.toBeNull();
@@ -91,30 +92,30 @@ describe('Lifecycle Regression — init → load → render → interact → sav
       expect(calls).toContain('getData');
     });
 
-    it('updates this.schedules from result', () => {
-      expect(containsCall(loadBody, 'this\\.schedules\\s*=')).toBe(true);
+    it('updates App.schedules from result', () => {
+      expect(containsCall(loadBody, 'App\\.schedules\\s*=')).toBe(true);
     });
 
-    it('updates this.activeMetadataTimestamp', () => {
-      expect(containsCall(loadBody, 'this\\.activeMetadataTimestamp\\s*=')).toBe(true);
+    it('updates App.activeMetadataTimestamp', () => {
+      expect(containsCall(loadBody, 'App\\.activeMetadataTimestamp\\s*=')).toBe(true);
     });
 
     it('calls loadInitialSchedules after fetching', () => {
-      expect(containsCall(loadBody, 'this\\.loadInitialSchedules')).toBe(true);
+      expect(containsCall(loadBody, 'App\\.loadInitialSchedules')).toBe(true);
     });
 
     it('calls saveSchedulesToLocal after data processing', () => {
-      expect(containsCall(loadBody, 'this\\.saveSchedulesToLocal')).toBe(true);
+      expect(containsCall(loadBody, 'App\\.saveSchedulesToLocal')).toBe(true);
     });
 
     it('calls manageLoadingState for start and end', () => {
-      expect(containsCall(loadBody, "this\\.ui\\.manageLoadingState\\(\\s*'start'")).toBe(true);
-      expect(containsCall(loadBody, "this\\.ui\\.manageLoadingState\\(\\s*'end'")).toBe(true);
+      expect(containsCall(loadBody, "App\\.ui\\.manageLoadingState\\(\\s*'start'")).toBe(true);
+      expect(containsCall(loadBody, "App\\.ui\\.manageLoadingState\\(\\s*'end'")).toBe(true);
     });
 
     it('manages isConnecting flag', () => {
-      expect(containsCall(loadBody, 'this\\.isConnecting\\s*=\\s*true')).toBe(true);
-      expect(containsCall(loadBody, 'this\\.isConnecting\\s*=\\s*false')).toBe(true);
+      expect(containsCall(loadBody, 'App\\.isConnecting\\s*=\\s*true')).toBe(true);
+      expect(containsCall(loadBody, 'App\\.isConnecting\\s*=\\s*false')).toBe(true);
     });
   });
 
@@ -262,7 +263,7 @@ describe('Lifecycle Regression — init → load → render → interact → sav
   // ═══════════════════════════════════════════════════════════════════════
 
   describe('Phase E: save — data flow to server', () => {
-    const saveBody = extractMethodBody(jsHtmlSource, 'saveDataToServer');
+    const saveBody = extractMethodBody(dataIOSource, 'saveDataToServer');
 
     it('saveDataToServer method exists', () => {
       expect(saveBody).not.toBeNull();
@@ -273,14 +274,14 @@ describe('Lifecycle Regression — init → load → render → interact → sav
       expect(calls).toContain('saveData');
     });
 
-    it('collects data from this.classrooms, this.scheduleData, this.tags', () => {
-      expect(containsCall(saveBody, 'this\\.classrooms')).toBe(true);
-      expect(containsCall(saveBody, 'this\\.scheduleData')).toBe(true);
-      expect(containsCall(saveBody, 'this\\.tags')).toBe(true);
+    it('collects data from App.classrooms, App.scheduleData, App.tags', () => {
+      expect(containsCall(saveBody, 'App\\.classrooms')).toBe(true);
+      expect(containsCall(saveBody, 'App\\.scheduleData')).toBe(true);
+      expect(containsCall(saveBody, 'App\\.tags')).toBe(true);
     });
 
     it('includes lastModified timestamp for conflict detection', () => {
-      expect(containsCall(saveBody, 'this\\.scheduleLastModified')).toBe(true);
+      expect(containsCall(saveBody, 'App\\.scheduleLastModified')).toBe(true);
     });
 
     it('handles conflict response (saveResult.conflict)', () => {
@@ -288,20 +289,20 @@ describe('Lifecycle Regression — init → load → render → interact → sav
     });
 
     it('updates scheduleLastModified on success', () => {
-      expect(containsCall(saveBody, 'this\\.scheduleLastModified\\[this\\.activeScheduleId\\]\\s*=')).toBe(true);
+      expect(containsCall(saveBody, 'App\\.scheduleLastModified\\[App\\.activeScheduleId\\]\\s*=')).toBe(true);
     });
 
     it('calls manageLoadingState for start and end', () => {
-      expect(containsCall(saveBody, "this\\.ui\\.manageLoadingState\\(\\s*'start'")).toBe(true);
-      expect(containsCall(saveBody, "this\\.ui\\.manageLoadingState\\(\\s*'end'")).toBe(true);
+      expect(containsCall(saveBody, "App\\.ui\\.manageLoadingState\\(\\s*'start'")).toBe(true);
+      expect(containsCall(saveBody, "App\\.ui\\.manageLoadingState\\(\\s*'end'")).toBe(true);
     });
 
     it('manages isConnecting flag', () => {
-      expect(containsCall(saveBody, 'this\\.isConnecting')).toBe(true);
+      expect(containsCall(saveBody, 'App\\.isConnecting')).toBe(true);
     });
 
     it('updates history clean snapshot on success', () => {
-      expect(containsCall(saveBody, 'this\\.historyModule\\.updateCleanSnapshot')).toBe(true);
+      expect(containsCall(saveBody, 'App\\.historyModule\\.updateCleanSnapshot')).toBe(true);
     });
   });
 
@@ -320,8 +321,8 @@ describe('Lifecycle Regression — init → load → render → interact → sav
     });
 
     it('load → render: loadDataFromServer calls loadInitialSchedules which calls loadSchedule', () => {
-      const loadBody = extractMethodBody(jsHtmlSource, 'loadDataFromServer');
-      expect(containsCall(loadBody, 'this\\.loadInitialSchedules')).toBe(true);
+      const loadBody = extractMethodBody(dataIOSource, 'loadDataFromServer');
+      expect(containsCall(loadBody, 'App\\.loadInitialSchedules')).toBe(true);
 
       const loadInitBody = extractMethodBody(jsHtmlSource, 'loadInitialSchedules');
       expect(containsCall(loadInitBody, 'this\\.loadSchedule')).toBe(true);
@@ -342,9 +343,9 @@ describe('Lifecycle Regression — init → load → render → interact → sav
     });
 
     it('save → render: saveDataToServer updates history which can trigger re-render', () => {
-      const saveBody = extractMethodBody(jsHtmlSource, 'saveDataToServer');
-      expect(containsCall(saveBody, 'this\\.historyModule\\.updateCleanSnapshot')).toBe(true);
-      expect(containsCall(saveBody, 'this\\.historyModule\\.checkDirty')).toBe(true);
+      const saveBody = extractMethodBody(dataIOSource, 'saveDataToServer');
+      expect(containsCall(saveBody, 'App\\.historyModule\\.updateCleanSnapshot')).toBe(true);
+      expect(containsCall(saveBody, 'App\\.historyModule\\.checkDirty')).toBe(true);
     });
   });
 

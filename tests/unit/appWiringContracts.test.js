@@ -61,7 +61,7 @@ const privateMethods = extractPrivateMethods(jsHtmlSource);
  */
 const EXTRACTED_TO_LIB = new Set([
   // stateHelpers.js
-  'handleEditClassroom', 'saveDataToServer',
+  'handleEditClassroom',
   // interactionHelpers.js (handleDrop → applyDrop)
   'handleDrop',
   // appLifecycleHelpers.js (new — this wave)
@@ -81,10 +81,6 @@ const NOT_EXTRACTABLE = new Set([
   'handleScheduleListClick',      // DOM event delegation + ServerApi + modals
   'handleScheduleSelectChange',   // DOM event + modal confirm + state (aggregateScheduleData already extracted)
   'applyTagFilters',              // Tagify instance + modal confirm + DOM
-  'loadVersions',                 // DOM + ServerApi
-  'handleLoadVersion',            // DOM + ServerApi + state
-  'saveDataToLocal',              // localStorage + Tagify + DOM (core sync logic extracted as processServerLoadResult)
-  'loadDataFromServer',           // ServerApi + state orchestration (result processing extracted)
   'isCurrentUserAdmin',           // Global var IS_ADMIN (trivial, 1 line)
   'printScheduleToPdf',           // jsPDF + DOM + ServerApi (massively coupled)
 ]);
@@ -122,6 +118,9 @@ const IIFE_EXTRACTED = new Set([
   'filterDataByTags', 'filterDataByActiveFilters',
   // FilterEngine.js.html (PR4) — private helpers also IIFE-extracted
   '_filterScheduleData',
+  // DataIO.js.html (PR5)
+  'loadVersions', 'handleLoadVersion', 'saveDataToLocal',
+  'loadDataFromServer', 'saveDataToServer',
 ]);
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -134,8 +133,8 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
   it('should have expected total App method count', () => {
     // All public methods (excluding underscore-prefixed private helpers)
     const publicMethods = appMethods.filter(m => !m.startsWith('_'));
-    // 48 original - 7 PR1 - 4 PR2 public - 11 PR3 public - 7 PR4 public = 19 remaining in JavaScript.html
-    expect(publicMethods.length).toBe(19);
+    // 48 original - 7 PR1 - 4 PR2 public - 11 PR3 public - 7 PR4 public - 5 PR5 = 14 remaining in JavaScript.html
+    expect(publicMethods.length).toBe(14);
   });
 
   it('every public App method should be classified (extracted OR not-extractable)', () => {

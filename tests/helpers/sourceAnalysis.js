@@ -21,7 +21,16 @@ export function extractMethodBody(source, methodName) {
   const declPattern = new RegExp(
     `${methodName}\\s*:\\s*(?:async\\s+)?function\\s*\\([^)]*\\)\\s*\\{`
   );
-  const match = declPattern.exec(source);
+  let match = declPattern.exec(source);
+
+  // Also try IIFE-extracted pattern: App.methodName = (async)? function(...) {
+  if (!match) {
+    const iifePattern = new RegExp(
+      `App\\.${methodName}\\s*=\\s*(?:async\\s+)?function\\s*\\([^)]*\\)\\s*\\{`
+    );
+    match = iifePattern.exec(source);
+  }
+
   if (!match) return null;
 
   const startIdx = match.index + match[0].length;

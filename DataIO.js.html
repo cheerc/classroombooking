@@ -1,0 +1,216 @@
+<script>
+/**
+ * DataIO.js.html — Data input/output methods (server sync, versioning, local persistence)
+ *
+ * Part of #129 Phase 1 (PR5/7): IIFE-wrapped domain separation.
+ * These methods handle version history loading, server data synchronisation,
+ * local data persistence (localStorage), and conflict resolution.
+ *
+ * Load order: after JavaScript.html + UtilityFunctions.js + LockManager.js +
+ * DataCollection.js (which creates window.App, utility, lock, and collection
+ * methods), before App.init() trigger.
+ *
+ * Dependencies:
+ *   - DataCollection.js (App.getAllTags, App.ensureDataIds)
+ *   - ScheduleManager (App.loadInitialSchedules, App.loadSchedule,
+ *     App.saveSchedulesToLocal — circular, resolved via App.xxx at call time)
+ *   - ServerApi.call (external module)
+ *   - AppConfig (STATUS, APP_VERSION)
+ *   - AppElements (versionHistorySelect, versionHistoryModal)
+ *   - localStorage
+ */
+(function(App) {
+
+  // --- Version history ---
+
+  App.loadVersions = async function() {
+    const select = AppElements.versionHistorySelect;
+    select.innerHTML = '<option>正在載入中...</option>';
+    App.ui.showNotification('正在獲取版本列表...', 'info');
+
+    try {
+      const versions = await ServerApi.call('getVersions', App.activeScheduleId);
+      if (!versions || versions.error) throw new Error(versions ? versions.error : '未知錯誤');
+
+      select.innerHTML = '';
+      if (versions.length > 0) {
+        versions.forEach(v => {
+          const option = document.createElement('option');
+          option.value = v.id;
+          option.textContent = `${new Date(v.id).toLocaleString()} by ${App.getShortUserName(v.user)}`;
+          select.appendChild(option);
+        });
+        App.ui.showNotification('版本列表已更新', 'success');
+      } else {
+        select.innerHTML = '<option>此課表沒有歷史紀錄</option>';
+      }
+    } catch (error) {
+      App.ui.showNotification('獲取版本列表失敗: ' + error.message, 'error');
+      select.innerHTML = '<option>獲取失敗</option>';
+    }
+  };
+
+  App.handleLoadVersion = async function() {
+    const select = AppElements.versionHistorySelect;
+    const versionId = select.value;
+    if (!versionId || select.options[select.selectedIndex].text === '沒有歷史紀錄') {
+      App.ui.showNotification('請選擇一個有效的版本', 'error');
+      return;
+    }
+    if (App.isDirty && !await App.modals.showConfirm(`您有未儲存的變更，確定要讀取歷史版本並覆蓋當前的課表嗎？`)) {
+      return;
+    }
+    AppElements.versionHistoryModal.style.display = 'none';
+    App.ui.showLoading('正在讀取歷史版本...');
+
+    try {
+      const data = await ServerApi.call('getVersionData', versionId);
+      if (!data || !data.success) throw new Error(data ? data.error : '未知錯誤');
+
+      const currentSchedule = App.schedules[App.activeScheduleId];
+      currentSchedule.data.classrooms = data.classrooms || [];
+      currentSchedule.data.scheduleData = App.ensureDataIds(data.scheduleData || {});
+      currentSchedule.data.tags = data.tags || [];
+
+      App.saveSchedulesToLocal();
+      App.loadSchedule(App.activeScheduleId);
+
+      App.ui.updateSyncStatus(AppConfig.STATUS.OFFLINE, App.lastCloudModifiedTime);
+      App.ui.showNotification(`已在本地載入版本: ${new Date(data.versionId).toLocaleString()}`, 'info');
+    } catch (error) {
+      App.ui.showNotification('讀取版本失敗: ' + error.message, 'error');
+    } finally {
+      App.ui.hideLoading();
+    }
+  };
+
+  // --- Local persistence ---
+
+  App.saveDataToLocal = function() {
+    try {
+      // Sync the current working data back to the main schedules object
+      if (App.activeScheduleId && App.schedules[App.activeScheduleId]) {
+        const activeSchedule = App.schedules[App.activeScheduleId];
+        if (activeSchedule.data) {
+          activeSchedule.data.scheduleData = App.scheduleData;
+          activeSchedule.data.classrooms = App.classrooms;
+          activeSchedule.data.tags = App.getAllTags(); // Also update the tags list for consistency
+        }
+      }
+
+      // After saving, the list of all tags might have changed.
+      // We need to re-initialize the tag filter to get the fresh list, while preserving the current value.
+      let currentFilterValue = [];
+      if (App.tagFilterTagify) {
+        currentFilterValue = App.tagFilterTagify.value.map(tag => tag.value);
+      }
+
+      App.tags = App.getAllTags(); // Recalculate all tags from current data
+      App.ui.initializeTagFilter(); // This will destroy and recreate the Tagify instance
+
+      if (App.tagFilterTagify && currentFilterValue.length > 0) {
+        // Restore the previous value without triggering 'add' events.
+        // loadOriginalValues will only add valid tags from the new whitelist.
+        App.tagFilterTagify.loadOriginalValues(currentFilterValue);
+      }
+
+      App.saveSchedulesToLocal();
+      localStorage.setItem('activeScheduleId', App.activeScheduleId);
+      localStorage.setItem('app_version', AppConfig.APP_VERSION);
+      if (App.lastSyncTime) localStorage.setItem('lastSyncTime', App.lastSyncTime.toISOString());
+    } catch (e) {
+      console.error("保存數據到本地失敗:", e);
+      App.ui.showNotification("保存數據失敗，可能是存儲空間不足", "error");
+    }
+  };
+
+  // --- Server communication ---
+
+  App.loadDataFromServer = async function() {
+    if (App.isConnecting) {
+      App.ui.showNotification("A sync operation is already in progress.", "info");
+      return;
+    }
+    App.isConnecting = true;
+    App.ui.manageLoadingState('start', { message: '正在從雲端同步資料...' });
+
+    try {
+      const result = await ServerApi.call('getData');
+      if (!result || result.error) throw new Error(result ? result.error : '從服務器獲取的數據為空');
+
+      App.schedules = result.schedules || {};
+      App.scheduleLastModified = {}; // Clear old timestamps
+      for (const id in App.schedules) {
+        if (App.schedules[id].lastModified) {
+          App.scheduleLastModified[id] = App.schedules[id].lastModified;
+          // The timestamp is sensitive and only needed for the save operation,
+          // let's not keep it in the main data object that gets saved to local storage.
+          delete App.schedules[id].lastModified;
+        }
+      }
+
+      App.activeMetadataTimestamp = result.metadataTimestamp;
+
+      // After fetching data, the client decides which schedule to load.
+      App.loadInitialSchedules();
+
+      App.lastSyncTime = new Date();
+      App.saveSchedulesToLocal();
+      App.ui.manageLoadingState('end', { success: true, message: '從雲端讀取數據成功！' });
+
+    } catch (error) {
+      App.ui.manageLoadingState('end', { success: false, message: `讀取失敗: ${error.message}` });
+    } finally {
+      App.isConnecting = false;
+    }
+  };
+
+  App.saveDataToServer = async function() {
+    if (App.isConnecting) return;
+    App.isConnecting = true;
+    App.ui.manageLoadingState('start', { message: '正在檢查版本並儲存至雲端...' });
+
+    try {
+      const currentScheduleTimestamp = App.scheduleLastModified[App.activeScheduleId];
+      if (!currentScheduleTimestamp) {
+        throw new Error("找不到當前課表的版本資訊，無法儲存。請嘗試重新載入。");
+      }
+
+      const dataToSend = {
+        scheduleId: App.activeScheduleId,
+        lastModified: currentScheduleTimestamp, // *** STEP 4: Attach the specific timestamp
+        scheduleData: {
+          classrooms: App.classrooms,
+          scheduleData: App.scheduleData,
+          tags: App.tags
+        }
+      };
+
+      const saveResult = await ServerApi.call('saveData', dataToSend);
+
+      // *** STEP 4: Handle new conflict error
+      if (saveResult && saveResult.conflict) {
+        App.modals.showConfirm(saveResult.error, true); // textContent is XSS-safe; escapeHtml removed to prevent double-escaping
+        App.ui.manageLoadingState('end', { success: false, isConflict: true });
+        return;
+      }
+
+      if (!saveResult || !saveResult.success) {
+        throw new Error(saveResult?.error || '儲存時發生未知錯誤');
+      }
+
+      App.lastSyncTime = new Date();
+      App.scheduleLastModified[App.activeScheduleId] = saveResult.lastModified;
+      App.historyModule.updateCleanSnapshot();
+      App.historyModule.checkDirty();
+      App.ui.manageLoadingState('end', { success: true, message: '數據已成功儲存到雲端！' });
+
+    } catch (error) {
+      App.ui.manageLoadingState('end', { success: false, message: `數據儲存失敗: ${error.message}` });
+    } finally {
+      App.isConnecting = false;
+    }
+  };
+
+})(App);
+</script>
