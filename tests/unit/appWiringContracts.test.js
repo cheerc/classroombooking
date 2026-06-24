@@ -73,7 +73,6 @@ const EXTRACTED_TO_LIB = new Set([
 const NOT_EXTRACTABLE = new Set([
   'init',                         // DOM setup + timers + module init
   'applyTagFilters',              // Tagify instance + modal confirm + DOM
-  'printScheduleToPdf',           // jsPDF + DOM + ServerApi (massively coupled)
 ]);
 
 /**
@@ -118,6 +117,8 @@ const IIFE_EXTRACTED = new Set([
   'handleAddSchedule', 'handleScheduleListClick', 'handleScheduleSelectChange',
   'isCurrentUserAdmin', 'canManageCurrentScheduleSettings',
   'handleDrop',
+  // PDFExport.js.html (PR7)
+  'printScheduleToPdf',
 ]);
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -130,8 +131,8 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
   it('should have expected total App method count', () => {
     // All public methods (excluding underscore-prefixed private helpers)
     const publicMethods = appMethods.filter(m => !m.startsWith('_'));
-    // 48 original - 7 PR1 - 4 PR2 public - 11 PR3 public - 7 PR4 public - 5 PR5 - 11 PR6 = 3 remaining in JavaScript.html
-    expect(publicMethods.length).toBe(3);
+    // 48 original - 7 PR1 - 4 PR2 public - 11 PR3 public - 7 PR4 public - 5 PR5 - 11 PR6 - 1 PR7 = 2 remaining in JavaScript.html
+    expect(publicMethods.length).toBe(2);
   });
 
   it('every public App method should be classified (extracted OR not-extractable)', () => {
