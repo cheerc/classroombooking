@@ -238,3 +238,108 @@ describe('scheduleListHelpers — branch gaps (#107)', () => {
     expect(ctx.scheduleLastModified.schedule_1).toBe(originalTimestamp);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// appLifecycleHelpers — branch gap coverage (#107 P1)
+// ═══════════════════════════════════════════════════════════════════
+
+import { resolveScheduleLoad, resolveDropAction } from '../lib/appLifecycleHelpers.js';
+
+describe('appLifecycleHelpers — branch gaps (#107 P1)', () => {
+  // L58: Object.keys(schedules)[0] || null — when schedules is empty
+  it('resolveScheduleLoad falls back to null when schedule not found and no other schedules exist', () => {
+    const result = resolveScheduleLoad('missing_id', {}, 'ALL', () => true);
+    expect(result.scheduleId).toBeNull();
+    expect(result.isReadOnly).toBe(true);
+    expect(result.error).toContain('missing_id');
+  });
+
+  // L77: data.classrooms || [] — when classrooms is undefined
+  it('resolveScheduleLoad defaults classrooms to [] when schedule.data has no classrooms', () => {
+    const schedules = {
+      s1: { data: { scheduleData: { room: {} } } }, // no classrooms key
+    };
+    const result = resolveScheduleLoad('s1', schedules, 'ALL', () => true);
+    expect(result.classrooms).toEqual([]);
+    expect(result.needsRepair).toBe(false);
+  });
+
+  // L78: data.scheduleData || {} — when scheduleData is undefined
+  it('resolveScheduleLoad defaults scheduleData to {} when schedule.data has no scheduleData', () => {
+    const schedules = {
+      s1: { data: { classrooms: ['A'] } }, // no scheduleData key
+    };
+    const result = resolveScheduleLoad('s1', schedules, 'ALL', () => true);
+    expect(result.scheduleData).toEqual({});
+    expect(result.classrooms).toEqual(['A']);
+  });
+
+  // L188: scheduleData[fromClassroom]?.[fromDay] || [] — fromClassroom missing
+  it('resolveDropAction returns not-found when fromClassroom does not exist', () => {
+    const scheduleData = {};
+    const result = resolveDropAction(scheduleData, {
+      fromClassroom: 'nonexistent', fromDay: '0',
+      toClassroom: 'Room B', toDay: '1',
+      classId: 'c1', newIndex: 0,
+    }, () => 0);
+    expect(result.moved).toBe(false);
+    expect(result.error).toBe('Item not found in data model');
+  });
+
+  // L197: newData[fromClassroom]?.[fromDay] || [] — deep clone splice fallback
+  it('resolveDropAction moves item between classrooms successfully', () => {
+    const scheduleData = {
+      'Room A': { '0': [{ id: 'c1', name: 'Math' }] },
+    };
+    const result = resolveDropAction(scheduleData, {
+      fromClassroom: 'Room A', fromDay: '0',
+      toClassroom: 'Room B', toDay: '1',
+      classId: 'c1', newIndex: 0,
+    }, () => 0);
+    expect(result.moved).toBe(true);
+    expect(result.scheduleData['Room B']['1'][0].name).toBe('Math');
+    expect(result.scheduleData['Room A']['0']).toBeUndefined(); // cleaned up L205
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// interactionHelpers — branch gap coverage (#107 P1)
+// ═══════════════════════════════════════════════════════════════════
+
+import { applyDrop, applyNameRename, applyTeacherRename } from '../lib/interactionHelpers.js';
+
+describe('interactionHelpers — branch gaps (#107 P1)', () => {
+  // L30: scheduleData[fromClassroom]?.[fromDay] || [] — null classroom
+  it('applyDrop returns item-not-found when fromClassroom is missing from scheduleData', () => {
+    const scheduleData = {};
+    const result = applyDrop(scheduleData, {
+      fromClassroom: 'nonexistent', fromDay: '0',
+      toClassroom: 'Room B', toDay: '1',
+      classId: 'c1', newIndex: 0,
+    });
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('item-not-found');
+  });
+
+  // L74-76: null classroom + non-array daySchedule in applyNameRename
+  it('applyNameRename skips null classrooms and non-array day schedules', () => {
+    const scheduleData = {
+      'Room A': null,
+      'Room B': { '0': 'not-an-array', '1': [{ name: 'old', teacher: 'T' }] },
+    };
+    const count = applyNameRename(scheduleData, 'old', 'new', []);
+    expect(count).toBe(1);
+    expect(scheduleData['Room B']['1'][0].name).toBe('new');
+  });
+
+  // L111-113: null classroom + non-array daySchedule in applyTeacherRename
+  it('applyTeacherRename skips null classrooms and non-array day schedules', () => {
+    const scheduleData = {
+      'Room A': null,
+      'Room B': { '0': 'not-an-array', '1': [{ name: 'Math', teacher: 'old' }] },
+    };
+    const count = applyTeacherRename(scheduleData, 'Math', 'old', 'new');
+    expect(count).toBe(1);
+    expect(scheduleData['Room B']['1'][0].teacher).toBe('new');
+  });
+});
