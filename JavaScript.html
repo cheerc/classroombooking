@@ -739,60 +739,12 @@
 
             // --- UTILITY ---
 
-            _getLocks: function () {
-                try {
-                    return JSON.parse(localStorage.getItem('gemini_schedule_locks') || '{}');
-                } catch (e) {
-                    return {};
-                }
-            },
-
-            _saveLocks: function (locks) {
-                localStorage.setItem('gemini_schedule_locks', JSON.stringify(locks));
-            },
-
-            acquireLock: function (scheduleId) {
-                const locks = this._getLocks();
-                const existingLock = locks[scheduleId];
-                const now = Date.now();
-
-                if (existingLock && existingLock.tabId !== this.tabId) {
-                    const isStale = (now - existingLock.timestamp) > 15000; // 15 second stale threshold
-                    if (!isStale) {
-                        return false; // Lock is held by another tab
-                    }
-                    // If we are here, the lock is stale, so we break it.
-                }
-
-                // Acquire or update the lock
-                locks[scheduleId] = { tabId: this.tabId, timestamp: now };
-                this._saveLocks(locks);
-                return true;
-            },
-
-            releaseLock: function (scheduleId) {
-                if (!scheduleId) return;
-                const locks = this._getLocks();
-                if (locks[scheduleId] && locks[scheduleId].tabId === this.tabId) {
-                    delete locks[scheduleId];
-                    this._saveLocks(locks);
-                }
-            },
-
-            releaseCurrentLock: function () {
-                this.releaseLock(this.activeScheduleId);
-            },
-
-            refreshLockHeartbeat: function () {
-                if (this.isReadOnly || !this.activeScheduleId || this.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
-                    return;
-                }
-                const locks = this._getLocks();
-                if (locks[this.activeScheduleId] && locks[this.activeScheduleId].tabId === this.tabId) {
-                    locks[this.activeScheduleId].timestamp = Date.now();
-                    this._saveLocks(locks);
-                }
-            },
+            // _getLocks — moved to LockManager.js.html (Phase 1 PR2)
+            // _saveLocks — moved to LockManager.js.html (Phase 1 PR2)
+            // acquireLock — moved to LockManager.js.html (Phase 1 PR2)
+            // releaseLock — moved to LockManager.js.html (Phase 1 PR2)
+            // releaseCurrentLock — moved to LockManager.js.html (Phase 1 PR2)
+            // refreshLockHeartbeat — moved to LockManager.js.html (Phase 1 PR2)
 
             _collectFromScheduleData: function (dataSource, collectorFn) {
                 const resultSet = new Set();

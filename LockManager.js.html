@@ -1,0 +1,70 @@
+<script>
+/**
+ * LockManager.js.html — Tab-level schedule lock management
+ *
+ * Part of #129 Phase 1 (PR2/7): IIFE-wrapped domain separation.
+ * Manages localStorage-based locks to prevent concurrent editing
+ * across browser tabs. Reads App.tabId, App.activeScheduleId,
+ * App.isReadOnly state properties.
+ *
+ * Load order: after JavaScript.html (App core), before App.init().
+ */
+(function(App) {
+
+  App._getLocks = function() {
+    try {
+      return JSON.parse(localStorage.getItem('gemini_schedule_locks') || '{}');
+    } catch (e) {
+      return {};
+    }
+  };
+
+  App._saveLocks = function(locks) {
+    localStorage.setItem('gemini_schedule_locks', JSON.stringify(locks));
+  };
+
+  App.acquireLock = function(scheduleId) {
+    const locks = App._getLocks();
+    const existingLock = locks[scheduleId];
+    const now = Date.now();
+
+    if (existingLock && existingLock.tabId !== App.tabId) {
+      const isStale = (now - existingLock.timestamp) > 15000; // 15 second stale threshold
+      if (!isStale) {
+        return false; // Lock is held by another tab
+      }
+      // If we are here, the lock is stale, so we break it.
+    }
+
+    // Acquire or update the lock
+    locks[scheduleId] = { tabId: App.tabId, timestamp: now };
+    App._saveLocks(locks);
+    return true;
+  };
+
+  App.releaseLock = function(scheduleId) {
+    if (!scheduleId) return;
+    const locks = App._getLocks();
+    if (locks[scheduleId] && locks[scheduleId].tabId === App.tabId) {
+      delete locks[scheduleId];
+      App._saveLocks(locks);
+    }
+  };
+
+  App.releaseCurrentLock = function() {
+    App.releaseLock(App.activeScheduleId);
+  };
+
+  App.refreshLockHeartbeat = function() {
+    if (App.isReadOnly || !App.activeScheduleId || App.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
+      return;
+    }
+    const locks = App._getLocks();
+    if (locks[App.activeScheduleId] && locks[App.activeScheduleId].tabId === App.tabId) {
+      locks[App.activeScheduleId].timestamp = Date.now();
+      App._saveLocks(locks);
+    }
+  };
+
+})(App);
+</script>

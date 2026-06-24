@@ -75,7 +75,7 @@ const EXTRACTED_TO_LIB = new Set([
   // appLifecycleHelpers.js (new — this wave)
   'loadInitialSchedules', 'loadSchedule', 'canManageCurrentScheduleSettings',
   'loadAndApplyPersistedFilters', 'applyFilters', 'clearAdvancedFilters',
-  'clearAllFilters', 'refreshLockHeartbeat',
+  'clearAllFilters',
   'saveSchedulesToLocal',
 ]);
 
@@ -98,9 +98,6 @@ const NOT_EXTRACTABLE = new Set([
   'loadDataFromServer',           // ServerApi + state orchestration (result processing extracted)
   'isCurrentUserAdmin',           // Global var IS_ADMIN (trivial, 1 line)
   'printScheduleToPdf',           // jsPDF + DOM + ServerApi (massively coupled)
-  'acquireLock',                  // Already extracted as createLockManager in frontendMocks.js
-  'releaseLock',                  // Already extracted as createLockManager in frontendMocks.js
-  'releaseCurrentLock',           // Wrapper around releaseLock (1 line)
 ]);
 
 /**
@@ -108,8 +105,6 @@ const NOT_EXTRACTABLE = new Set([
  * These are tested indirectly through their public callers.
  */
 const PRIVATE_HELPERS = new Set([
-  '_getLocks',
-  '_saveLocks',
   '_collectFromScheduleData',
   '_collectFromAllCourses',
   '_forEachCourse',
@@ -125,6 +120,9 @@ const IIFE_EXTRACTED = new Set([
   // UtilityFunctions.js.html (PR1)
   'getShortUserName', 'generateUniqueId', 'stringToHashCode',
   'timeToMinutes', 'formatTime', 'formatTimestampForFilename', 'hexToRgb',
+  // LockManager.js.html (PR2)
+  '_getLocks', '_saveLocks', 'acquireLock', 'releaseLock',
+  'releaseCurrentLock', 'refreshLockHeartbeat',
 ]);
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -137,8 +135,8 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
   it('should have expected total App method count', () => {
     // All public methods (excluding underscore-prefixed private helpers)
     const publicMethods = appMethods.filter(m => !m.startsWith('_'));
-    // 48 original - 7 IIFE-extracted = 41 remaining in JavaScript.html
-    expect(publicMethods.length).toBe(41);
+    // 48 original - 7 PR1 - 4 PR2 public = 37 remaining in JavaScript.html
+    expect(publicMethods.length).toBe(37);
   });
 
   it('every public App method should be classified (extracted OR not-extractable)', () => {
@@ -160,7 +158,9 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
   });
 
   it('private helpers should be accounted for', () => {
-    const unclassifiedPrivate = privateMethods.filter(m => !PRIVATE_HELPERS.has(m));
+    const unclassifiedPrivate = privateMethods.filter(m =>
+      !PRIVATE_HELPERS.has(m) && !IIFE_EXTRACTED.has(m)
+    );
     expect(
       unclassifiedPrivate,
       `Unclassified private helpers: ${unclassifiedPrivate.join(', ')}`
