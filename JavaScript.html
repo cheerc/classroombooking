@@ -398,37 +398,8 @@
                 }
             },
 
-            // --- FILTER LOGIC ---
-            loadAndApplyPersistedFilters: function () {
-                const persistedTagsJSON = localStorage.getItem('activeTagFilters');
-                if (persistedTagsJSON) {
-                    try {
-                        const persistedTags = JSON.parse(persistedTagsJSON);
-                        const allCurrentTags = new Set(this.getAllTags());
-
-                        const validPersistedTags = persistedTags.filter(tag => allCurrentTags.has(tag));
-
-                        this.activeFilters = validPersistedTags.map(tag => ({ type: 'tag', value: tag }));
-
-                        if (this.tagFilterTagify) {
-                            this.tagFilterTagify.loadOriginalValues(validPersistedTags);
-                        }
-
-                        if (persistedTags.length !== validPersistedTags.length) {
-                            localStorage.setItem('activeTagFilters', JSON.stringify(validPersistedTags));
-                        }
-                    } catch (e) {
-                        console.error("Failed to parse persisted tag filters:", e);
-                        localStorage.removeItem('activeTagFilters');
-                        this.activeFilters = [];
-                    }
-                } else {
-                    this.activeFilters = [];
-                }
-                this.ui.updateClearFilterButtonVisibility();
-                this.ui.updateAdvancedFilterButtonState();
-                this.ui.updateClearAllFiltersButtonVisibility();
-            },
+            // loadAndApplyPersistedFilters, toggleAllFilterCheckboxes, applyFilters — moved to FilterEngine.js.html (Phase 1 PR4)
+            // clearAdvancedFilters, clearAllFilters — moved to FilterEngine.js.html (Phase 1 PR4)
 
             applyTagFilters: async function () {
                 if (!this.tagFilterTagify) return;
@@ -453,47 +424,6 @@
                 this.activeFilters = selectedTags.map(tag => ({ type: 'tag', value: tag }));
 
                 localStorage.setItem('activeTagFilters', JSON.stringify(selectedTags));
-                this.modals.populateFilterModal();
-                this.ui.renderScheduleTable();
-                this.ui.updateAdvancedFilterButtonState();
-                this.ui.updateClearFilterButtonVisibility();
-                this.ui.updateClearAllFiltersButtonVisibility();
-            },
-
-            toggleAllFilterCheckboxes: function (shouldBeChecked) {
-                AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                    cb.checked = shouldBeChecked;
-                });
-            },
-
-            applyFilters: function () {
-                const filterType = AppElements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
-                const selectedItems = Array.from(AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-
-                const tagFilters = this.activeFilters.filter(f => f.type === 'tag');
-                const newAdvancedFilters = selectedItems.map(item => ({ type: filterType, value: item }));
-                this.activeFilters = [...tagFilters, ...newAdvancedFilters];
-
-                this.ui.renderScheduleTable();
-                this.ui.updateAdvancedFilterButtonState();
-                this.ui.updateClearAllFiltersButtonVisibility();
-                AppElements.filterModal.style.display = 'none';
-            },
-
-            clearAdvancedFilters: function () {
-                this.activeFilters = this.activeFilters.filter(f => f.type === 'tag');
-                this.modals.populateFilterModal();
-                this.ui.renderScheduleTable();
-                this.ui.updateAdvancedFilterButtonState();
-                this.ui.updateClearAllFiltersButtonVisibility();
-            },
-
-            clearAllFilters: function () {
-                this.activeFilters = [];
-                localStorage.removeItem('activeTagFilters');
-                if (this.tagFilterTagify) {
-                    this.tagFilterTagify.removeAllTags();
-                }
                 this.modals.populateFilterModal();
                 this.ui.renderScheduleTable();
                 this.ui.updateAdvancedFilterButtonState();
@@ -733,52 +663,7 @@
 
             // formatTimestampForFilename — moved to UtilityFunctions.js.html (Phase 1 PR1)
 
-            _filterScheduleData: function (data, filterPredicate) {
-                const filteredData = {};
-                for (const classroom in data) {
-                    const dayData = data[classroom];
-                    const newDayData = {};
-                    let classroomHasCourses = false;
-                    for (const day in dayData) {
-                        const filteredCourses = dayData[day].filter(filterPredicate);
-                        if (filteredCourses.length > 0) {
-                            newDayData[day] = filteredCourses;
-                            classroomHasCourses = true;
-                        }
-                    }
-                    if (classroomHasCourses) {
-                        filteredData[classroom] = newDayData;
-                    }
-                }
-                return filteredData;
-            },
-
-            filterDataByTags: function (data) {
-                const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
-                if (tagFilters.size === 0) {
-                    return data;
-                }
-                return this._filterScheduleData(data, course =>
-                    course.tags && course.tags.some(d => tagFilters.has(d))
-                );
-            },
-
-            filterDataByActiveFilters: function (data) {
-                const nameFilters = new Set(this.activeFilters.filter(f => f.type === 'name').map(f => f.value));
-                const tagFilters = new Set(this.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
-                const teacherFilters = new Set(this.activeFilters.filter(f => f.type === 'teacher').map(f => f.value));
-
-                if (nameFilters.size === 0 && tagFilters.size === 0 && teacherFilters.size === 0) {
-                    return data;
-                }
-
-                return this._filterScheduleData(data, course => {
-                    const nameMatch = nameFilters.size === 0 || nameFilters.has(course.name);
-                    const tagMatch = tagFilters.size === 0 || (course.tags && course.tags.some(d => tagFilters.has(d)));
-                    const teacherMatch = teacherFilters.size === 0 || teacherFilters.has(course.teacher);
-                    return nameMatch && tagMatch && teacherMatch;
-                });
-            },
+            // _filterScheduleData, filterDataByTags, filterDataByActiveFilters — moved to FilterEngine.js.html (Phase 1 PR4)
 
             // _forEachCourse, countOccurrences, updateAllOccurrences — moved to DataCollection.js.html (Phase 1 PR3)
 

@@ -25,6 +25,12 @@ const lockManagerSource = readFileSync(
   'utf-8'
 );
 
+// FilterEngine methods moved to separate IIFE module (Phase 1 PR4)
+const filterEngineSource = readFileSync(
+  resolve(import.meta.dirname, '../../FilterEngine.js.html'),
+  'utf-8'
+);
+
 // ─── Helpers (shared pattern from Wave 2) ────────────────────────────────
 
 /**
@@ -107,19 +113,19 @@ const SYNC_METHOD_WIRING = [
     'input\\[type=.checkbox.\\]',
   ]],
   ['clearAdvancedFilters', [
-    'this\\.activeFilters',
-    'this\\.modals\\.populateFilterModal',
-    'this\\.ui\\.renderScheduleTable',
-    'this\\.ui\\.updateAdvancedFilterButtonState',
-    'this\\.ui\\.updateClearAllFiltersButtonVisibility',
+    'App\\.activeFilters',
+    'App\\.modals\\.populateFilterModal',
+    'App\\.ui\\.renderScheduleTable',
+    'App\\.ui\\.updateAdvancedFilterButtonState',
+    'App\\.ui\\.updateClearAllFiltersButtonVisibility',
   ]],
   ['clearAllFilters', [
-    'this\\.activeFilters',
+    'App\\.activeFilters',
     'localStorage\\.removeItem',
-    'this\\.tagFilterTagify',
+    'App\\.tagFilterTagify',
     'removeAllTags',
-    'this\\.modals\\.populateFilterModal',
-    'this\\.ui\\.renderScheduleTable',
+    'App\\.modals\\.populateFilterModal',
+    'App\\.ui\\.renderScheduleTable',
   ]],
   ['_getLocks', [
     'localStorage\\.getItem',
@@ -169,9 +175,10 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
   // ─── 1. Method existence ──────────────────────────────────────────────
 
   describe('all sync methods exist in JavaScript.html or IIFE modules', () => {
-    // Non-lock methods from JavaScript.html
+    // Non-lock, non-filter methods from JavaScript.html
     const jsHtmlMethods = SYNC_METHOD_WIRING.filter(([n]) =>
-      !['_getLocks', '_saveLocks', 'releaseCurrentLock', 'refreshLockHeartbeat'].includes(n)
+      !['_getLocks', '_saveLocks', 'releaseCurrentLock', 'refreshLockHeartbeat',
+       'toggleAllFilterCheckboxes', 'clearAdvancedFilters', 'clearAllFilters'].includes(n)
     );
     it.each(jsHtmlMethods)(
       '%s is declared in JavaScript.html',
@@ -190,6 +197,18 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
       '%s is declared in LockManager.js.html',
       (methodName, _patterns) => {
         const body = extractMethodBody(lockManagerSource, methodName);
+        expect(body).not.toBeNull();
+      }
+    );
+
+    // Filter methods from FilterEngine.js.html (Phase 1 PR4)
+    const filterMethods = SYNC_METHOD_WIRING.filter(([n]) =>
+      ['toggleAllFilterCheckboxes', 'clearAdvancedFilters', 'clearAllFilters'].includes(n)
+    );
+    it.each(filterMethods)(
+      '%s is declared in FilterEngine.js.html',
+      (methodName, _patterns) => {
+        const body = extractMethodBody(filterEngineSource, methodName);
         expect(body).not.toBeNull();
       }
     );
@@ -237,11 +256,12 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
   });
 
   describe('filter methods — DOM state management', () => {
-    const filterMethods = ['toggleAllFilterCheckboxes', 'clearAdvancedFilters', 'clearAllFilters'];
+    const filterMethodNames = ['toggleAllFilterCheckboxes', 'clearAdvancedFilters', 'clearAllFilters'];
 
-    for (const methodName of filterMethods) {
+    for (const methodName of filterMethodNames) {
       const [, patterns] = SYNC_METHOD_WIRING.find(([n]) => n === methodName);
-      const body = extractMethodBody(jsHtmlSource, methodName);
+      // Filter methods now in FilterEngine.js.html
+      const body = extractMethodBody(filterEngineSource, methodName);
 
       describe(methodName, () => {
         it.each(patterns)(
