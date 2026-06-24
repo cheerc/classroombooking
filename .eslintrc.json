@@ -14,7 +14,8 @@
     "createInteractionModule": "readonly",
     "SCRIPT_USER_EMAIL": "readonly",
     "IS_ADMIN": "readonly",
-    "escapeHtml": "readonly"
+    "escapeHtml": "readonly",
+    "App": "writable"
   },
   "rules": {
     "no-unused-vars": "warn",

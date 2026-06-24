@@ -63,20 +63,19 @@ const EXTRACTED_TO_LIB = new Set([
   // stateHelpers.js
   'handleEditClassroom', 'findNextUpcomingClasses', 'saveDataToServer',
   'countOccurrences', 'updateAllOccurrences',
-  // utilityFunctions.js
-  'stringToHashCode', 'hexToRgb', 'getShortUserName', 'formatTime',
-  'formatTimestampForFilename', 'sortClassrooms', 'ensureDataIds',
+  // utilityFunctions.js (remaining in JavaScript.html)
+  'sortClassrooms', 'ensureDataIds',
   'buildCourseColorMap',
   // dataCollectionHelpers.js
   'getAllTags', 'getGlobalAllTags', 'getGlobalAllCourseNames', 'getGlobalAllTeachers',
   // frontendUtils.js
-  'timeToMinutes', 'checkTimeConflict', 'filterDataByTags', 'filterDataByActiveFilters',
+  'checkTimeConflict', 'filterDataByTags', 'filterDataByActiveFilters',
   // interactionHelpers.js (handleDrop → applyDrop)
   'handleDrop',
   // appLifecycleHelpers.js (new — this wave)
   'loadInitialSchedules', 'loadSchedule', 'canManageCurrentScheduleSettings',
   'loadAndApplyPersistedFilters', 'applyFilters', 'clearAdvancedFilters',
-  'clearAllFilters', 'generateUniqueId', 'refreshLockHeartbeat',
+  'clearAllFilters', 'refreshLockHeartbeat',
   'saveSchedulesToLocal',
 ]);
 
@@ -117,6 +116,17 @@ const PRIVATE_HELPERS = new Set([
   '_filterScheduleData',
 ]);
 
+/**
+ * Methods moved to IIFE domain modules (Phase 1 #129).
+ * These still exist on App at runtime but are no longer in JavaScript.html source.
+ * They are tested via their DI copies in tests/lib/.
+ */
+const IIFE_EXTRACTED = new Set([
+  // UtilityFunctions.js.html (PR1)
+  'getShortUserName', 'generateUniqueId', 'stringToHashCode',
+  'timeToMinutes', 'formatTime', 'formatTimestampForFilename', 'hexToRgb',
+]);
+
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('JavaScript.html App method wiring contracts (#116)', () => {
@@ -127,8 +137,8 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
   it('should have expected total App method count', () => {
     // All public methods (excluding underscore-prefixed private helpers)
     const publicMethods = appMethods.filter(m => !m.startsWith('_'));
-    // If this changes, a method was added/removed — update the classification above
-    expect(publicMethods.length).toBe(48);
+    // 48 original - 7 IIFE-extracted = 41 remaining in JavaScript.html
+    expect(publicMethods.length).toBe(41);
   });
 
   it('every public App method should be classified (extracted OR not-extractable)', () => {
@@ -138,13 +148,15 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
     );
     expect(
       unclassified,
-      `Unclassified methods found — add to EXTRACTED_TO_LIB or NOT_EXTRACTABLE: ${unclassified.join(', ')}`
+      `Unclassified methods found — add to EXTRACTED_TO_LIB, NOT_EXTRACTABLE, or IIFE_EXTRACTED: ${unclassified.join(', ')}`
     ).toEqual([]);
   });
 
-  it('no method should be in both EXTRACTED and NOT_EXTRACTABLE', () => {
-    const overlap = [...EXTRACTED_TO_LIB].filter(m => NOT_EXTRACTABLE.has(m));
-    expect(overlap).toEqual([]);
+  it('no method should be in multiple classifications', () => {
+    const allSets = [EXTRACTED_TO_LIB, NOT_EXTRACTABLE, IIFE_EXTRACTED];
+    const allItems = [...EXTRACTED_TO_LIB, ...NOT_EXTRACTABLE, ...IIFE_EXTRACTED];
+    const duplicates = allItems.filter((item, idx) => allItems.indexOf(item) !== idx);
+    expect(duplicates).toEqual([]);
   });
 
   it('private helpers should be accounted for', () => {
@@ -180,8 +192,11 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
     it('should have good extraction ratio', () => {
       const publicMethods = appMethods.filter(m => !m.startsWith('_'));
       const extractedCount = publicMethods.filter(m => EXTRACTED_TO_LIB.has(m)).length;
-      const ratio = extractedCount / publicMethods.length;
-      // Target: at least 60% of public methods should be extracted
+      const iifeCount = IIFE_EXTRACTED.size;
+      const totalExtracted = extractedCount + iifeCount;
+      const totalPublicIncludingIife = publicMethods.length + iifeCount;
+      const ratio = totalExtracted / totalPublicIncludingIife;
+      // Target: at least 60% of ALL public methods (including IIFE-extracted) should be extracted
       expect(ratio).toBeGreaterThanOrEqual(0.6);
     });
   });
