@@ -38,9 +38,9 @@ function _findScheduleRowInfo(scheduleId, dataSheet) {
 /**
  * Checks if the current user has permission to manage a schedule.
  * Throws an error if permission is denied.
- * @param {string} createdBy The email of the user who created the schedule.
+ * Ref: #152 — No per-user check needed; all logged-in users can edit.
  */
-function _checkPermission(createdBy) {
+function _checkPermission() {
   const currentUser = Session.getActiveUser().getEmail();
   // Ref: #62 — Guard against empty email (e.g. time-driven triggers return '')
   if (!currentUser) throw new Error('未登入，無法執行此操作');
@@ -205,9 +205,8 @@ function saveData(payload) {
       throw new Error(`在索引中找不到 ID 為 "${scheduleId}" 的課表。`);
     }
 
-    // Ref: #5 — Enforce admin/creator permission before modifying schedule data
-    const createdBy = rowValues[3];
-    _checkPermission(createdBy);
+    // Ref: #5 — Enforce login check before modifying schedule data
+    _checkPermission();
     
     const serverLastModified = new Date(rowValues[2]).toISOString();
     if (serverLastModified !== lastModified) {
@@ -361,13 +360,12 @@ function updateScheduleMetadata(scheduleInfo) { // Ref: #67.5 — Renamed from r
     const dataSheet = getOrCreateSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
-    const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(id, dataSheet);
+    const { index: rowIndex } = _findScheduleRowInfo(id, dataSheet);
     if (rowIndex === -1) {
       throw new Error(`在索引中找不到 ID 為 \"${id}\" 的課表。`);
     }
 
-    const createdBy = rowValues[3];
-    _checkPermission(createdBy);
+    _checkPermission();
 
     // Update name if provided
     if (newName) {
@@ -408,7 +406,7 @@ function deleteSchedule(scheduleInfo) {
     const dataSheet = getOrCreateSheet(SHEET_DATA);
     const newMetaTimestamp = checkMetadata(dataSheet, metadataTimestamp);
 
-    const { index: rowIndex, values: rowValues } = _findScheduleRowInfo(id, dataSheet);
+    const { index: rowIndex } = _findScheduleRowInfo(id, dataSheet);
     if (rowIndex === -1) {
       // Ref: #67.6 — Intentional idempotent design: if schedule is already gone from index,
       // return success rather than error. This handles race conditions and retries gracefully.
@@ -416,8 +414,7 @@ function deleteSchedule(scheduleInfo) {
       return { success: true, newMetadataTimestamp: newMetaTimestamp };
     }
 
-    const createdBy = rowValues[3];
-    _checkPermission(createdBy);
+    _checkPermission();
 
     const ss = _getSs();
     const scheduleSheet = ss.getSheetByName(id);
@@ -458,8 +455,7 @@ function copySchedule(copyInfo) {
       throw new Error(`在索引中找不到來源課表 (ID: ${sourceId})。`);
     }
     // Ref: #41 — Enforce permission check before copying (same pattern as rename/delete)
-    const createdBy = sourceRowValues[3];
-    _checkPermission(createdBy);
+    _checkPermission();
     const sourceIsDraft = sourceRowValues[4] === true;
 
     const ss = _getSs();

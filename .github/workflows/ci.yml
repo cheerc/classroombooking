@@ -24,8 +24,8 @@ jobs:
         run: bash scripts/check-tailwind.sh
       - name: t7 PHP syntax check
         run: find classroom_viewer -name '*.php' ! -path '*/vendor/*' -exec php -l {} \;
-      - name: t8 Vitest
-        run: npm test
+      - name: t8 Vitest + coverage gate
+        run: npx vitest run --coverage
       - name: Install pcov for PHP coverage
         run: |
           sudo pecl install pcov
