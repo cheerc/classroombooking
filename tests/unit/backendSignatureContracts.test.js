@@ -58,7 +58,7 @@ const EXPECTED_SIGNATURES = [
   ['_getSs', 0],
   ['getConfig', 1],
   ['_findScheduleRowInfo', 2],
-  ['_checkPermission', 1],
+  ['_checkPermission', 0],
   ['getSheet', 1],
   ['getOrCreateSheet', 1],
   ['doGet', 0],
