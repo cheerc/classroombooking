@@ -23,6 +23,8 @@ const jsHtmlSource = loadSource(import.meta.dirname, '../../JavaScript.html');
 const dataIOSource = loadSource(import.meta.dirname, '../../DataIO.js.html');
 const interactionSource = loadSource(import.meta.dirname, '../../Interaction.js.html');
 const uiSource = loadSource(import.meta.dirname, '../../UI.js.html');
+// ScheduleManager methods moved to IIFE module (Phase 1 PR6)
+const scheduleManagerSource = loadSource(import.meta.dirname, '../../ScheduleManager.js.html');
 
 // ─── Tests ───────────────────────────────────────────────────────────────
 
@@ -120,7 +122,8 @@ describe('Lifecycle Regression — init → load → render → interact → sav
   });
 
   describe('Phase B.1: loadInitialSchedules — routing logic', () => {
-    const loadInitBody = extractMethodBody(jsHtmlSource, 'loadInitialSchedules');
+    // Method now in ScheduleManager.js.html
+    const loadInitBody = extractMethodBody(scheduleManagerSource, 'loadInitialSchedules');
 
     it('loadInitialSchedules method exists', () => {
       expect(loadInitBody).not.toBeNull();
@@ -131,15 +134,15 @@ describe('Lifecycle Regression — init → load → render → interact → sav
     });
 
     it('calls loadSchedule for valid stored ID', () => {
-      expect(containsCall(loadInitBody, 'this\\.loadSchedule')).toBe(true);
+      expect(containsCall(loadInitBody, 'App\\.loadSchedule')).toBe(true);
     });
 
     it('calls showFirstTimeScheduleSelector when no valid stored ID', () => {
-      expect(containsCall(loadInitBody, 'this\\.showFirstTimeScheduleSelector')).toBe(true);
+      expect(containsCall(loadInitBody, 'App\\.showFirstTimeScheduleSelector')).toBe(true);
     });
 
     it('updates UI via updateScheduleSelect', () => {
-      expect(containsCall(loadInitBody, 'this\\.ui\\.updateScheduleSelect')).toBe(true);
+      expect(containsCall(loadInitBody, 'App\\.ui\\.updateScheduleSelect')).toBe(true);
     });
   });
 
@@ -148,17 +151,18 @@ describe('Lifecycle Regression — init → load → render → interact → sav
   // ═══════════════════════════════════════════════════════════════════════
 
   describe('Phase C: render — loadSchedule triggers rendering', () => {
-    const loadScheduleBody = extractMethodBody(jsHtmlSource, 'loadSchedule');
+    // Method now in ScheduleManager.js.html
+    const loadScheduleBody = extractMethodBody(scheduleManagerSource, 'loadSchedule');
 
     it('loadSchedule method exists', () => {
       expect(loadScheduleBody).not.toBeNull();
     });
 
     const renderCalls = [
-      'this\\.ui\\.renderScheduleTable',
-      'this\\.ui\\.updateHeaderUIState',
-      'this\\.ui\\.updateClassroomList',
-      'this\\.ui\\.initializeTagFilter',
+      'App\\.ui\\.renderScheduleTable',
+      'App\\.ui\\.updateHeaderUIState',
+      'App\\.ui\\.updateClassroomList',
+      'App\\.ui\\.initializeTagFilter',
     ];
 
     it.each(renderCalls)(
@@ -169,17 +173,17 @@ describe('Lifecycle Regression — init → load → render → interact → sav
     );
 
     it('loadSchedule acquires lock on new schedule', () => {
-      expect(containsCall(loadScheduleBody, 'this\\.acquireLock')).toBe(true);
+      expect(containsCall(loadScheduleBody, 'App\\.acquireLock')).toBe(true);
     });
 
     it('loadSchedule releases lock on previous schedule', () => {
-      expect(containsCall(loadScheduleBody, 'this\\.releaseLock')).toBe(true);
+      expect(containsCall(loadScheduleBody, 'App\\.releaseLock')).toBe(true);
     });
 
     it('loadSchedule unpacks schedule data to working state', () => {
-      expect(containsCall(loadScheduleBody, 'this\\.classrooms\\s*=')).toBe(true);
-      expect(containsCall(loadScheduleBody, 'this\\.scheduleData\\s*=')).toBe(true);
-      expect(containsCall(loadScheduleBody, 'this\\.activeScheduleId\\s*=')).toBe(true);
+      expect(containsCall(loadScheduleBody, 'App\\.classrooms\\s*=')).toBe(true);
+      expect(containsCall(loadScheduleBody, 'App\\.scheduleData\\s*=')).toBe(true);
+      expect(containsCall(loadScheduleBody, 'App\\.activeScheduleId\\s*=')).toBe(true);
     });
 
     it('loadSchedule persists selection to localStorage', () => {
@@ -187,11 +191,11 @@ describe('Lifecycle Regression — init → load → render → interact → sav
     });
 
     it('loadSchedule resets history module', () => {
-      expect(containsCall(loadScheduleBody, 'this\\.historyModule\\.resetHistory')).toBe(true);
+      expect(containsCall(loadScheduleBody, 'App\\.historyModule\\.resetHistory')).toBe(true);
     });
 
     it('loadSchedule calls buildCourseColorMap', () => {
-      expect(containsCall(loadScheduleBody, 'this\\.buildCourseColorMap')).toBe(true);
+      expect(containsCall(loadScheduleBody, 'App\\.buildCourseColorMap')).toBe(true);
     });
   });
 
@@ -324,8 +328,8 @@ describe('Lifecycle Regression — init → load → render → interact → sav
       const loadBody = extractMethodBody(dataIOSource, 'loadDataFromServer');
       expect(containsCall(loadBody, 'App\\.loadInitialSchedules')).toBe(true);
 
-      const loadInitBody = extractMethodBody(jsHtmlSource, 'loadInitialSchedules');
-      expect(containsCall(loadInitBody, 'this\\.loadSchedule')).toBe(true);
+      const loadInitBody = extractMethodBody(scheduleManagerSource, 'loadInitialSchedules');
+      expect(containsCall(loadInitBody, 'App\\.loadSchedule')).toBe(true);
     });
 
     it('render → interact: init calls addEventListeners before loadDataFromServer', () => {

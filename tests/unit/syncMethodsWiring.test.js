@@ -31,6 +31,12 @@ const filterEngineSource = readFileSync(
   'utf-8'
 );
 
+// ScheduleManager methods moved to separate IIFE module (Phase 1 PR6)
+const scheduleManagerSource = readFileSync(
+  resolve(import.meta.dirname, '../../ScheduleManager.js.html'),
+  'utf-8'
+);
+
 // ─── Helpers (shared pattern from Wave 2) ────────────────────────────────
 
 /**
@@ -100,12 +106,12 @@ const SYNC_METHOD_WIRING = [
     'AppElements\\.firstTimeScheduleSelect',
     'AppElements\\.firstTimeScheduleConfirmBtn',
     'document\\.createElement',
-    'this\\.loadSchedule',
+    'App\\.loadSchedule',
   ]],
   ['saveSchedulesToLocal', [
     'localStorage\\.setItem',
     'JSON\\.stringify',
-    'this\\.schedules',
+    'App\\.schedules',
   ]],
   ['toggleAllFilterCheckboxes', [
     'AppElements\\.filterCourseList',
@@ -175,10 +181,11 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
   // ─── 1. Method existence ──────────────────────────────────────────────
 
   describe('all sync methods exist in JavaScript.html or IIFE modules', () => {
-    // Non-lock, non-filter methods from JavaScript.html
+    // Non-lock, non-filter, non-schedule methods from JavaScript.html
     const jsHtmlMethods = SYNC_METHOD_WIRING.filter(([n]) =>
       !['_getLocks', '_saveLocks', 'releaseCurrentLock', 'refreshLockHeartbeat',
-       'toggleAllFilterCheckboxes', 'clearAdvancedFilters', 'clearAllFilters'].includes(n)
+       'toggleAllFilterCheckboxes', 'clearAdvancedFilters', 'clearAllFilters',
+       'showFirstTimeScheduleSelector', 'saveSchedulesToLocal'].includes(n)
     );
     it.each(jsHtmlMethods)(
       '%s is declared in JavaScript.html',
@@ -212,6 +219,18 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
         expect(body).not.toBeNull();
       }
     );
+
+    // Schedule methods from ScheduleManager.js.html (Phase 1 PR6)
+    const scheduleMethods = SYNC_METHOD_WIRING.filter(([n]) =>
+      ['showFirstTimeScheduleSelector', 'saveSchedulesToLocal'].includes(n)
+    );
+    it.each(scheduleMethods)(
+      '%s is declared in ScheduleManager.js.html',
+      (methodName, _patterns) => {
+        const body = extractMethodBody(scheduleManagerSource, methodName);
+        expect(body).not.toBeNull();
+      }
+    );
   });
 
   // ─── 2. Wiring correctness ────────────────────────────────────────────
@@ -231,7 +250,8 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
 
   describe('showFirstTimeScheduleSelector — DOM modal wiring', () => {
     const [, patterns] = SYNC_METHOD_WIRING.find(([n]) => n === 'showFirstTimeScheduleSelector');
-    const body = extractMethodBody(jsHtmlSource, 'showFirstTimeScheduleSelector');
+    // Method now in ScheduleManager.js.html
+    const body = extractMethodBody(scheduleManagerSource, 'showFirstTimeScheduleSelector');
 
     it.each(patterns)(
       'showFirstTimeScheduleSelector references %s',
@@ -244,7 +264,8 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
 
   describe('saveSchedulesToLocal — localStorage persistence', () => {
     const [, patterns] = SYNC_METHOD_WIRING.find(([n]) => n === 'saveSchedulesToLocal');
-    const body = extractMethodBody(jsHtmlSource, 'saveSchedulesToLocal');
+    // Method now in ScheduleManager.js.html
+    const body = extractMethodBody(scheduleManagerSource, 'saveSchedulesToLocal');
 
     it.each(patterns)(
       'saveSchedulesToLocal uses %s',
@@ -309,7 +330,7 @@ describe('Sync App Methods — Wiring Smoke Tests (Static Analysis)', () => {
     });
 
     it('saveSchedulesToLocal is a one-liner localStorage.setItem', () => {
-      const body = extractMethodBody(jsHtmlSource, 'saveSchedulesToLocal');
+      const body = extractMethodBody(scheduleManagerSource, 'saveSchedulesToLocal');
       expect(body).not.toBeNull();
       // Should be a simple wrapper — body should be short
       const lines = body.split('\n').filter(l => l.trim().length > 0);

@@ -60,13 +60,9 @@ const privateMethods = extractPrivateMethods(jsHtmlSource);
  * These are tested via their extracted copies.
  */
 const EXTRACTED_TO_LIB = new Set([
-  // stateHelpers.js
-  'handleEditClassroom',
-  // interactionHelpers.js (handleDrop → applyDrop)
-  'handleDrop',
-  // appLifecycleHelpers.js (new — this wave)
-  'loadInitialSchedules', 'loadSchedule', 'canManageCurrentScheduleSettings',
-  'saveSchedulesToLocal',
+  // All methods previously here have been IIFE-extracted in Phase 1 PRs.
+  // DI tests in tests/lib/ still reference them but classifications moved to IIFE_EXTRACTED.
+  // Kept empty — Phase 1 complete, no methods remain in JavaScript.html with DI copies.
 ]);
 
 /**
@@ -76,12 +72,7 @@ const EXTRACTED_TO_LIB = new Set([
  */
 const NOT_EXTRACTABLE = new Set([
   'init',                         // DOM setup + timers + module init
-  'showFirstTimeScheduleSelector', // DOM manipulation (modal, select options, event handlers)
-  'handleAddSchedule',            // ServerApi + DOM + state orchestration
-  'handleScheduleListClick',      // DOM event delegation + ServerApi + modals
-  'handleScheduleSelectChange',   // DOM event + modal confirm + state (aggregateScheduleData already extracted)
   'applyTagFilters',              // Tagify instance + modal confirm + DOM
-  'isCurrentUserAdmin',           // Global var IS_ADMIN (trivial, 1 line)
   'printScheduleToPdf',           // jsPDF + DOM + ServerApi (massively coupled)
 ]);
 
@@ -121,6 +112,12 @@ const IIFE_EXTRACTED = new Set([
   // DataIO.js.html (PR5)
   'loadVersions', 'handleLoadVersion', 'saveDataToLocal',
   'loadDataFromServer', 'saveDataToServer',
+  // ScheduleManager.js.html (PR6)
+  'showFirstTimeScheduleSelector', 'handleEditClassroom',
+  'loadInitialSchedules', 'loadSchedule', 'saveSchedulesToLocal',
+  'handleAddSchedule', 'handleScheduleListClick', 'handleScheduleSelectChange',
+  'isCurrentUserAdmin', 'canManageCurrentScheduleSettings',
+  'handleDrop',
 ]);
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -133,8 +130,8 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
   it('should have expected total App method count', () => {
     // All public methods (excluding underscore-prefixed private helpers)
     const publicMethods = appMethods.filter(m => !m.startsWith('_'));
-    // 48 original - 7 PR1 - 4 PR2 public - 11 PR3 public - 7 PR4 public - 5 PR5 = 14 remaining in JavaScript.html
-    expect(publicMethods.length).toBe(14);
+    // 48 original - 7 PR1 - 4 PR2 public - 11 PR3 public - 7 PR4 public - 5 PR5 - 11 PR6 = 3 remaining in JavaScript.html
+    expect(publicMethods.length).toBe(3);
   });
 
   it('every public App method should be classified (extracted OR not-extractable)', () => {
