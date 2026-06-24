@@ -44,10 +44,7 @@ function _checkPermission(createdBy) {
   const currentUser = Session.getActiveUser().getEmail();
   // Ref: #62 — Guard against empty email (e.g. time-driven triggers return '')
   if (!currentUser) throw new Error('未登入，無法執行此操作');
-  const isAdmin = currentUser.toLowerCase() === (getConfig('ADMIN_EMAIL') || '').toLowerCase();
-  if (!isAdmin && currentUser.toLowerCase() !== createdBy.toLowerCase()) {
-    throw new Error("權限不足。只有管理員或建立者才能執行此操作。");
-  }
+  // Ref: #152 — All logged-in users can edit/delete/copy/rename
 }
 
 /**

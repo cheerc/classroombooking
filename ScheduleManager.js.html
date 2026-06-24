@@ -345,17 +345,11 @@
   };
 
   App.canManageCurrentScheduleSettings = function() {
-    if (App.isCurrentUserAdmin()) {
-      return true;
-    }
+    // Ref: #152 — All logged-in users can manage schedules
     if (App.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
-      return false; // Cannot manage settings in "All Schedules" view
+      return false; // Cannot manage in "All Schedules" view
     }
-    const schedule = App.schedules[App.activeScheduleId];
-    if (!schedule || !schedule.createdBy) {
-      return false; // No schedule or creator info
-    }
-    return App.currentUserEmail === App.getShortUserName(schedule.createdBy);
+    return true;
   };
 
   // --- Drag and drop ---

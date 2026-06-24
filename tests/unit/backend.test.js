@@ -179,12 +179,13 @@ describe('_checkPermission', () => {
     expect(() => gas._checkPermission('creator@school.com')).not.toThrow();
   });
 
-  it('rejects unauthorized user', () => {
+  // Ref: #152 — All logged-in users can now edit/delete/copy/rename
+  it('allows any logged-in user (not just admin/creator)', () => {
     const gas = createGasEnv({
       userEmail: 'hacker@school.com',
       scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
     });
-    expect(() => gas._checkPermission('creator@school.com')).toThrow('權限不足');
+    expect(() => gas._checkPermission('creator@school.com')).not.toThrow();
   });
 
   it('case-insensitive email comparison', () => {
@@ -208,7 +209,8 @@ describe('_checkPermission', () => {
 // ─── copySchedule (#41 permission check) ─────────────────────────────────
 
 describe('copySchedule', () => {
-  it('rejects copy by unauthorized user (Ref: #41)', () => {
+  // Ref: #152 — All logged-in users can copy
+  it('allows copy by any logged-in user (Ref: #152)', () => {
     const dataSheet = createMockSheet('Data', {
       A1: 'ID', B1: 'Name', C1: 'Modified', D1: 'CreatedBy',
       F1: '2024-01-01T00:00:00.000Z',
@@ -229,8 +231,7 @@ describe('copySchedule', () => {
       metadataTimestamp: '2024-01-01T00:00:00.000Z',
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('權限不足');
+    expect(result.success).toBe(true);
   });
 
   it('allows copy by owner', () => {
@@ -465,15 +466,15 @@ describe('saveData', () => {
     expect(result.error).toContain('找不到');
   });
 
-  it('rejects unauthorized user', () => {
+  // Ref: #152 — All logged-in users can save
+  it('allows save by any logged-in user (Ref: #152)', () => {
     const gas = createSaveEnv({ userEmail: 'hacker@test.com' });
     const result = gas.saveData({
       scheduleId: 'schedule_1',
       scheduleData: { scheduleData: {}, classrooms: [], tags: [] },
       lastModified: '2024-06-15T10:30:00.000Z',
     });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('權限不足');
+    expect(result.success).toBe(true);
   });
 
   it('returns error on invalid payload (missing fields)', () => {
@@ -521,14 +522,14 @@ describe('deleteSchedule', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects unauthorized user', () => {
+  // Ref: #152 — All logged-in users can delete
+  it('allows delete by any logged-in user (Ref: #152)', () => {
     const gas = createDeleteEnv({ userEmail: 'hacker@test.com' });
     const result = gas.deleteSchedule({
       id: 'schedule_1',
       metadataTimestamp: '2024-06-15T10:30:00.000Z',
     });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('權限不足');
+    expect(result.success).toBe(true);
   });
 });
 
@@ -609,15 +610,15 @@ describe('updateScheduleMetadata', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects unauthorized user', () => {
+  // Ref: #152 — All logged-in users can rename
+  it('allows rename by any logged-in user (Ref: #152)', () => {
     const gas = createRenameEnv({ userEmail: 'hacker@test.com' });
     const result = gas.updateScheduleMetadata({
       id: 'schedule_1',
-      newName: 'Hacked',
+      newName: 'Renamed',
       metadataTimestamp: '2024-06-15T10:30:00.000Z',
     });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('權限不足');
+    expect(result.success).toBe(true);
   });
 });
 
