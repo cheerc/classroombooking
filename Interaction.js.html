@@ -528,6 +528,7 @@ function createInteractionModule(app) {
                         app.ui.showNotification(`成功複製 ${successCount} 堂課程`);
                         // This will save the original course (applying edits) and close the form
                         closeHandler(true);
+                        app.ui.renderScheduleTable();  // Fix #154: re-render to show copied courses
                     }
                 }
             });
