@@ -4,26 +4,26 @@
  *
  * Ref: #107 — P0 Coverage Sprint Wave 1 (signature contracts)
  *
- * Strategy: Reuses the createGasEnv() sandbox pattern from backend.test.js
- * to wrap 程式碼.js and expose all functions. Validates:
+ * Strategy: Installs GAS mocks as globals, then require()s 程式碼.js directly
+ * so v8 can instrument it for coverage. Validates:
  *   1. All 17 functions exist and are typeof 'function'
  *   2. Each function's .length matches its declared parameter count
  *   3. The 9 frontend-called functions (via ServerApi.call) exist in env
+ *
+ * Ref: #107 — Migrated from new Function() sandbox to direct require().
  */
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
-import { createMockSheet, createMockSpreadsheetApp, createMockSession,
+import { describe, it, expect, vi } from 'vitest';
+import { createRequire } from 'module';
+import { createMockSpreadsheetApp, createMockSession,
          createMockLockService, createMockPropertiesService, createMockLogger,
          createMockHtmlService, createMockDriveApp } from '../mocks/gasMocks.js';
 
-const gasSource = readFileSync(
-  resolve(import.meta.dirname, '../../程式碼.js'),
-  'utf-8'
-);
+const _require = createRequire(import.meta.url);
+const backendPath = _require.resolve('../../程式碼.js');
 
 /**
- * Create a sandboxed GAS environment — mirrors backend.test.js createGasEnv.
+ * Create a GAS environment — mirrors backend.test.js createGasEnv.
+ * Ref: #107 — direct require() for v8 coverage.
  */
 function createGasEnv(opts = {}) {
   const sheets = opts.sheets || {};
@@ -35,24 +35,17 @@ function createGasEnv(opts = {}) {
   const HtmlService = createMockHtmlService();
   const DriveApp = createMockDriveApp(opts.driveFiles || {});
 
-  const wrappedSource = `
-    return (function(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService, DriveApp) {
-      ${gasSource}
-      return {
-        getConfig, _findScheduleRowInfo, _checkPermission, _getSs, getSheet, getOrCreateSheet,
-        doGet, getData, saveData, checkMetadata, addSchedule,
-        updateScheduleMetadata, deleteSchedule, copySchedule,
-        getVersions, getVersionData, getFontBase64FromDrive
-      };
-    })(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService, DriveApp);
-  `;
+  vi.stubGlobal('SpreadsheetApp', SpreadsheetApp);
+  vi.stubGlobal('Session', Session);
+  vi.stubGlobal('LockService', LockService);
+  vi.stubGlobal('PropertiesService', PropertiesService);
+  vi.stubGlobal('Logger', Logger);
+  vi.stubGlobal('HtmlService', HtmlService);
+  vi.stubGlobal('DriveApp', DriveApp);
 
-  const factory = new Function(
-    'SpreadsheetApp', 'Session', 'LockService', 'PropertiesService', 'Logger', 'HtmlService', 'DriveApp',
-    wrappedSource
-  );
+  delete _require.cache[backendPath];
 
-  return factory(SpreadsheetApp, Session, LockService, PropertiesService, Logger, HtmlService, DriveApp);
+  return _require(backendPath);
 }
 
 // ─── All 17 top-level functions with expected parameter counts ────────────
@@ -116,8 +109,10 @@ describe('程式碼.js Signature Contracts', () => {
       }
     );
 
-    it('env exposes exactly 17 functions', () => {
-      const fnCount = Object.keys(env).filter(k => typeof env[k] === 'function').length;
+    it('env exposes exactly 17 production functions (excluding test helpers)', () => {
+      const fnCount = Object.keys(env)
+        .filter(k => typeof env[k] === 'function' && !k.startsWith('_reset'))
+        .length;
       expect(fnCount).toBe(17);
     });
   });

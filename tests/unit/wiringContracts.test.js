@@ -40,41 +40,38 @@ function extractProductionFunctions(source) {
 
 const productionFunctions = extractProductionFunctions(productionSource);
 
-// ─── Parse backend.test.js factory return ──────────────────────────────────
+// ─── Verify 程式碼.js exports via direct require ─────────────────────────────
+// Ref: #107 — backend.test.js no longer uses factory return block; instead
+// 程式碼.js exports its functions via conditional module.exports. We verify
+// the wiring by requiring the module directly.
 
-const backendTestSource = readFileSync(
-  resolve(import.meta.dirname, './backend.test.js'),
-  'utf-8'
+import { createRequire } from 'module';
+import { createMockSpreadsheetApp, createMockSession,
+         createMockLockService, createMockPropertiesService, createMockLogger,
+         createMockHtmlService, createMockDriveApp } from '../mocks/gasMocks.js';
+
+const _require = createRequire(import.meta.url);
+const backendPath = _require.resolve('../../程式碼.js');
+
+// Install minimal GAS mocks so require() succeeds (程式碼.js accesses no globals
+// at module-load time, but the conditional export block reads function refs)
+globalThis.SpreadsheetApp = createMockSpreadsheetApp({});
+globalThis.Session = createMockSession('test@example.com');
+globalThis.LockService = createMockLockService();
+globalThis.PropertiesService = createMockPropertiesService({});
+globalThis.Logger = createMockLogger();
+globalThis.HtmlService = createMockHtmlService();
+globalThis.DriveApp = createMockDriveApp({});
+
+delete _require.cache[backendPath];
+const backendExports = _require(backendPath);
+
+// Extract function names from the module exports (excluding test-only helpers)
+const factoryReturnNames = new Set(
+  Object.keys(backendExports).filter(k =>
+    typeof backendExports[k] === 'function' && !k.startsWith('_reset')
+  )
 );
-
-/**
- * Extract function names from the factory return block in backend.test.js.
- * The factory pattern returns an object literal: `return { fn1, fn2, ... };`
- */
-function extractFactoryReturnNames(source) {
-  // Find the return { ... } block inside the wrapped source template literal
-  const returnBlockRegex = /return\s*\{[\s\S]*?\};\s*\}\)\(SpreadsheetApp/;
-  const blockMatch = source.match(returnBlockRegex);
-  if (!blockMatch) return new Set();
-
-  const block = blockMatch[0];
-  // Extract identifiers (handles multiline, trailing commas)
-  const names = new Set();
-  const idRegex = /\b(\w+)\b/g;
-  let m;
-  // Skip the 'return' keyword and the closing parens
-  const inner = block.replace(/^return\s*\{/, '').replace(/\};\s*\}\)\(SpreadsheetApp$/, '');
-  while ((m = idRegex.exec(inner)) !== null) {
-    const name = m[1];
-    // Filter out non-function tokens
-    if (name !== 'return' && name !== 'SpreadsheetApp') {
-      names.add(name);
-    }
-  }
-  return names;
-}
-
-const factoryReturnNames = extractFactoryReturnNames(backendTestSource);
 
 // ─── Parse tests/lib/ exported functions ───────────────────────────────────
 
