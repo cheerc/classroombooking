@@ -31,7 +31,7 @@ function createInteractionModule(app) {
         els.undoBtn.addEventListener('click', () => app.historyModule.undo());
         els.redoBtn.addEventListener('click', () => app.historyModule.redo());
         
-        const adminOnlyMessage = '此功能需要管理員或課表建立者權限。<br>若有需求，請聯繫系統管理員。';
+        const adminOnlyMessage = '在「所有課表」檢視模式下無法使用此功能。<br>請先切換到特定課表再進行操作。';
 
         const setupAdminModal = (triggerBtn, modal, closeBtn, onOpen) => {
             app.modals.setupModalListeners(triggerBtn, modal, closeBtn, () => {

@@ -309,24 +309,26 @@ describe('_checkPermission — edge cases (#138)', () => {
   });
 
   // --- Creator access ---
-  it('allows creator to manage their own schedule', () => {
+  // Ref: #152 — All logged-in users can manage, not just creator
+  it('allows any logged-in user, not just creator', () => {
     const gas = createGasEnv({
-      userEmail: 'teacher@school.com',
+      userEmail: 'anyone@school.com',
       scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
     });
-    expect(() => gas._checkPermission('teacher@school.com')).not.toThrow();
+    expect(() => gas._checkPermission('creator@school.com')).not.toThrow();
   });
 
-  // --- Unauthorized access ---
-  it('rejects user who is neither admin nor creator', () => {
+  // --- Previously unauthorized access now allowed ---
+  // Ref: #152 — Permission model simplified
+  it('allows user who is neither admin nor creator (#152)', () => {
     const gas = createGasEnv({
       userEmail: 'other@school.com',
       scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
     });
-    expect(() => gas._checkPermission('creator@school.com')).toThrow('權限不足');
+    expect(() => gas._checkPermission('creator@school.com')).not.toThrow();
   });
 
-  // --- Case sensitivity: admin email ---
+  // --- Case sensitivity: admin email (still valid — admin passes) ---
   it('admin check is case-insensitive (upper vs lower)', () => {
     const gas = createGasEnv({
       userEmail: 'ADMIN@SCHOOL.COM',
@@ -343,8 +345,8 @@ describe('_checkPermission — edge cases (#138)', () => {
     expect(() => gas._checkPermission('creator@school.com')).not.toThrow();
   });
 
-  // --- Case sensitivity: creator email ---
-  it('creator check is case-insensitive', () => {
+  // --- Case sensitivity: creator email (still valid — any logged-in user passes) ---
+  it('any logged-in user passes regardless of email case', () => {
     const gas = createGasEnv({
       userEmail: 'Teacher@School.COM',
       scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
@@ -352,15 +354,7 @@ describe('_checkPermission — edge cases (#138)', () => {
     expect(() => gas._checkPermission('teacher@school.com')).not.toThrow();
   });
 
-  it('creator check is case-insensitive (reversed case)', () => {
-    const gas = createGasEnv({
-      userEmail: 'teacher@school.com',
-      scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
-    });
-    expect(() => gas._checkPermission('TEACHER@SCHOOL.COM')).not.toThrow();
-  });
-
-  // --- Empty email guard (Ref: #62) ---
+  // --- Empty email guard (Ref: #62) — still enforced ---
   it('throws "未登入" when current user email is empty', () => {
     const gas = createGasEnv({
       userEmail: '',
@@ -369,86 +363,38 @@ describe('_checkPermission — edge cases (#138)', () => {
     expect(() => gas._checkPermission('creator@school.com')).toThrow('未登入');
   });
 
-  // --- Missing ADMIN_EMAIL config ---
-  it('non-admin user passes when ADMIN_EMAIL config is missing', () => {
-    // getConfig('ADMIN_EMAIL') returns null/undefined
-    // (null || '').toLowerCase() = '' which won't match anyone
-    // So only creator match matters
+  // --- Missing ADMIN_EMAIL config — all logged-in users still pass (#152) ---
+  it('allows any logged-in user when ADMIN_EMAIL config is missing', () => {
     const gas = createGasEnv({
-      userEmail: 'creator@school.com',
+      userEmail: 'anyone@school.com',
       scriptProps: {},  // no ADMIN_EMAIL
     });
     expect(() => gas._checkPermission('creator@school.com')).not.toThrow();
   });
 
-  it('rejects non-creator when ADMIN_EMAIL config is missing', () => {
-    const gas = createGasEnv({
-      userEmail: 'other@school.com',
-      scriptProps: {},  // no ADMIN_EMAIL
-    });
-    expect(() => gas._checkPermission('creator@school.com')).toThrow('權限不足');
-  });
-
-  it('no one is admin when ADMIN_EMAIL config is missing', () => {
-    // Even if user's email is something, without config it can't match
-    const gas = createGasEnv({
-      userEmail: 'admin@school.com',
-      scriptProps: {},  // no ADMIN_EMAIL set
-    });
-    // admin@school.com is NOT admin because config is empty
-    // But admin@school.com !== creator@school.com → reject
-    expect(() => gas._checkPermission('creator@school.com')).toThrow('權限不足');
-  });
-
-  // --- ADMIN_EMAIL config is empty string ---
-  it('empty ADMIN_EMAIL config means no one is admin', () => {
-    const gas = createGasEnv({
-      userEmail: 'user@school.com',
-      scriptProps: { ADMIN_EMAIL: '' },
-    });
-    // ''.toLowerCase() = '' — user@school.com !== '' so not admin
-    // user@school.com !== creator@school.com → reject
-    expect(() => gas._checkPermission('creator@school.com')).toThrow('權限不足');
-  });
-
-  // --- createdBy is null/undefined ---
-  it('throws when createdBy is null (null.toLowerCase throws)', () => {
+  // --- createdBy is null/undefined — no longer throws (#152, createdBy not accessed) ---
+  it('does not throw when createdBy is null (#152 — createdBy unused)', () => {
     const gas = createGasEnv({
       userEmail: 'user@school.com',
       scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
     });
-    // createdBy.toLowerCase() will throw TypeError on null
-    expect(() => gas._checkPermission(null)).toThrow();
-  });
-
-  it('throws when createdBy is undefined', () => {
-    const gas = createGasEnv({
-      userEmail: 'user@school.com',
-      scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
-    });
-    expect(() => gas._checkPermission(undefined)).toThrow();
-  });
-
-  // --- Admin with null createdBy should still pass (admin bypass) ---
-  it('admin can pass even with null createdBy (admin check comes first)', () => {
-    const gas = createGasEnv({
-      userEmail: 'admin@school.com',
-      scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
-    });
-    // isAdmin=true → short-circuits before createdBy.toLowerCase()
-    // Wait: the code does `!isAdmin && currentUser.toLowerCase() !== createdBy.toLowerCase()`
-    // isAdmin=true → !isAdmin=false → AND short-circuits → no throw
     expect(() => gas._checkPermission(null)).not.toThrow();
   });
 
-  // --- Whitespace in emails ---
-  it('does not trim whitespace in emails (documents behavior)', () => {
+  it('does not throw when createdBy is undefined (#152 — createdBy unused)', () => {
+    const gas = createGasEnv({
+      userEmail: 'user@school.com',
+      scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
+    });
+    expect(() => gas._checkPermission(undefined)).not.toThrow();
+  });
+
+  // --- Whitespace in emails — still passes (#152, only login check matters) ---
+  it('allows user with whitespace in email (#152 — only login check)', () => {
     const gas = createGasEnv({
       userEmail: ' admin@school.com ',
       scriptProps: { ADMIN_EMAIL: 'admin@school.com' },
     });
-    // ' admin@school.com '.toLowerCase() !== 'admin@school.com' (whitespace matters)
-    // Not admin, not creator → reject
-    expect(() => gas._checkPermission('creator@school.com')).toThrow('權限不足');
+    expect(() => gas._checkPermission('creator@school.com')).not.toThrow();
   });
 });
