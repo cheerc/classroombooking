@@ -1,0 +1,405 @@
+<script>
+/**
+ * ScheduleManager.js.html — Schedule management, routing, and drag-drop methods
+ *
+ * Part of #129 Phase 1 (PR6/7): IIFE-wrapped domain separation.
+ * These methods handle schedule CRUD, first-time selector, classroom editing,
+ * schedule loading/switching, drag-drop reordering, and permission checks.
+ *
+ * Load order: after JavaScript.html + all domain modules (UtilityFunctions,
+ * LockManager, DataCollection, FilterEngine, DataIO), before App.init() trigger.
+ *
+ * Dependencies: LockManager (App.acquireLock/releaseLock), DataCollection
+ * (App.getAllTags/ensureDataIds/buildCourseColorMap/getGlobalAllTags),
+ * FilterEngine (App.loadAndApplyPersistedFilters/filterDataByActiveFilters),
+ * DataIO (App.loadDataFromServer/saveDataToLocal/saveDataToServer),
+ * UtilityFunctions (App.getShortUserName/timeToMinutes),
+ * ServerApi, AppConfig, AppElements, localStorage
+ */
+(function(App) {
+
+  // --- Schedule selection and routing ---
+
+  App.showFirstTimeScheduleSelector = function() {
+    const modal = AppElements.firstTimeScheduleSelectModal;
+    const select = AppElements.firstTimeScheduleSelect;
+    const confirmBtn = AppElements.firstTimeScheduleConfirmBtn;
+
+    select.innerHTML = ''; // Clear previous options
+    const scheduleIds = Object.keys(App.schedules);
+
+    if (scheduleIds.length === 0) {
+      select.innerHTML = '<option disabled>沒有可用的課表</option>';
+      confirmBtn.disabled = true;
+    } else {
+      scheduleIds.forEach(id => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = App.schedules[id].name;
+        select.appendChild(option);
+      });
+      confirmBtn.disabled = false;
+    }
+
+    modal.style.display = 'flex';
+
+    confirmBtn.onclick = () => {
+      const selectedId = select.value;
+      if (selectedId) {
+        modal.style.display = 'none';
+        App.loadSchedule(selectedId);
+        App.ui.updateScheduleSelect(); // Ensure main dropdown is also updated
+      }
+    };
+  };
+
+  App.handleEditClassroom = function(oldName, newName) {
+    if (!newName) {
+      App.ui.showNotification('教室名稱不能為空！', 'error');
+      return;
+    }
+    if (App.classrooms.includes(newName)) {
+      App.ui.showNotification(`教室名稱 "${newName}" 已存在！`, 'error');
+      return;
+    }
+
+    const index = App.classrooms.indexOf(oldName);
+    if (index > -1) {
+      App.classrooms[index] = newName;
+    }
+
+    // Rename the key in the scheduleData object
+    if (App.scheduleData[oldName]) {
+      App.scheduleData[newName] = App.scheduleData[oldName];
+      delete App.scheduleData[oldName];
+    }
+
+    App.ui.updateClassroomList();
+    App.ui.renderScheduleTable();
+    App.saveDataToLocal();
+    App.historyModule.saveState();
+    App.ui.showNotification(`教室名稱已從 "${oldName}" 更新為 "${newName}"`);
+  };
+
+  App.loadInitialSchedules = function() {
+    const localActiveId = localStorage.getItem('activeScheduleId');
+
+    // Check if the locally stored ID is a valid schedule that we just got from the server
+    if (localActiveId && App.schedules[localActiveId]) {
+      App.loadSchedule(localActiveId);
+      App.ui.updateScheduleSelect();
+    } else {
+      // If no local preference, or the preference is invalid (e.g., schedule was deleted)
+      if (Object.keys(App.schedules).length > 0) {
+        // We have schedules from the server, so we MUST ask the user to choose one.
+        App.showFirstTimeScheduleSelector();
+      } else {
+        // No schedules on the server at all. This is a rare edge case.
+        App.ui.showNotification("雲端沒有任何課表。請聯絡管理員新增一個。", "info", 5000);
+        App.schedules = {};
+        App.activeScheduleId = null;
+        App.ui.renderScheduleTable(); // Render an empty table
+        App.ui.updateScheduleSelect();
+      }
+    }
+  };
+
+  App.loadSchedule = function(scheduleId) {
+    // Release lock on the previous schedule before acquiring a new one
+    if (App.activeScheduleId) {
+      App.releaseLock(App.activeScheduleId);
+    }
+
+    if (scheduleId === AppConfig.ALL_SCHEDULES_ID) {
+      App.isReadOnly = true; // "All schedules" is always read-only
+      App.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
+      App.classrooms = [];
+      App.scheduleData = {};
+      App.tags = [];
+      App.ui.renderScheduleTable();
+      App.ui.updateHeaderUIState();
+      localStorage.setItem('activeScheduleId', scheduleId);
+      return;
+    }
+
+    // Acquire lock for the new schedule
+    const hasLock = App.acquireLock(scheduleId);
+    App.isReadOnly = !hasLock;
+
+    if (!App.schedules[scheduleId]) {
+      App.ui.showNotification(`錯誤：找不到指定的課表 ID: ${scheduleId}`, 'error');
+      const firstId = Object.keys(App.schedules)[0];
+      if (firstId) App.loadSchedule(firstId);
+      return;
+    }
+    App.activeScheduleId = scheduleId;
+    const schedule = App.schedules[scheduleId];
+
+    if (!schedule.data) {
+      App.ui.showNotification(`課表 "${schedule.name || '未命名'}" 格式錯誤，將為其創建新的空資料。`, 'error', 5000);
+      schedule.data = { classrooms: [], scheduleData: {}, tags: [] };
+    }
+
+    App.classrooms = schedule.data.classrooms || [];
+    App.scheduleData = App.ensureDataIds(schedule.data.scheduleData || {});
+    App.tags = App.getAllTags(); // Dynamically get all tags
+
+    // Initialize the tag filter for the current schedule
+    App.ui.initializeTagFilter();
+
+    // Load and apply persisted tag filters
+    App.loadAndApplyPersistedFilters();
+
+    App.buildCourseColorMap();
+    App.ui.updateClassroomList();
+    App.ui.renderScheduleTable();
+    App.ui.updateHeaderUIState(); // Update UI based on lock and schedule mode
+    App.historyModule.resetHistory();
+    localStorage.setItem('activeScheduleId', scheduleId);
+  };
+
+  App.saveSchedulesToLocal = function() {
+    localStorage.setItem('schedules', JSON.stringify(App.schedules));
+  };
+
+  // --- Async schedule operations ---
+
+  App.handleAddSchedule = async function(scheduleDetails) {
+    const { name, isDraft } = scheduleDetails;
+    App.ui.showLoading('正在新增課表...');
+    const newId = `schedule_${Date.now()}`;
+    try {
+      const result = await ServerApi.call('addSchedule', {
+        id: newId,
+        name: name,
+        isDraft: isDraft,
+        metadataTimestamp: App.activeMetadataTimestamp
+      });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      App.activeMetadataTimestamp = result.newMetadataTimestamp;
+      App.schedules[newId] = {
+        name: name,
+        createdBy: result.createdBy,
+        isDraft: isDraft,
+        data: { classrooms: [], scheduleData: {}, tags: [] }
+      };
+      App.scheduleLastModified[newId] = result.lastModified;
+      App.ui.renderScheduleList();
+      App.ui.updateScheduleSelect();
+      App.ui.showNotification(`已新增課表: ${name}`);
+    } catch (err) {
+      App.ui.showNotification(`新增課表失敗: ${err.message}`, 'error');
+    } finally {
+      App.ui.hideLoading();
+    }
+  };
+
+  App.handleScheduleListClick = async function(e) {
+    const renameBtn = e.target.closest('.rename-schedule-btn');
+    const deleteBtn = e.target.closest('.delete-schedule-btn');
+    const copyBtn = e.target.closest('.copy-schedule-btn');
+
+    if (renameBtn) {
+      const id = renameBtn.dataset.id;
+      const oldSchedule = App.schedules[id];
+      const result = await App.modals.showScheduleEditor({
+        id: id,
+        name: oldSchedule.name,
+        isDraft: oldSchedule.isDraft || false
+      });
+
+      if (result) {
+        const hasChanged = result.name !== oldSchedule.name || result.isDraft !== oldSchedule.isDraft;
+        if (hasChanged) {
+          App.ui.showLoading('正在更新課表...');
+          try {
+            const backendResult = await ServerApi.call('updateScheduleMetadata', {
+              id: id,
+              newName: result.name,
+              isDraft: result.isDraft,
+              metadataTimestamp: App.activeMetadataTimestamp
+            });
+            if (backendResult.error) { throw new Error(backendResult.error); }
+            App.activeMetadataTimestamp = backendResult.newMetadataTimestamp;
+            App.schedules[id].name = result.name;
+            App.schedules[id].isDraft = result.isDraft;
+            // CRITICAL FIX: Update the lastModified timestamp after a metadata change
+            if (backendResult.lastModified) {
+              App.scheduleLastModified[id] = backendResult.lastModified;
+            }
+            App.ui.renderScheduleList();
+            App.ui.updateScheduleSelect();
+            App.ui.showNotification('課表已更新');
+          } catch (err) {
+            App.ui.showNotification(`更新失敗: ${err.message}`, 'error');
+          } finally {
+            App.ui.hideLoading();
+          }
+        }
+      }
+    }
+
+    if (deleteBtn) {
+      const id = deleteBtn.dataset.id;
+      if (await App.modals.showConfirm(`確定要刪除課表 "${App.schedules[id].name}" 嗎？此操作無法復原。`)) {
+        App.ui.showLoading('正在刪除課表...');
+        try {
+          const result = await ServerApi.call('deleteSchedule', { id: id, metadataTimestamp: App.activeMetadataTimestamp });
+          if (result.error) { throw new Error(result.error); }
+          App.activeMetadataTimestamp = result.newMetadataTimestamp;
+          delete App.schedules[id];
+          if (id === App.activeScheduleId) {
+            App.activeScheduleId = Object.keys(App.schedules)[0];
+            App.loadSchedule(App.activeScheduleId);
+          }
+          App.ui.renderScheduleList();
+          App.ui.updateScheduleSelect();
+          App.ui.showNotification('課表已刪除');
+        } catch (err) {
+          App.ui.showNotification(`刪除失敗: ${err.message}`, 'error');
+        } finally {
+          App.ui.hideLoading();
+        }
+      }
+    }
+
+    if (copyBtn) {
+      const sourceId = copyBtn.dataset.id;
+      const sourceName = App.schedules[sourceId].name;
+      const newName = await App.modals.showPrompt('請為複製的課表命名：', `${sourceName} (複製)`);
+      if (newName && newName.trim()) {
+        App.ui.showLoading('正在複製課表，請稍候...');
+        try {
+          const result = await ServerApi.call('copySchedule', { sourceId: sourceId, newName: newName.trim(), metadataTimestamp: App.activeMetadataTimestamp });
+          if (result.error) { throw new Error(result.error); }
+          App.activeMetadataTimestamp = result.newMetadataTimestamp;
+          const newId = result.newId;
+          App.schedules[newId] = {
+            name: newName.trim(),
+            createdBy: result.createdBy,
+            isDraft: result.isDraft, // Also copy the draft status
+            data: JSON.parse(JSON.stringify(App.schedules[sourceId].data))
+          };
+          // CRITICAL FIX: Set the lastModified timestamp for the new schedule
+          App.scheduleLastModified[newId] = result.lastModified;
+          App.ui.renderScheduleList();
+          App.ui.updateScheduleSelect();
+          App.ui.showNotification('課表複製成功！');
+        } catch (err) {
+          App.ui.showNotification(`複製失敗: ${err.message}`, 'error');
+        } finally {
+          App.ui.hideLoading();
+        }
+      }
+    }
+  };
+
+  App.handleScheduleSelectChange = async function(e) {
+    const newId = e.target.value;
+    if (App.isDirty) {
+      if (!await App.modals.showConfirm('您有未儲存的變更，確定要切換課表並捨棄變更嗎？')) {
+        e.target.value = App.activeScheduleId; // Revert selection
+        return;
+      }
+    }
+    if (newId === AppConfig.ALL_SCHEDULES_ID) {
+      App.activeScheduleId = AppConfig.ALL_SCHEDULES_ID;
+
+      const allSchedulesData = {};
+      Object.values(App.schedules)
+        .filter(schedule => !schedule.isDraft) // Exclude draft schedules
+        .forEach(schedule => {
+          if (schedule.data && schedule.data.scheduleData) {
+            Object.entries(schedule.data.scheduleData).forEach(([classroom, days]) => {
+              if (!allSchedulesData[classroom]) allSchedulesData[classroom] = {};
+              Object.entries(days).forEach(([day, courses]) => {
+                if (!allSchedulesData[classroom][day]) allSchedulesData[classroom][day] = [];
+                allSchedulesData[classroom][day].push(...courses);
+              });
+            });
+          }
+        });
+
+      App.tags = App.getGlobalAllTags();
+      App.ui.initializeTagFilter();
+      App.loadAndApplyPersistedFilters();
+      App.modals.populateFilterModal(); // Ensure filter modal is updated for global view
+
+      App.buildCourseColorMap(allSchedulesData);
+
+      App.ui.renderScheduleTable();
+      App.ui.updateGlobalUIForScheduleMode();
+      App.ui.updateClearAllFiltersButtonVisibility();
+      localStorage.setItem('activeScheduleId', App.activeScheduleId);
+    } else {
+      App.loadSchedule(newId);
+    }
+  };
+
+  // --- Permission helpers ---
+
+  App.isCurrentUserAdmin = function() {
+    return typeof IS_ADMIN !== 'undefined' ? IS_ADMIN : false;
+  };
+
+  App.canManageCurrentScheduleSettings = function() {
+    if (App.isCurrentUserAdmin()) {
+      return true;
+    }
+    if (App.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
+      return false; // Cannot manage settings in "All Schedules" view
+    }
+    const schedule = App.schedules[App.activeScheduleId];
+    if (!schedule || !schedule.createdBy) {
+      return false; // No schedule or creator info
+    }
+    return App.currentUserEmail === App.getShortUserName(schedule.createdBy);
+  };
+
+  // --- Drag and drop ---
+
+  App.handleDrop = function(evt) {
+    const { from, to, item, newIndex } = evt;
+    const classId = item.dataset.id;
+    const fromClassroom = from.dataset.classroom, fromDay = parseInt(from.dataset.day);
+    const toClassroom = to.dataset.classroom, toDay = parseInt(to.dataset.day);
+
+    App.originalSourceListElement = null;
+
+    if (from === to) {
+      App.ui.renderScheduleTable();
+      return;
+    }
+
+    const fromDaySchedule = App.scheduleData[fromClassroom]?.[fromDay] || [];
+    const itemIndex = fromDaySchedule.findIndex(c => c.id === classId);
+
+    if (itemIndex === -1) {
+      console.error("Could not find dragged item in data model.");
+      App.ui.renderScheduleTable();
+      return;
+    }
+
+    const [movedItem] = fromDaySchedule.splice(itemIndex, 1);
+
+    if (!App.scheduleData[toClassroom]) App.scheduleData[toClassroom] = {};
+    if (!App.scheduleData[toClassroom][toDay]) App.scheduleData[toClassroom][toDay] = [];
+
+    App.scheduleData[toClassroom][toDay].splice(newIndex, 0, movedItem);
+
+    if (App.scheduleData[fromClassroom]?.[fromDay]?.length === 0) {
+      delete App.scheduleData[fromClassroom][fromDay];
+    }
+
+    App.scheduleData[toClassroom][toDay].sort((a, b) => App.timeToMinutes(a.timeStart) - App.timeToMinutes(b.timeStart));
+
+    App.ui.renderScheduleTable();
+    App.saveDataToLocal();
+    App.ui.showNotification('已移動課程');
+    App.historyModule.saveState();
+  };
+
+})(App);
+</script>

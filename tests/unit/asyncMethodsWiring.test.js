@@ -28,6 +28,12 @@ const dataIOSource = readFileSync(
   'utf-8'
 );
 
+// ScheduleManager methods moved to IIFE module (Phase 1 PR6)
+const scheduleManagerSource = readFileSync(
+  resolve(import.meta.dirname, '../../ScheduleManager.js.html'),
+  'utf-8'
+);
+
 const gasSource = readFileSync(
   resolve(import.meta.dirname, '../../程式碼.js'),
   'utf-8'
@@ -62,11 +68,15 @@ const KNOWN_BACKEND_FUNCTIONS = extractGasFunctionNames(gasSource);
  */
 // Methods in JavaScript.html
 const JS_HTML_ASYNC_METHODS = [
-  ['handleAddSchedule', 227, ['addSchedule']],
-  ['handleScheduleListClick', 259, ['updateScheduleMetadata', 'deleteSchedule', 'copySchedule']],
-  ['handleScheduleSelectChange', 359, []], // No direct ServerApi.call — delegates to loadSchedule
   ['applyTagFilters', 433, []], // Pure frontend, no ServerApi
   ['printScheduleToPdf', 1117, ['getFontBase64FromDrive']],
+];
+
+// Methods moved to ScheduleManager.js.html (Phase 1 PR6)
+const SCHEDULE_MANAGER_ASYNC_METHODS = [
+  ['handleAddSchedule', 0, ['addSchedule']],
+  ['handleScheduleListClick', 0, ['updateScheduleMetadata', 'deleteSchedule', 'copySchedule']],
+  ['handleScheduleSelectChange', 0, []], // No direct ServerApi.call — delegates to loadSchedule
 ];
 
 // Methods moved to DataIO.js.html (Phase 1 PR5)
@@ -77,7 +87,7 @@ const DATA_IO_ASYNC_METHODS = [
   ['saveDataToServer', 0, ['saveData']],
 ];
 
-const ASYNC_METHOD_WIRING = [...JS_HTML_ASYNC_METHODS, ...DATA_IO_ASYNC_METHODS];
+const ASYNC_METHOD_WIRING = [...JS_HTML_ASYNC_METHODS, ...SCHEDULE_MANAGER_ASYNC_METHODS, ...DATA_IO_ASYNC_METHODS];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -136,11 +146,22 @@ describe('Async App Methods — Wiring Smoke Tests (Static Analysis)', () => {
 
   // ─── 1. Method existence in source ────────────────────────────────────
 
-  describe('all 5 JavaScript.html async methods exist', () => {
+  describe('all 2 JavaScript.html async methods exist', () => {
     it.each(JS_HTML_ASYNC_METHODS)(
       '%s is declared as async method in JavaScript.html',
       (methodName, _line, _expectedCalls) => {
         const body = extractMethodBody(jsHtmlSource, methodName);
+        expect(body).not.toBeNull();
+        expect(body).toContain('async function');
+      }
+    );
+  });
+
+  describe('all 3 ScheduleManager.js.html async methods exist', () => {
+    it.each(SCHEDULE_MANAGER_ASYNC_METHODS)(
+      '%s is declared as async method in ScheduleManager.js.html',
+      (methodName, _line, _expectedCalls) => {
+        const body = extractMethodBody(scheduleManagerSource, methodName);
         expect(body).not.toBeNull();
         expect(body).toContain('async function');
       }
@@ -165,6 +186,7 @@ describe('Async App Methods — Wiring Smoke Tests (Static Analysis)', () => {
    */
   function resolveSource(methodName) {
     if (DATA_IO_ASYNC_METHODS.some(([n]) => n === methodName)) return dataIOSource;
+    if (SCHEDULE_MANAGER_ASYNC_METHODS.some(([n]) => n === methodName)) return scheduleManagerSource;
     return jsHtmlSource;
   }
 
