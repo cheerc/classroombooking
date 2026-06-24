@@ -24,14 +24,22 @@ JavaScript.html 是一個 1442 行的巨型 IIFE，內含 App 物件的全部方
 
 JavaScript.html 最終只保留：state properties (L5-37) + init() (L39-82) + module wiring。
 
-### 載入順序（Index.html L468-475）
+### 載入順序（修正：App 暴露順序）
+
+⚠️ `App` 是 JavaScript.html IIFE 內的 `const`，透過 L1439 `window.App = App` 暴露。新域 IIFE 接收 `App` 參數，因此 **JavaScript.html 必須先載入**（建立 App + state + `window.App = App`），新域才能透過 `(function(App) { ... })(App)` 掛載方法。
+
+**PR1 的關鍵改動**：JavaScript.html 的 `App.init()` 呼叫 (L1440) 必須從 IIFE 結尾移到所有新域載入之後。做法：
+- JavaScript.html IIFE 結尾只做 `window.App = App`（刪除 `App.init()`）
+- Index.html 在所有 include 之後加一行 `<script>App.init();</script>`
 
 ```
 Config → Elements → Api → Modals → History → UI → Interaction
-→ [新域 1-7] → JavaScript.html (shrunk to core)
+→ JavaScript.html (core: state + window.App = App, 不呼叫 init)
+→ [新域 1-7]
+→ <script>App.init();</script>
 ```
 
-新的 IIFE 域插入在 Interaction 和 JavaScript 之間，順序按依賴拓撲排列。
+新域在 JavaScript.html core 之後、init 觸發之前載入。
 
 ## 7 個 PR 依序
 
@@ -52,13 +60,14 @@ Config → Elements → Api → Modals → History → UI → Interaction
 - **DI 測試**: ✅ lockHelpers.js (complete createLockManager)
 - **風險**: 低
 
-### PR3: DataCollection（~120 行）
-- **方法**: `_collectFromScheduleData`, `getAllTags`, `_collectFromAllCourses`, `getGlobalAllTags`, `getGlobalAllCourseNames`, `getGlobalAllTeachers`, `ensureDataIds`, `buildCourseColorMap`, `sortClassrooms`, `_forEachCourse`, `countOccurrences`, `updateAllOccurrences`
-- **源碼行**: L797-856, L881-896, L910-946, L1038-1065
-- **依賴**: UtilityFunctions (stringToHashCode, generateUniqueId)
+### PR3: DataCollection（~140 行）
+- **方法**: `_collectFromScheduleData`, `getAllTags`, `_collectFromAllCourses`, `getGlobalAllTags`, `getGlobalAllCourseNames`, `getGlobalAllTeachers`, `ensureDataIds`, `buildCourseColorMap`, `sortClassrooms`, `_forEachCourse`, `countOccurrences`, `updateAllOccurrences`, **`checkTimeConflict`** (L948), **`findNextUpcomingClasses`** (L690-738)
+- **源碼行**: L690-738, L797-856, L881-896, L910-988, L1038-1065
+- **依賴**: UtilityFunctions (stringToHashCode, generateUniqueId, timeToMinutes)
 - **外部依賴**: `AppConfig.COURSE_COLORS`
-- **DI 測試**: ✅ dataCollectionHelpers.js, stateHelpers.js, dataIdHelpers.js
+- **DI 測試**: ✅ dataCollectionHelpers.js, stateHelpers.js, dataIdHelpers.js, frontendUtils.js (checkTimeConflict)
 - **風險**: 低。注意 `_forEachCourse` 是多個方法的共用 helper
+- **備註**: `checkTimeConflict` 與 `timeToMinutes` 同域；`findNextUpcomingClasses` 讀 scheduleData + 用 timeToMinutes，屬 data traversal
 
 ### PR4: FilterEngine（~100 行）
 - **方法**: `loadAndApplyPersistedFilters`, `applyTagFilters`, `toggleAllFilterCheckboxes`, `applyFilters`, `clearAdvancedFilters`, `clearAllFilters`, `_filterScheduleData`, `filterDataByTags`, `filterDataByActiveFilters`
