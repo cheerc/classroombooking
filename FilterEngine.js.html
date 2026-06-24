@@ -1,0 +1,141 @@
+<script>
+/**
+ * FilterEngine.js.html — Filter logic methods extracted from JavaScript.html
+ *
+ * Part of #129 Phase 1 (PR4/7): IIFE-wrapped domain separation.
+ * These methods handle tag/course/teacher filtering, persisted filter
+ * restoration, and schedule data filtering by predicates.
+ *
+ * Load order: after JavaScript.html + DataCollection.js (which provides
+ * App.getAllTags), before App.init() trigger.
+ *
+ * Dependencies: DataCollection.js (App.getAllTags), AppElements (filter* DOM),
+ * localStorage (persisted filters)
+ */
+(function(App) {
+
+  // --- Filter UI methods ---
+
+  App.loadAndApplyPersistedFilters = function() {
+    const persistedTagsJSON = localStorage.getItem('activeTagFilters');
+    if (persistedTagsJSON) {
+      try {
+        const persistedTags = JSON.parse(persistedTagsJSON);
+        const allCurrentTags = new Set(App.getAllTags());
+
+        const validPersistedTags = persistedTags.filter(tag => allCurrentTags.has(tag));
+
+        App.activeFilters = validPersistedTags.map(tag => ({ type: 'tag', value: tag }));
+
+        if (App.tagFilterTagify) {
+          App.tagFilterTagify.loadOriginalValues(validPersistedTags);
+        }
+
+        if (persistedTags.length !== validPersistedTags.length) {
+          localStorage.setItem('activeTagFilters', JSON.stringify(validPersistedTags));
+        }
+      } catch (e) {
+        console.error("Failed to parse persisted tag filters:", e);
+        localStorage.removeItem('activeTagFilters');
+        App.activeFilters = [];
+      }
+    } else {
+      App.activeFilters = [];
+    }
+    App.ui.updateClearFilterButtonVisibility();
+    App.ui.updateAdvancedFilterButtonState();
+    App.ui.updateClearAllFiltersButtonVisibility();
+  };
+
+  App.toggleAllFilterCheckboxes = function(shouldBeChecked) {
+    AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.checked = shouldBeChecked;
+    });
+  };
+
+  App.applyFilters = function() {
+    const filterType = AppElements.filterTypeSelector.querySelector('input[name="filterType"]:checked').value;
+    const selectedItems = Array.from(AppElements.filterCourseList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+
+    const tagFilters = App.activeFilters.filter(f => f.type === 'tag');
+    const newAdvancedFilters = selectedItems.map(item => ({ type: filterType, value: item }));
+    App.activeFilters = [...tagFilters, ...newAdvancedFilters];
+
+    App.ui.renderScheduleTable();
+    App.ui.updateAdvancedFilterButtonState();
+    App.ui.updateClearAllFiltersButtonVisibility();
+    AppElements.filterModal.style.display = 'none';
+  };
+
+  App.clearAdvancedFilters = function() {
+    App.activeFilters = App.activeFilters.filter(f => f.type === 'tag');
+    App.modals.populateFilterModal();
+    App.ui.renderScheduleTable();
+    App.ui.updateAdvancedFilterButtonState();
+    App.ui.updateClearAllFiltersButtonVisibility();
+  };
+
+  App.clearAllFilters = function() {
+    App.activeFilters = [];
+    localStorage.removeItem('activeTagFilters');
+    if (App.tagFilterTagify) {
+      App.tagFilterTagify.removeAllTags();
+    }
+    App.modals.populateFilterModal();
+    App.ui.renderScheduleTable();
+    App.ui.updateAdvancedFilterButtonState();
+    App.ui.updateClearFilterButtonVisibility();
+    App.ui.updateClearAllFiltersButtonVisibility();
+  };
+
+  // --- Data filtering methods ---
+
+  App._filterScheduleData = function(data, filterPredicate) {
+    const filteredData = {};
+    for (const classroom in data) {
+      const dayData = data[classroom];
+      const newDayData = {};
+      let classroomHasCourses = false;
+      for (const day in dayData) {
+        const filteredCourses = dayData[day].filter(filterPredicate);
+        if (filteredCourses.length > 0) {
+          newDayData[day] = filteredCourses;
+          classroomHasCourses = true;
+        }
+      }
+      if (classroomHasCourses) {
+        filteredData[classroom] = newDayData;
+      }
+    }
+    return filteredData;
+  };
+
+  App.filterDataByTags = function(data) {
+    const tagFilters = new Set(App.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
+    if (tagFilters.size === 0) {
+      return data;
+    }
+    return App._filterScheduleData(data, course =>
+      course.tags && course.tags.some(d => tagFilters.has(d))
+    );
+  };
+
+  App.filterDataByActiveFilters = function(data) {
+    const nameFilters = new Set(App.activeFilters.filter(f => f.type === 'name').map(f => f.value));
+    const tagFilters = new Set(App.activeFilters.filter(f => f.type === 'tag').map(f => f.value));
+    const teacherFilters = new Set(App.activeFilters.filter(f => f.type === 'teacher').map(f => f.value));
+
+    if (nameFilters.size === 0 && tagFilters.size === 0 && teacherFilters.size === 0) {
+      return data;
+    }
+
+    return App._filterScheduleData(data, course => {
+      const nameMatch = nameFilters.size === 0 || nameFilters.has(course.name);
+      const tagMatch = tagFilters.size === 0 || (course.tags && course.tags.some(d => tagFilters.has(d)));
+      const teacherMatch = teacherFilters.size === 0 || teacherFilters.has(course.teacher);
+      return nameMatch && tagMatch && teacherMatch;
+    });
+  };
+
+})(App);
+</script>

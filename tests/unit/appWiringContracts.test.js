@@ -62,14 +62,10 @@ const privateMethods = extractPrivateMethods(jsHtmlSource);
 const EXTRACTED_TO_LIB = new Set([
   // stateHelpers.js
   'handleEditClassroom', 'saveDataToServer',
-  // frontendUtils.js
-  'filterDataByTags', 'filterDataByActiveFilters',
   // interactionHelpers.js (handleDrop → applyDrop)
   'handleDrop',
   // appLifecycleHelpers.js (new — this wave)
   'loadInitialSchedules', 'loadSchedule', 'canManageCurrentScheduleSettings',
-  'loadAndApplyPersistedFilters', 'applyFilters', 'clearAdvancedFilters',
-  'clearAllFilters',
   'saveSchedulesToLocal',
 ]);
 
@@ -85,7 +81,6 @@ const NOT_EXTRACTABLE = new Set([
   'handleScheduleListClick',      // DOM event delegation + ServerApi + modals
   'handleScheduleSelectChange',   // DOM event + modal confirm + state (aggregateScheduleData already extracted)
   'applyTagFilters',              // Tagify instance + modal confirm + DOM
-  'toggleAllFilterCheckboxes',    // DOM querySelectorAll
   'loadVersions',                 // DOM + ServerApi
   'handleLoadVersion',            // DOM + ServerApi + state
   'saveDataToLocal',              // localStorage + Tagify + DOM (core sync logic extracted as processServerLoadResult)
@@ -99,7 +94,7 @@ const NOT_EXTRACTABLE = new Set([
  * These are tested indirectly through their public callers.
  */
 const PRIVATE_HELPERS = new Set([
-  '_filterScheduleData',
+  // _filterScheduleData — moved to FilterEngine.js.html (Phase 1 PR4)
 ]);
 
 /**
@@ -121,6 +116,12 @@ const IIFE_EXTRACTED = new Set([
   'checkTimeConflict',
   // DataCollection.js.html (PR3) — private helpers also IIFE-extracted
   '_forEachCourse', '_collectFromScheduleData', '_collectFromAllCourses',
+  // FilterEngine.js.html (PR4)
+  'loadAndApplyPersistedFilters', 'toggleAllFilterCheckboxes', 'applyFilters',
+  'clearAdvancedFilters', 'clearAllFilters',
+  'filterDataByTags', 'filterDataByActiveFilters',
+  // FilterEngine.js.html (PR4) — private helpers also IIFE-extracted
+  '_filterScheduleData',
 ]);
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -133,8 +134,8 @@ describe('JavaScript.html App method wiring contracts (#116)', () => {
   it('should have expected total App method count', () => {
     // All public methods (excluding underscore-prefixed private helpers)
     const publicMethods = appMethods.filter(m => !m.startsWith('_'));
-    // 48 original - 7 PR1 - 4 PR2 public - 11 PR3 public = 26 remaining in JavaScript.html
-    expect(publicMethods.length).toBe(26);
+    // 48 original - 7 PR1 - 4 PR2 public - 11 PR3 public - 7 PR4 public = 19 remaining in JavaScript.html
+    expect(publicMethods.length).toBe(19);
   });
 
   it('every public App method should be classified (extracted OR not-extractable)', () => {
