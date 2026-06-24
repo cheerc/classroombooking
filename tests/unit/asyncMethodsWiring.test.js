@@ -22,6 +22,12 @@ const jsHtmlSource = readFileSync(
   'utf-8'
 );
 
+// DataIO methods moved to IIFE module (Phase 1 PR5)
+const dataIOSource = readFileSync(
+  resolve(import.meta.dirname, '../../DataIO.js.html'),
+  'utf-8'
+);
+
 const gasSource = readFileSync(
   resolve(import.meta.dirname, '../../程式碼.js'),
   'utf-8'
@@ -54,30 +60,47 @@ const KNOWN_BACKEND_FUNCTIONS = extractGasFunctionNames(gasSource);
  * Note: applyTagFilters has NO ServerApi calls (pure frontend).
  * handleScheduleSelectChange has NO direct ServerApi calls (delegates to loadSchedule/loadDataFromServer).
  */
-const ASYNC_METHOD_WIRING = [
+// Methods in JavaScript.html
+const JS_HTML_ASYNC_METHODS = [
   ['handleAddSchedule', 227, ['addSchedule']],
   ['handleScheduleListClick', 259, ['updateScheduleMetadata', 'deleteSchedule', 'copySchedule']],
   ['handleScheduleSelectChange', 359, []], // No direct ServerApi.call — delegates to loadSchedule
   ['applyTagFilters', 433, []], // Pure frontend, no ServerApi
-  ['loadVersions', 505, ['getVersions']],
-  ['handleLoadVersion', 532, ['getVersionData']],
-  ['loadDataFromServer', 604, ['getData']],
-  ['saveDataToServer', 643, ['saveData']],
   ['printScheduleToPdf', 1117, ['getFontBase64FromDrive']],
 ];
+
+// Methods moved to DataIO.js.html (Phase 1 PR5)
+const DATA_IO_ASYNC_METHODS = [
+  ['loadVersions', 0, ['getVersions']],
+  ['handleLoadVersion', 0, ['getVersionData']],
+  ['loadDataFromServer', 0, ['getData']],
+  ['saveDataToServer', 0, ['saveData']],
+];
+
+const ASYNC_METHOD_WIRING = [...JS_HTML_ASYNC_METHODS, ...DATA_IO_ASYNC_METHODS];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 /**
- * Extract the body of an async method from JavaScript.html source.
- * Searches for `methodName: async function` and captures the balanced braces body.
+ * Extract the body of an async method from source.
+ * Supports both object literal (`methodName: async function`) and
+ * IIFE-extracted (`App.methodName = async function`) patterns.
  */
 function extractMethodBody(source, methodName) {
-  // Match the method declaration pattern in the App object literal
+  // Try object literal pattern first
   const declPattern = new RegExp(
     `${methodName}\\s*:\\s*async\\s+function\\s*\\([^)]*\\)\\s*\\{`
   );
-  const match = declPattern.exec(source);
+  let match = declPattern.exec(source);
+
+  // Try IIFE-extracted pattern: App.methodName = async function(...) {
+  if (!match) {
+    const iifePattern = new RegExp(
+      `App\\.${methodName}\\s*=\\s*async\\s+function\\s*\\([^)]*\\)\\s*\\{`
+    );
+    match = iifePattern.exec(source);
+  }
+
   if (!match) return null;
 
   // Find the balanced closing brace
@@ -113,9 +136,9 @@ describe('Async App Methods — Wiring Smoke Tests (Static Analysis)', () => {
 
   // ─── 1. Method existence in source ────────────────────────────────────
 
-  describe('all 9 async methods exist in JavaScript.html', () => {
-    it.each(ASYNC_METHOD_WIRING)(
-      '%s is declared as async method',
+  describe('all 5 JavaScript.html async methods exist', () => {
+    it.each(JS_HTML_ASYNC_METHODS)(
+      '%s is declared as async method in JavaScript.html',
       (methodName, _line, _expectedCalls) => {
         const body = extractMethodBody(jsHtmlSource, methodName);
         expect(body).not.toBeNull();
@@ -124,7 +147,26 @@ describe('Async App Methods — Wiring Smoke Tests (Static Analysis)', () => {
     );
   });
 
+  describe('all 4 DataIO.js.html async methods exist', () => {
+    it.each(DATA_IO_ASYNC_METHODS)(
+      '%s is declared as async method in DataIO.js.html',
+      (methodName, _line, _expectedCalls) => {
+        const body = extractMethodBody(dataIOSource, methodName);
+        expect(body).not.toBeNull();
+        expect(body).toContain('async function');
+      }
+    );
+  });
+
   // ─── 2. ServerApi.call wiring ──────────────────────────────────────────
+
+  /**
+   * Helper: resolve the correct source for a method
+   */
+  function resolveSource(methodName) {
+    if (DATA_IO_ASYNC_METHODS.some(([n]) => n === methodName)) return dataIOSource;
+    return jsHtmlSource;
+  }
 
   describe('each method calls expected ServerApi.call targets', () => {
     it.each(
@@ -132,7 +174,7 @@ describe('Async App Methods — Wiring Smoke Tests (Static Analysis)', () => {
     )(
       '%s calls ServerApi.call with correct function name(s)',
       (methodName, _line, expectedCalls) => {
-        const body = extractMethodBody(jsHtmlSource, methodName);
+        const body = extractMethodBody(resolveSource(methodName), methodName);
         expect(body).not.toBeNull();
 
         const actualCalls = extractServerApiCalls(body);
@@ -149,7 +191,7 @@ describe('Async App Methods — Wiring Smoke Tests (Static Analysis)', () => {
     )(
       '%s has no ServerApi.call (pure frontend / delegator)',
       (methodName, _line, _expectedCalls) => {
-        const body = extractMethodBody(jsHtmlSource, methodName);
+        const body = extractMethodBody(resolveSource(methodName), methodName);
         expect(body).not.toBeNull();
 
         const actualCalls = extractServerApiCalls(body);
@@ -173,12 +215,15 @@ describe('Async App Methods — Wiring Smoke Tests (Static Analysis)', () => {
     );
   });
 
-  // ─── 4. No unexpected ServerApi.call in JavaScript.html ────────────────
+  // ─── 4. No unexpected ServerApi.call in source files ────────────────
 
   describe('completeness — no undocumented ServerApi.call targets', () => {
-    it('all ServerApi.call targets in JavaScript.html are in our wiring map', () => {
-      // Extract ALL ServerApi.call from entire JavaScript.html
-      const allCalls = extractServerApiCalls(jsHtmlSource);
+    it('all ServerApi.call targets in JavaScript.html + DataIO.js.html are in our wiring map', () => {
+      // Extract ALL ServerApi.call from JavaScript.html and DataIO.js.html
+      const allCalls = [
+        ...extractServerApiCalls(jsHtmlSource),
+        ...extractServerApiCalls(dataIOSource),
+      ];
       const uniqueCalls = [...new Set(allCalls)];
 
       // All targets documented in ASYNC_METHOD_WIRING
