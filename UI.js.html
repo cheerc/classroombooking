@@ -501,14 +501,20 @@ function createUIModule(app) {
 
             AppElements.scheduleBody.innerHTML = '';
 
-            if (app.viewSortMode === 'classroom') {
+            const renderer = ViewDecisionHelpers.resolveRenderTarget({
+                currentViewMode: app.currentViewMode,
+                viewSortMode: app.viewSortMode,
+                dayMode: AppConfig.MODES.DAY
+            });
+            if (renderer === 'classroom') {
                 this.renderByClassroom(dataToRender);
-            } else if (app.viewSortMode === 'teacher') {
+            } else if (renderer === 'teacher') {
                 this.renderByTeacher(dataToRender);
-            } else if (app.currentViewMode === AppConfig.MODES.DAY && app.viewSortMode === 'time') {
+            } else if (renderer === 'time') {
                 this.renderDayViewByTime(dataToRender);
+            } else if (renderer === 'weekTime') {
+                this.renderWeekViewByTime(dataToRender);
             } else {
-                // Fallback for any invalid state
                 this.renderByClassroom(dataToRender);
             }
 

@@ -48,13 +48,13 @@ describe('resolveRenderTarget', () => {
     expect(result).toEqual({ renderer: 'time', shouldFilter: false });
   });
 
-  it('falls back to classroom for time sort in week mode', () => {
+  it('routes week + time to the week-time renderer', () => {
     const result = resolveRenderTarget({
       ...base,
       viewSortMode: 'time',
       currentViewMode: 'week',
     });
-    expect(result).toEqual({ renderer: 'classroom', shouldFilter: false });
+    expect(result).toEqual({ renderer: 'weekTime', shouldFilter: false });
   });
 
   it('sets shouldFilter true when activeFilters non-empty', () => {

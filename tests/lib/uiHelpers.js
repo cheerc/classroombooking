@@ -41,6 +41,8 @@ export function resolveRenderTarget(state) {
     return { renderer: 'teacher', shouldFilter };
   } else if (currentViewMode === dayMode && viewSortMode === 'time') {
     return { renderer: 'time', shouldFilter };
+  } else if (viewSortMode === 'time') {
+    return { renderer: 'weekTime', shouldFilter };
   }
 
   // Fallback
