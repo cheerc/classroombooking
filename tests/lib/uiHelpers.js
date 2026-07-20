@@ -93,7 +93,8 @@ export function computeClassElementProps(classItem, classroom, day, options = {}
   const bgColor = overrideColor || courseColorMap[classItem.name] || '#E2E8F0';
   const viewModeClass = currentViewMode === dayMode ? 'day-view-layout' : '';
   const showNotes = currentViewMode === dayMode;
-  const showClassroomInContent = viewContext === 'teacherSort';
+  const showTeacher = viewContext === 'default' || viewContext === 'timeSort';
+  const showClassroom = viewContext === 'teacherSort' || viewContext === 'timeSort';
 
   const cssClasses = [
     'class-item',
@@ -108,7 +109,8 @@ export function computeClassElementProps(classItem, classroom, day, options = {}
     isUpcoming,
     hasConflict,
     showNotes,
-    showClassroomInContent,
+    showTeacher,
+    showClassroom,
     tags: classItem.tags || [],
     dataAttributes: {
       id: classItem.id,

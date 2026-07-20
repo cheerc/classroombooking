@@ -131,7 +131,8 @@ describe('computeClassElementProps', () => {
     expect(result.isUpcoming).toBe(false);
     expect(result.hasConflict).toBe(false);
     expect(result.showNotes).toBe(false);
-    expect(result.showClassroomInContent).toBe(false);
+    expect(result.showTeacher).toBe(true);
+    expect(result.showClassroom).toBe(false);
     expect(result.tags).toEqual(['core', 'math']);
     expect(result.dataAttributes).toEqual({
       id: 'c1', name: 'Math', classroom: 'Room A', day: 0,
@@ -175,7 +176,16 @@ describe('computeClassElementProps', () => {
     const result = computeClassElementProps(
       classItem, 'Room A', 0, { viewContext: 'teacherSort' }, defaultAppState
     );
-    expect(result.showClassroomInContent).toBe(true);
+    expect(result.showTeacher).toBe(false);
+    expect(result.showClassroom).toBe(true);
+  });
+
+  it('shows both teacher and classroom in time sort view context', () => {
+    const result = computeClassElementProps(
+      classItem, 'Room A', 0, { viewContext: 'timeSort' }, defaultAppState
+    );
+    expect(result.showTeacher).toBe(true);
+    expect(result.showClassroom).toBe(true);
   });
 
   it('handles course with no tags', () => {
