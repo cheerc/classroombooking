@@ -547,6 +547,7 @@ function createInteractionModule(app) {
         }
         const classroom = cell.dataset.classroom;
         const day = parseInt(cell.dataset.day);
+        // Time-grid cells have no natural classroom and must remain non-addable.
         if (!classroom || isNaN(day)) return;
 
         this.createOrEditCourseForm(cell, null, { classroom, day });
