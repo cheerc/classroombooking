@@ -1,3 +1,26 @@
+---
+issue: 162
+complexity: complex+
+design_doc: docs/plans/2026-07-20-week-view-time-axis-design.md
+design_sha: f3ec3cbac37feacab2bd28bf542543363d2137f6
+required_reads:
+  - docs/plans/2026-07-20-week-view-time-axis-design.md
+  - UI.js.html
+  - JavaScript.html
+  - PDFExport.js.html
+  - DataCollection.js.html
+  - Interaction.js.html
+  - Index.html
+  - .eslintrc.json
+  - vitest.config.js
+  - tests/lib/uiHelpers.js
+  - tests/lib/frontendUtils.js
+  - tests/lib/integrationHelpers.js
+  - tests/unit/uiHelpers.test.js
+  - tests/unit/integrationHelpers.test.js
+  - TestCases.md
+---
+
 # 週檢視「依時間」時間軸模式 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -86,7 +109,7 @@ describe('resolveRestoredSort', () => {
 - [ ] **Step 2: 跑測試確認失敗**
 
 Run: `npm test -- uiHelpers`
-Expected: FAIL — `resolveRestoredSort` 尚未 export（實際訊息依 runtime 而定：missing-export 或 not-a-function，紅燈即可）
+Expected: FAIL — 新的 restore 測試為紅，因該函式尚未存在；**確切的 runtime 錯誤訊息刻意不指定**（只要求紅燈）。
 
 - [ ] **Step 3: 實作 `resolveRestoredSort`（`tests/lib/uiHelpers.js`）**
 
@@ -327,15 +350,28 @@ git commit -m "feat: timeSort card shows both teacher and classroom (refs #162)"
 
 **Files:**
 - Test: `tests/lib/uiHelpers.js`（新增 `flattenCoursesForDays` + `groupCoursesByStartTime`）、`tests/unit/uiHelpers.test.js`
-- Modify: `UI.js.html` — 新增 `renderWeekViewByTime`；**新增 production 共用 helper `App._flattenCoursesForDays` / `App._groupCoursesByStartTime`**（選 A：放新 extracted-module 全域；選 B：掛 `App`）；`renderDayViewByTime`/`renderByTeacher`/`renderAllSchedulesView`/`renderWeekViewByTime` **四處**皆改呼叫共用 flatten helper
+- Modify: `UI.js.html` — 新增 `renderWeekViewByTime`；**新增共用 helper `_flattenCoursesForDays` / `_groupCoursesByStartTime` 作為 uiModule method**（receiver 契約見下方 Interfaces）；`renderDayViewByTime`/`renderByTeacher`/`renderAllSchedulesView`/`renderWeekViewByTime` **四處**皆改以 `this.` 呼叫共用 flatten helper
 
 **Interfaces:**
 - Produces（tests/lib，coverage-gated）：
   - `flattenCoursesForDays(dataToRender, days) → [{...course, classroom, day}]`（純資料攤平，供四 renderer 共用）
   - `groupCoursesByStartTime(flatCourses, timeToMinutes) → [{ timeStart, courses }]`（依注入 `timeToMinutes` 升冪；分組鍵 = `timeStart` 字串，與 sort 解耦）
-- Produces（production，四 renderer 實呼叫，B1 修正）：`App._flattenCoursesForDays(dataToRender, days)`、`App._groupCoursesByStartTime(flat)`（後者內部用 `App.timeToMinutes`）
+- Produces（production，B1 修正）：flatten/group helper 作為 **UI module 的 method**，四 renderer 以 `this._flattenCoursesForDays(...)` / `this._groupCoursesByStartTime(...)` 呼叫。
 
 > **B1 修正**：`renderWeekViewByTime` **不得** inline 自己的 flatten/group，必須呼叫 production 共用 helper——與其他三 renderer 同源。tests/lib 版本是 coverage-gated 的等價 mirror。
+
+> ⚠️ **Receiver 契約（回應 re-review watchpoint — 勿混用 `App.` 與 `this.`）**
+>
+> `UI.js.html:2` 是 `function createUIModule(app)`，方法定義在 `const uiModule = {...}` 上、彼此以 `this.xxx` 互呼（如 `this.renderByClassroom`、`this.createClassElement`）；`JavaScript.html:49` 以 `this.ui = createUIModule(this)` 掛載——**UI module 的 `this` 是 uiModule，不是 `App` root**。故：
+>
+> | 決策邏輯 | call-site 所在 | receiver |
+> |---|---|---|
+> | flatten / group | UI module 內三 renderer + `renderWeekViewByTime` | **`this._flattenCoursesForDays`**（uiModule method）。**不要**寫成 `App._flatten...` |
+> | 卡片欄位旗標 | `createClassElement`（UI module 內） | 同上，`this.` |
+> | **restore 決策** | `JavaScript.html:26-27` App **constructor state 初始化** | ⚠️ **此時 `this.ui` 尚未存在**（`createUIModule` 在 `init()` 才跑）→ **不可**用 UI module helper。必須是 **extracted-module 全域**（分支 A）或 **inline + mirror 註解**（分支 B） |
+> | PDF 內容決策 | `PDFExport.js.html`（另一 module） | 分支 A：全域；分支 B：inline + mirror 註解 |
+>
+> **分支 A** 若要讓 restore 也同源，該全域必須在 `Index.html` 內嵌順序上**先於 `JavaScript`（:475）**（constructor 執行時就要存在）。**分支 B** 則 restore／PDF 各自 inline，僅 UI module 三處共用 `this.` helper。**兩種都不得為了補 receiver 而複製第二份 helper**——impl-review 逐一驗。
 
 - [ ] **Step 1: 寫失敗測試（分組排序 + 7-day placement + 邊界，覆蓋設計 §7.3）**
 
@@ -362,6 +398,12 @@ describe('flattenCoursesForDays', () => {
   });
   it('empty data yields empty flat', () => {
     expect(flattenCoursesForDays({}, [0, 1, 2, 3, 4, 5, 6])).toEqual([]);
+  });
+  it('filtered-to-empty: outer classroom/day keys survive but course lists are empty (design §7.3)', () => {
+    // What filterDataByActiveFilters actually leaves behind: the classroom/day
+    // containers remain, every course was filtered out. NOT the same as {}.
+    const filtered = { R1: { 0: [], 3: [] }, R2: {} };
+    expect(flattenCoursesForDays(filtered, [0, 1, 2, 3, 4, 5, 6])).toEqual([]);
   });
 });
 
@@ -393,6 +435,14 @@ describe('groupCoursesByStartTime', () => {
   it('empty input yields empty groups', () => {
     expect(groupCoursesByStartTime([], timeToMinutes)).toEqual([]);
   });
+  it('filtered-to-empty produces NO time rows (design §7.3 — the row must not appear)', () => {
+    // End-to-end of the filter path: non-empty outer structure, zero courses
+    // → zero groups → renderWeekViewByTime emits no <tr>. Guards against a
+    // renderer that builds rows from outer keys instead of actual courses.
+    const filtered = { R1: { 0: [], 3: [] }, R2: {} };
+    const flat = flattenCoursesForDays(filtered, [0, 1, 2, 3, 4, 5, 6]);
+    expect(groupCoursesByStartTime(flat, timeToMinutes)).toEqual([]);
+  });
   it('abnormal timeStart still forms its own group without throwing (design §6)', () => {
     const flat = [
       { timeStart: '09:10', day: 0 },
@@ -405,7 +455,7 @@ describe('groupCoursesByStartTime', () => {
 });
 ```
 
-（filtered-to-empty 的「該時間列不出現」是 `renderWeekViewByTime` 對空 group 不產列的自然結果——分組層空輸入已由 `empty input` 案覆蓋；DOM 層由 WT-1/WT-2 手動驗。）
+（filtered-to-empty 已由上方兩個具名案例直接覆蓋——**非**以 `{}` 空輸入代替：filter 後外層 classroom/day 容器仍在、只是課程被濾光，與整包空輸入不等價。DOM 層另由 WT-2 手動驗。）
 
 - [ ] **Step 2: 跑測試確認失敗**
 
