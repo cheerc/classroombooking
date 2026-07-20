@@ -45,7 +45,7 @@
 | 編輯能力 | **同現有日檢視 time 模式** | 可 inline 編輯、可刪除、不可拖拉、無「+ 新增課程」。使用者不需重新學習 |
 | 日檢視行為 | **維持現狀**（一課一列） | 日檢視比的是「看今天細節」，一課一列搭配備註欄（僅日檢視顯示）較合適；不驚動既有使用者，回歸風險最低 |
 | 全部課表模式 | **一併支援**（唯讀） | 避免「從單一課表帶著 time 狀態切過去、畫面卻變回依教室」的靜默不一致 |
-| PDF 匯出 | **一併支援** | 週檢視 PDF 是 DOM scraping，沿用相同表格結構即自動跟進；僅需修正左上角標籤 |
+| PDF 匯出 | **一併支援**（需 time-mode 分支，**非**自動跟進） | 週檢視 PDF 雖是 DOM scraping，但 body 為**逐欄位選擇性抽取**、time mode 會落入只印老師的 else 分支 → 須新增 time-mode `bottomObj` 分支使每張卡同時輸出老師與教室，並修左上角標籤（**完整內容契約見 §5.2**；含 week-time PDF fixture/assertion） |
 
 ### 3.1 為何不提供「+ 新增課程」
 
@@ -109,15 +109,22 @@
 
 **現況**：`JavaScript.html:26-27` 只儲存 `lastViewMode`，`viewSortMode` 由它推導而非獨立儲存；`setViewSortMode`（`UI.js.html:423-427`）只改 `app.viewSortMode` 並重繪，**完全沒有 localStorage write**。因此使用者在週檢視按「依時間」後 refresh，constructor 會重新推導出 week + classroom，直接違反驗收條件 #5。
 
+**⚠️ 持久化語意（回應 re-review §5.1 TDD_ACCEPTANCE — 避免改動日檢視行為）**：
+
+現行日檢視的既有行為是「refresh 後 sort **一律回 `time`**」（`JavaScript.html:27` 對 day 恆推導 time，不記使用者在 day 選過的 classroom/teacher）。驗收條件 #9 要求「日檢視行為完全不變」。因此持久化**不得**做成跨 view 的單一全域 sort key（否則「day 選 teacher → refresh → 恢復 teacher」會改變日檢視行為）。
+
+**採 view-scoped restore：`lastViewSortMode` 只作用於 week；day restore 一律強制 `time`。**
+
 **設計**：
 
-1. **新增獨立持久化 key `lastViewSortMode`**：
-   - `setViewSortMode`（`UI.js.html:423`）在改 `app.viewSortMode` 時 `localStorage.setItem('lastViewSortMode', mode)`。
-   - `setViewMode`（`UI.js.html:402`）切到 day 時仍將 sort 預設為 `time`、亦寫入 `lastViewSortMode`，維持既有日檢視預設行為。
-2. **constructor 還原邏輯**（`JavaScript.html:27`）改為讀取 `lastViewSortMode`，並做**合法值 fallback**：
-   - 讀到的值須落在 `{classroom, teacher, time}`；非法／不存在 → 依 `currentViewMode` 給預設（day → `time`，week → `classroom`），維持與現行完全相同的首次載入行為。
-   - week + time 為合法組合，直接還原。
-3. **測試**：新增 refresh／初始化的還原測試——涵蓋 (a) week+time 存後還原、(b) 非法值 fallback、(c) 舊使用者無 `lastViewSortMode` key 時的向後相容預設。此邏輯需可在 `tests/lib/` 以純函式測試（見 §7 的 production-importable 要求）。
+1. **新增持久化 key `lastViewSortMode`**：
+   - `setViewSortMode`（`UI.js.html:423`）改 `app.viewSortMode` 時 `localStorage.setItem('lastViewSortMode', mode)`（無條件寫入當下值即可——day 寫入的值在 restore 時不會被讀，見 2）。
+   - `setViewMode`（`UI.js.html:402`）維持既有：切 day 時 sort 預設 `time`。
+2. **constructor 還原邏輯**（`JavaScript.html:26-27`）：
+   - restored `currentViewMode === DAY` → `viewSortMode = 'time'`（**強制，維持現況、不讀 `lastViewSortMode`**）。
+   - restored `currentViewMode === WEEK` → `viewSortMode = lastViewSortMode`，經**合法值 fallback**：值須落在 `{classroom, teacher, time}`；非法／不存在 → `classroom`（維持現行 week 首次載入預設）。
+   - 結果：day 永遠 time 起手（行為不變）；week 記住 classroom/time/teacher；week+time 可跨 refresh 保存。
+3. **測試**：新增還原測試——(a) week+time 存後還原為 week+time、(b) **day 選 teacher 後 refresh 仍為 day+time**（回歸鎖，直接對應驗收 #9）、(c) week 非法值 fallback classroom、(d) 舊使用者無 `lastViewSortMode` key 的向後相容。此還原決策函式須抽為 §7.2 的具名 production-importable 純邏輯（非 mirror 副本）。
 
 ### 5.2 週檢視 time 模式 PDF 內容契約（blocker 2）
 
@@ -143,6 +150,8 @@
 - 本設計**不改** `DataCollection.js.html` 的 producer guard、**不改** `JavaScript.html` 的 timer。
 - `addUpcomingClassIndicators`（`UI.js.html`）在 time 模式左欄為時間、無教室名可掛，須確保**不因找不到 `.classroom-name-main` 而報錯**（防禦性 null check），但不主動渲染徽章。
 - 列入 §9 非範圍。
+
+**stale highlight（re-review watchpoint 1）已由既有流程關閉**：`renderScheduleTable`（`UI.js.html:492`）開頭即呼叫 `findNextUpcomingClasses`，後者第一行 `nextUpcomingClassIds.clear()`（`DataCollection.js.html:182`）後才 day/today early-return。故任何切到 week-time 的重繪都會先清空集合 → 不殘留舊 highlight。impl-review 仍應實測確認（WT-8 涵蓋日檢視回歸；此點順帶驗 week 無殘留 highlight）。
 
 ### 5.4 課程卡 dataset 與唯讀 guard（watchpoint）
 
@@ -183,16 +192,39 @@
 
 **後果**：新增在 `UI.js.html` 的 `renderWeekViewByTime`、`JavaScript.html` 的持久化還原、`PDFExport.js.html` 的 time-mode 分支，**完全不計入 coverage**。若只讓 `tests/lib/` 的 mirror 通過，production HTML 就算保留 week+time fallback、timeSort 顯示錯欄位、或 PDF 漏教室，gate 仍會**全綠（false-green）**。`tests/unit/integrationHelpers.test.js:74-87` 的 UI 契約也只比對 factory method 名稱，不驗 dispatch／DOM row-cell／viewContext／readonly／PDF／persistence。
 
-### 7.2 防 false-green 的三道措施
+### 7.2 防 false-green（回應 re-review blocker 2 — 具名 wiring + 證據門檻）
 
-1. **鏡像層定位為 mirror-only**：`tests/lib/` 測試明確標註「這是決策邏輯的平行實作，不保證 production HTML 一致」，避免後人誤信它綠 = 功能對。
-2. **抽 production-importable 純邏輯**：把可抽離的決策函式（如持久化還原的合法值 fallback、分組排序、三 context 的欄位旗標）抽成 production 與 test **共用同一份 source** 的模組（而非 mirror），讓 `tests/lib/` 對「真的被 production import 的實作」失敗，而非對副本失敗。抽離範圍以不破壞 GAS include 載入順序為界（實作時判定）。
-3. **強制手動 TestCases**（補足 HTML surface 的 coverage 缺口，寫入 `TestCases.md`）：
-   - **持久化**：週檢視選「依時間」→ refresh → 仍停在 week + time
-   - **week-time PDF**：週檢視 time 匯出 → 每張課程卡含老師**且**教室、左上角「星期／時間」
-   - **空 cell 無新增**：time-grid 空白格 double-click **不**開新增表單
-   - **唯讀**：全部課表 week-time → 課程卡唯讀、無刪除鈕
-   - **日檢視回歸**：日檢視「依時間」仍一課一列、教室左欄、notes 行為不變
+**根本前提（誠實面對 GAS 架構）**：production 邏輯在 GAS `.html` include（runtime = GAS，透過 `Index.html` 的 `<?!= include() ?>` 組裝、以全域物件串接），test 在 vitest（runtime = Node ESM）。兩者**無法執行同一份 source 檔**，故 `tests/lib/` 對 production HTML 的正確性**在架構上不可能提供自動化保證**。因此 false-green 的真正對策**不是**更嚴的自動化，而是「mirror 降級為輔助 + 手動案例升為 production 唯一 gate + best-effort 抽單一 source 降 drift」。
+
+**第 1 道 — mirror 降級為輔助（非 gate）**：`tests/lib/` 測試檔頭明確標註「mirror-only：本檔綠不代表 production HTML 正確；production 正確性由 §7.2 手動 TestCases gate」。自動化測試不得被當作 week-time 功能的驗收依據。
+
+**第 2 道 — best-effort 單一 authored source + 具名 wiring（降 drift，非消除）**：把三塊純決策邏輯抽為**單一被 production 實際呼叫**的來源，而非各寫一份：
+
+| 決策邏輯 | production 呼叫點（call-site） | 抽離目標 |
+|---|---|---|
+| render dispatch keying（viewMode × sortMode → 哪個 renderer） | `UI.js.html` `renderScheduleTable`（現 `:507-516` 分派段） | 抽成具名純函式，供 dispatch 直接呼叫 |
+| 持久化還原 fallback（§5.1 view-scoped restore） | `JavaScript.html` constructor `:26-27` | 同上 |
+| 卡片欄位旗標（default／teacherSort／timeSort → showTeacher/showClassroom） | `UI.js.html` `createClassElement`（現 `:349-353`） | 同上 |
+
+- **具體形式**：新增一個 `.js.html` include（依現有 IIFE-module 慣例，如 `UtilityFunctions.js.html` / `DataCollection.js.html` 的形式），定義一個全域決策物件；production 的 `UI.js.html` / `JavaScript.html` 在上述 call-site **實際呼叫它**（不是各自 inline 一份邏輯）。
+- **wiring 硬約束**：此 include 必須在 `Index.html` 的 include 順序中**先於** `UI.js.html` / `JavaScript.html`（全域須先定義後消費）——**`Index.html` 列入 Required Reads，impl 改 include 順序前先確認**（見 PROJECT.md §12 / LEAD SOP 對跨檔全域的規定）。若暴露新全域，**同步 `.eslintrc.json` globals**（否則 lint no-undef）。
+- **降 drift 原理**：production 與 test 對的是**同一份 authored 邏輯**（production 呼叫它、test import 它的等價抽出），而非兩份獨立副本。
+- **可行性 fallback**：若 impl 評估 GAS include 順序或 IIFE 域無法乾淨承載此抽離（實作時判定），**降級為 mirror + 在該處加對照註解指明 production 對應行號**，並**完全依賴第 3 道手動 gate**——不得因抽離失敗而放寬 production 正確性驗收。
+
+**第 3 道 — 強制手動 TestCases（production HTML 的唯一 gate；寫入 `TestCases.md`，每案附證據）**：
+
+| # | 案例 | 通過判準 | 證據門檻 |
+|---|---|---|---|
+| WT-1 | 週檢視選「依時間」的 **renderer dispatch** | 畫面呈**時間軸網格**（左欄時間、非教室列），**非** classroom fallback | 截圖貼 PR |
+| WT-2 | **7-day placement** | 同一起始時間橫跨週一～日正確落欄；同時段多教室同格堆疊 | 截圖貼 PR |
+| WT-3 | **卡片雙欄位** | 每張課程卡同時顯示老師**與**教室 | 截圖貼 PR |
+| WT-4 | **持久化** | 週檢視選「依時間」→ refresh → 仍 week+time | 操作錄影/前後截圖貼 PR |
+| WT-5 | **week-time PDF** | 匯出每張卡含老師**且**教室、左上角「星期／時間」 | PDF 檔/截圖貼 PR |
+| WT-6 | **空 cell 無新增** | time-grid 空白格 double-click **不**開新增表單 | 操作錄影/截圖貼 PR |
+| WT-7 | **全部課表唯讀** | week-time 下課程卡唯讀、無刪除鈕、editable 欄位不繞過 guard | 截圖貼 PR |
+| WT-8 | **日檢視回歸** | 日檢視「依時間」仍一課一列、教室左欄、notes 行為不變；**day 選 teacher → refresh → 仍 day+time** | 截圖貼 PR |
+
+> **證據門檻語意**：上述每案**須有 PR-attached 證據方可判 pass**；無證據 = 未驗收（不得以「code 看起來對」替代）。這是 GAS 架構下 production HTML 唯一的實質 gate。
 
 ### 7.3 自動化測試清單
 
