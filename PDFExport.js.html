@@ -87,8 +87,12 @@
           // "星期" right-aligned at top
           doc.text('星期', x + width - 1.5, topY, { align: 'right' });
 
-          // "教室/老師" left-aligned at bottom
-          const bottomText = App.viewSortMode === 'teacher' ? '老師' : '教室';
+          // "教室/老師/時間" left-aligned at bottom
+          const bottomText = ViewDecisionHelpers.resolvePdfDiagonalLabel({
+            currentViewMode: App.currentViewMode,
+            viewSortMode: App.viewSortMode,
+            weekMode: AppConfig.MODES.WEEK
+          });
           doc.text(bottomText, x + 1.5, bottomY, { align: 'left' });
         }
       };
@@ -259,11 +263,12 @@
                   const time = item.querySelector('[data-field="time"]')?.textContent.trim() || '';
                   const refTeacher = item.querySelector('[data-field="teacher"]')?.textContent.trim() || '';
 
-                  let bottomObj = `(${refTeacher})`;
-                  if (App.viewSortMode === 'teacher') {
-                    const cRoom = item.dataset.classroom || '';
-                    bottomObj = `(教室：${cRoom})`;
-                  }
+                  const cRoom = item.dataset.classroom || '';
+                  const bottomObj = ViewDecisionHelpers.resolvePdfBottomText({
+                    viewSortMode: App.viewSortMode,
+                    teacher: refTeacher,
+                    classroom: cRoom
+                  });
 
                   const content = `${name}\n${time}\n${bottomObj}`;
                   const color = App.courseColorMap[name];

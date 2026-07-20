@@ -10,6 +10,8 @@ import {
   resolveHeaderState,
   flattenCoursesForDays,
   groupCoursesByStartTime,
+  resolvePdfBottomText,
+  resolvePdfDiagonalLabel,
 } from '../lib/uiHelpers.js';
 import { timeToMinutes } from '../lib/frontendUtils.js';
 
@@ -292,6 +294,52 @@ describe('groupCoursesByStartTime', () => {
     const groups = groupCoursesByStartTime(flat, timeToMinutes);
     expect(groups.map(x => x.timeStart)).toContain('N/A');
     expect(groups).toHaveLength(2);
+  });
+});
+
+// ============================================================
+// PDF view decisions
+// ============================================================
+describe('resolvePdfBottomText (week PDF card bottom line)', () => {
+  const base = { teacher: '張老師', classroom: '301教室' };
+
+  it('teacher sort prints classroom only', () => {
+    expect(resolvePdfBottomText({ ...base, viewSortMode: 'teacher' })).toBe('(教室：301教室)');
+  });
+
+  it('time sort prints both teacher and classroom', () => {
+    const output = resolvePdfBottomText({ ...base, viewSortMode: 'time' });
+    expect(output).toContain('張老師');
+    expect(output).toContain('301教室');
+  });
+
+  it('classroom sort prints teacher only', () => {
+    expect(resolvePdfBottomText({ ...base, viewSortMode: 'classroom' })).toBe('(張老師)');
+  });
+
+  it('missing classroom does not crash time sort', () => {
+    expect(() => resolvePdfBottomText({ teacher: '王', classroom: '', viewSortMode: 'time' })).not.toThrow();
+  });
+});
+
+describe('resolvePdfDiagonalLabel (shared day/week hook)', () => {
+  const base = { weekMode: 'week' };
+
+  it('week + time uses 時間', () => {
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'week', viewSortMode: 'time' })).toBe('時間');
+  });
+
+  it('day + time keeps 教室 for day-time PDF', () => {
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'day', viewSortMode: 'time' })).toBe('教室');
+  });
+
+  it('teacher sort uses 老師 in both views', () => {
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'week', viewSortMode: 'teacher' })).toBe('老師');
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'day', viewSortMode: 'teacher' })).toBe('老師');
+  });
+
+  it('classroom sort uses 教室', () => {
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'week', viewSortMode: 'classroom' })).toBe('教室');
   });
 });
 

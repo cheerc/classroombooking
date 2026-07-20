@@ -84,6 +84,19 @@ export function groupCoursesByStartTime(flatCourses, timeToMinutes) {
     .map(([timeStart, courses]) => ({ timeStart, courses }));
 }
 
+/** Bottom line of a course card in the week PDF. */
+export function resolvePdfBottomText({ viewSortMode, teacher = '', classroom = '' }) {
+  if (viewSortMode === 'teacher') return `(教室：${classroom})`;
+  if (viewSortMode === 'time') return `${teacher} · ${classroom}`;
+  return `(${teacher})`;
+}
+
+/** Diagonal header label; only week + time uses 時間. */
+export function resolvePdfDiagonalLabel({ currentViewMode, viewSortMode, weekMode }) {
+  if (currentViewMode === weekMode && viewSortMode === 'time') return '時間';
+  return viewSortMode === 'teacher' ? '老師' : '教室';
+}
+
 /**
  * Computes the CSS classes, background color, and content flags for a class element.
  * Original: createClassElement data→props (UI.js.html L338-376)
