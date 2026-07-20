@@ -21,7 +21,7 @@
 - **新增跨檔全域** → 必須同步 `.eslintrc.json` 的 `globals`（否則 `no-undef` error）。
 - **送 review 前必跑** `./workflow.sh`（或等價 t1–t9），貼證據。
 - **手動 TestCase 證據** 須帶 provenance：tested head SHA + `clasp push` dev 版/preview 識別 + 執行時間 + 執行者；驗收方以當前 PR head 核對，SHA 對不上 = 未驗收（設計 §7.2）。
-- Commit 訊息尾附 `Closes t-XXX-N`（task board ID）供 TaskSweep 自動歸檔（PROJECT.md §9）。
+- **TaskSweep 歸檔契約**：TaskSweep 只掃**已 merged PR 的 commit**是否含 task-board token（PROJECT.md §9/§127-129）。故**PR/squash-merge commit** 必須含 `Closes <impl-task-id>`（impl task 的 board ID，dispatch 時提供）+ `Closes #162`。**per-task 中間 commit**（會被 squash 掉）用 `refs #162` 即可，不需帶 task-id。
 
 ## Required Reads（實作前全讀）
 
@@ -86,7 +86,7 @@ describe('resolveRestoredSort', () => {
 - [ ] **Step 2: 跑測試確認失敗**
 
 Run: `npm test -- uiHelpers`
-Expected: FAIL — `resolveRestoredSort is not a function`
+Expected: FAIL — `resolveRestoredSort` 尚未 export（實際訊息依 runtime 而定：missing-export 或 not-a-function，紅燈即可）
 
 - [ ] **Step 3: 實作 `resolveRestoredSort`（`tests/lib/uiHelpers.js`）**
 
@@ -326,46 +326,91 @@ git commit -m "feat: timeSort card shows both teacher and classroom (refs #162)"
 ### Task 4: 共用攤平 helper + `renderWeekViewByTime`
 
 **Files:**
-- Test: `tests/lib/uiHelpers.js`（新增 `groupCoursesByStartTime`）、`tests/unit/uiHelpers.test.js`
-- Modify: `UI.js.html` — 新增 `renderWeekViewByTime`；`renderDayViewByTime`/`renderByTeacher`/`renderAllSchedulesView` 改用共用攤平 helper
+- Test: `tests/lib/uiHelpers.js`（新增 `flattenCoursesForDays` + `groupCoursesByStartTime`）、`tests/unit/uiHelpers.test.js`
+- Modify: `UI.js.html` — 新增 `renderWeekViewByTime`；**新增 production 共用 helper `App._flattenCoursesForDays` / `App._groupCoursesByStartTime`**（選 A：放新 extracted-module 全域；選 B：掛 `App`）；`renderDayViewByTime`/`renderByTeacher`/`renderAllSchedulesView`/`renderWeekViewByTime` **四處**皆改呼叫共用 flatten helper
 
 **Interfaces:**
-- Produces:
-  - `flattenCoursesForDays(dataToRender, days) → [{...course, classroom, day}]`（純資料攤平，供四處共用）
-  - `groupCoursesByStartTime(flatCourses) → [{ timeStart, courses }]`（依 `timeToMinutes` 升冪；`timeToMinutes` 由呼叫端注入以利測試）
+- Produces（tests/lib，coverage-gated）：
+  - `flattenCoursesForDays(dataToRender, days) → [{...course, classroom, day}]`（純資料攤平，供四 renderer 共用）
+  - `groupCoursesByStartTime(flatCourses, timeToMinutes) → [{ timeStart, courses }]`（依注入 `timeToMinutes` 升冪；分組鍵 = `timeStart` 字串，與 sort 解耦）
+- Produces（production，四 renderer 實呼叫，B1 修正）：`App._flattenCoursesForDays(dataToRender, days)`、`App._groupCoursesByStartTime(flat)`（後者內部用 `App.timeToMinutes`）
 
-- [ ] **Step 1: 寫失敗測試（分組排序 + 7-day）**
+> **B1 修正**：`renderWeekViewByTime` **不得** inline 自己的 flatten/group，必須呼叫 production 共用 helper——與其他三 renderer 同源。tests/lib 版本是 coverage-gated 的等價 mirror。
+
+- [ ] **Step 1: 寫失敗測試（分組排序 + 7-day placement + 邊界，覆蓋設計 §7.3）**
+
+import 補 `flattenCoursesForDays, groupCoursesByStartTime`；`timeToMinutes` 直接 import 既有 mirror `tests/lib/frontendUtils.js`（與 production `App.timeToMinutes` 同語意：parse 失敗 try/catch → 0）：
 
 ```javascript
+import { timeToMinutes } from '../lib/frontendUtils.js';
+
+describe('flattenCoursesForDays', () => {
+  const data = {
+    R1: { 0: [{ id: 'a', timeStart: '09:10' }], 6: [{ id: 'b', timeStart: '19:00' }] },
+    R2: { 0: [{ id: 'c', timeStart: '09:10' }] },
+  };
+  it('flattens all 7 days, tagging classroom + day (7-day placement)', () => {
+    const flat = flattenCoursesForDays(data, [0, 1, 2, 3, 4, 5, 6]);
+    expect(flat).toHaveLength(3);
+    // day 6 (Sunday) must survive — regression guard for lost last column
+    expect(flat.find(c => c.id === 'b')).toMatchObject({ classroom: 'R1', day: 6 });
+    expect(flat.find(c => c.id === 'a')).toMatchObject({ classroom: 'R1', day: 0 });
+    expect(flat.find(c => c.id === 'c')).toMatchObject({ classroom: 'R2', day: 0 });
+  });
+  it('single-day slice returns only that day (day-view reuse)', () => {
+    expect(flattenCoursesForDays(data, [0])).toHaveLength(2);
+  });
+  it('empty data yields empty flat', () => {
+    expect(flattenCoursesForDays({}, [0, 1, 2, 3, 4, 5, 6])).toEqual([]);
+  });
+});
+
 describe('groupCoursesByStartTime', () => {
-  const t2m = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
-  it('groups by timeStart and sorts ascending', () => {
+  it('groups by timeStart, sorts ascending, keeps day for placement', () => {
     const flat = [
-      { timeStart: '13:30', classroom: 'R2', day: 1 },
-      { timeStart: '09:10', classroom: 'R1', day: 0 },
-      { timeStart: '09:10', classroom: 'R3', day: 2 },
+      { id: '1', timeStart: '13:30', classroom: 'R2', day: 1 },
+      { id: '2', timeStart: '09:10', classroom: 'R1', day: 0 },
+      { id: '3', timeStart: '09:10', classroom: 'R3', day: 2 },
     ];
-    const g = groupCoursesByStartTime(flat, t2m);
-    expect(g.map(x => x.timeStart)).toEqual(['09:10', '13:30']);
-    expect(g[0].courses.length).toBe(2); // two rooms share 09:10
+    const g = groupCoursesByStartTime(flat, timeToMinutes);
+    expect(g.map(x => x.timeStart)).toEqual(['09:10', '13:30']); // ascending
+    expect(g[0].courses.map(c => c.day).sort()).toEqual([0, 2]); // placement preserved across days
+  });
+  it('irregular (non-aligned) start times sort correctly', () => {
+    const flat = [
+      { timeStart: '09:10', day: 0 }, { timeStart: '08:55', day: 0 }, { timeStart: '13:05', day: 0 },
+    ];
+    expect(groupCoursesByStartTime(flat, timeToMinutes).map(x => x.timeStart))
+      .toEqual(['08:55', '09:10', '13:05']);
+  });
+  it('same start / different end stay in one group', () => {
+    const flat = [
+      { timeStart: '09:10', timeEnd: '11:00', day: 0 },
+      { timeStart: '09:10', timeEnd: '10:00', day: 0 },
+    ];
+    expect(groupCoursesByStartTime(flat, timeToMinutes)).toHaveLength(1);
   });
   it('empty input yields empty groups', () => {
-    expect(groupCoursesByStartTime([], t2m)).toEqual([]);
+    expect(groupCoursesByStartTime([], timeToMinutes)).toEqual([]);
   });
-  it('same start different end stay in one group', () => {
+  it('abnormal timeStart still forms its own group without throwing (design §6)', () => {
     const flat = [
-      { timeStart: '09:10', timeEnd: '11:00', classroom: 'R1', day: 0 },
-      { timeStart: '09:10', timeEnd: '10:00', classroom: 'R2', day: 0 },
+      { timeStart: '09:10', day: 0 },
+      { timeStart: 'N/A', day: 1 },
     ];
-    expect(groupCoursesByStartTime(flat, t2m).length).toBe(1);
+    const g = groupCoursesByStartTime(flat, timeToMinutes);
+    expect(g.map(x => x.timeStart).sort()).toContain('N/A'); // grouped by string key, no crash
+    expect(g).toHaveLength(2);
   });
 });
 ```
 
+（filtered-to-empty 的「該時間列不出現」是 `renderWeekViewByTime` 對空 group 不產列的自然結果——分組層空輸入已由 `empty input` 案覆蓋；DOM 層由 WT-1/WT-2 手動驗。）
+
 - [ ] **Step 2: 跑測試確認失敗**
 
 Run: `npm test -- uiHelpers`
-Expected: FAIL — 函式未定義
+Expected: FAIL — `flattenCoursesForDays`/`groupCoursesByStartTime` 尚未 export（紅燈即可）
 
 - [ ] **Step 3: 實作 helper（`tests/lib/uiHelpers.js`）**
 
@@ -382,7 +427,7 @@ export function flattenCoursesForDays(dataToRender, days) {
   return out;
 }
 
-/** Group flat courses by timeStart, ascending by timeToMinutes (injected). */
+/** Group flat courses by timeStart, ascending by timeToMinutes (injected). Group key is the string. */
 export function groupCoursesByStartTime(flatCourses, timeToMinutes) {
   const map = new Map();
   for (const c of flatCourses) {
@@ -400,30 +445,40 @@ export function groupCoursesByStartTime(flatCourses, timeToMinutes) {
 Run: `npm test -- uiHelpers`
 Expected: PASS
 
-- [ ] **Step 5: production — 新增 `renderWeekViewByTime`（`UI.js.html`）**
+- [ ] **Step 5: production 共用 helper（`UI.js.html` 或選 A 的 extracted-module）**
 
-在 `renderDayViewByTime` 之後新增。列 = 時間標籤；欄 = 週一～日（0–6）；同格多課垂直堆疊；卡片用 `timeSort` context；**空 cell 不設 `data-classroom`**（見 Task 6 完整 guard，此處已遵守）：
+新增與 tests/lib 等價的 production 共用 helper（選 A：定義於新 extracted-module 全域；選 B：掛 `App` 並加註解 `// mirror of tests/lib/uiHelpers.js:flattenCoursesForDays`）：
+
+```javascript
+    _flattenCoursesForDays: function(dataToRender, days) {
+        const out = [];
+        for (const classroom in dataToRender) {
+            for (const day of days) {
+                const list = dataToRender[classroom] && dataToRender[classroom][day];
+                if (list) list.forEach(course => out.push({ ...course, classroom, day }));
+            }
+        }
+        return out;
+    },
+    _groupCoursesByStartTime: function(flat) {
+        const map = new Map();
+        flat.forEach(c => { if (!map.has(c.timeStart)) map.set(c.timeStart, []); map.get(c.timeStart).push(c); });
+        return [...map.entries()]
+            .sort((a, b) => app.timeToMinutes(a[0]) - app.timeToMinutes(b[0]))
+            .map(([timeStart, courses]) => ({ timeStart, courses }));
+    },
+```
+
+- [ ] **Step 6: production — 新增 `renderWeekViewByTime`（呼叫共用 helper，不 inline）**
+
+在 `renderDayViewByTime` 之後新增。**呼叫 `this._flattenCoursesForDays` + `this._groupCoursesByStartTime`**（B1：與其他 renderer 同源）；欄 = 週一～日（0–6）；同格多課垂直堆疊；卡片用 `timeSort` context；**空 cell 不設 `data-classroom`**（Task 6 guard，此處已遵守）：
 
 ```javascript
     renderWeekViewByTime: function(dataToRender) {
         const days = [0, 1, 2, 3, 4, 5, 6];
-        const flat = [];
-        for (const classroom in dataToRender) {
-            for (const day of days) {
-                (dataToRender[classroom]?.[day] || []).forEach(course => {
-                    flat.push({ ...course, classroom, day });
-                });
-            }
-        }
-        const groups = new Map();
-        flat.forEach(c => {
-            if (!groups.has(c.timeStart)) groups.set(c.timeStart, []);
-            groups.get(c.timeStart).push(c);
-        });
-        const sorted = [...groups.entries()]
-            .sort((a, b) => app.timeToMinutes(a[0]) - app.timeToMinutes(b[0]));
-
-        sorted.forEach(([timeStart, courses]) => {
+        const flat = this._flattenCoursesForDays(dataToRender, days);
+        const groups = this._groupCoursesByStartTime(flat);
+        groups.forEach(({ timeStart, courses }) => {
             const tr = document.createElement('tr');
             tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${escapeHtml(timeStart)}</span></td>`;
             for (const day of days) {
@@ -441,18 +496,27 @@ Expected: PASS
     },
 ```
 
-- [ ] **Step 6: production 重構 — 三處攤平改用共用邏輯（順手，設計 §4.3）**
+- [ ] **Step 7: production 重構 — 讓全部四 renderer 共用 flatten helper（設計 §4.3 / B1）**
 
-把 `renderDayViewByTime`(636-642) 的攤平迴圈抽為 production 端共用 helper（選 A：共享全域方法；選 B：`App` 上一個 private helper `App._flattenCoursesForDays`），並讓 `renderDayViewByTime` / `renderByTeacher` / `renderAllSchedulesView` 的等效迴圈改用它。**逐一保留原輸出行為**——重構後跑既有測試確認無回歸。
+把三處既有攤平迴圈改呼叫 `this._flattenCoursesForDays`，使**四 consumer 全部同源**：
 
-- [ ] **Step 7: 跑 full workflow 確認無回歸 + commit**
+| # | consumer | 改法 |
+|---|---|---|
+| 1 | `renderWeekViewByTime`（新，Step 6） | 已呼叫 `_flattenCoursesForDays([0..6])` + `_groupCoursesByStartTime` |
+| 2 | `renderDayViewByTime`（現 636-642） | 攤平迴圈改 `this._flattenCoursesForDays(dataToRender, [app.currentDayIndex])`，其後 sort 邏輯不變 |
+| 3 | `renderByTeacher`（現 687-695） | 每 day 迴圈內攤平改 `this._flattenCoursesForDays(dataToRender, [day]).filter(c => c.teacher === teacher)` |
+| 4 | `renderAllSchedulesView` day+time 分支（現 562-587） | 攤平改 `this._flattenCoursesForDays(dataToRender, [day])`（Task 7 的 week+time 分支同樣呼叫） |
+
+**逐一保留原輸出行為**——每處改完跑既有測試（`npm test`）確認零回歸；輸出 DOM 結構不變。
+
+- [ ] **Step 8: 跑 full workflow 確認無回歸 + commit**
 
 Run: `./workflow.sh`
-Expected: 全綠（既有 render 測試不變）
+Expected: 全綠（既有 render 測試不變，coverage 維持 95/95/90/95）
 
 ```bash
 git add tests/lib/uiHelpers.js tests/unit/uiHelpers.test.js UI.js.html
-git commit -m "feat: add renderWeekViewByTime time-axis grid + shared flatten helper (refs #162)"
+git commit -m "feat: renderWeekViewByTime + shared flatten/group helper for all 4 renderers (refs #162)"
 ```
 
 ---
@@ -531,24 +595,16 @@ git commit -m "fix: time-grid empty cells reject add, course cards keep edit dat
 ```javascript
         } else if (app.currentViewMode === AppConfig.MODES.WEEK && app.viewSortMode === 'time') {
             const days = [0, 1, 2, 3, 4, 5, 6];
-            const flat = [];
-            for (const uniqueClassroomName in dataToRender) {
-                for (const day of days) {
-                    (dataToRender[uniqueClassroomName]?.[day] || []).forEach(course => {
-                        flat.push({ ...course, classroom: uniqueClassroomName, day });
-                    });
-                }
-            }
-            const groups = new Map();
-            flat.forEach(c => { if (!groups.has(c.timeStart)) groups.set(c.timeStart, []); groups.get(c.timeStart).push(c); });
-            [...groups.entries()].sort((a, b) => app.timeToMinutes(a[0]) - app.timeToMinutes(b[0]))
-              .forEach(([timeStart, courses]) => {
+            // B1: reuse the shared helpers (same source as renderWeekViewByTime)
+            const flat = this._flattenCoursesForDays(dataToRender, days);
+            const groups = this._groupCoursesByStartTime(flat);
+            groups.forEach(({ timeStart, courses }) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${escapeHtml(timeStart)}</span></td>`;
                 for (const day of days) {
                     const td = document.createElement('td');
                     td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top readonly-cell');
-                    td.dataset.day = day;
+                    td.dataset.day = day; // no data-classroom (time×day has no natural room)
                     courses.filter(c => c.day === day).forEach(course => {
                         const classDiv = this.createClassElement(course, course.classroom, day, { viewContext: 'timeSort' });
                         classDiv.classList.add('readonly');
@@ -558,11 +614,11 @@ git commit -m "fix: time-grid empty cells reject add, course cards keep edit dat
                     tr.appendChild(td);
                 }
                 AppElements.scheduleBody.appendChild(tr);
-              });
+            });
         }
 ```
 
-（依 Task 4/選 A-B 決定是否改用共享攤平 helper；輸出行為以上為準。）
+（`dataToRender` 的 key 在全部課表模式為 `uniqueClassroomName`——`_flattenCoursesForDays` 以 key 作 `classroom` 欄位，行為一致。）
 
 - [ ] **Step 2: 手動驗證 + commit**
 
@@ -578,11 +634,85 @@ git commit -m "feat: all-schedules week-time readonly time-axis branch (refs #16
 ### Task 8: PDF week-time 分支（老師＋教室，§5.2 / WT-5）
 
 **Files:**
-- Modify: `PDFExport.js.html:252-266`（week branch `bottomObj`）；左上角標籤段
+- Test: `tests/lib/uiHelpers.js`（新增 `resolvePdfBottomText` / `resolvePdfDiagonalLabel`）、`tests/unit/uiHelpers.test.js`
+- Modify: `PDFExport.js.html:252-266`（week branch `bottomObj`）、`PDFExport.js.html:70-93`（共用 `didDrawCellHooks` 對角標籤）
 
-- [ ] **Step 1: `bottomObj` 三分支**
+**Interfaces:**
+- Produces（tests/lib，coverage-gated——此即設計 §5.2 要求的 fixture/assertion 落點，B3 修正）：
+  - `resolvePdfBottomText({ viewSortMode, teacher, classroom }) → string`
+  - `resolvePdfDiagonalLabel({ currentViewMode, viewSortMode, weekMode }) → '老師'|'教室'|'時間'`
 
-`PDFExport.js.html:262-266` 現只有 teacher 分支改讀 classroom。加 time 分支使 time mode 同列老師與教室：
+> **B3 說明**：`PDFExport.js.html` 在 coverage 之外，無法自動化驗；故把 PDF 的**內容決策**抽為可測純函式並 TDD 鎖住（deterministic assertion），production 呼叫/鏡射之。實際匯出仍由 WT-5 手動 provenance gate 驗。
+
+- [ ] **Step 0a: 寫失敗測試（PDF 內容決策 fixture/assertion）**
+
+```javascript
+describe('resolvePdfBottomText (week PDF card bottom line)', () => {
+  const base = { teacher: '張老師', classroom: '301教室' };
+  it('teacher sort prints classroom only', () => {
+    expect(resolvePdfBottomText({ ...base, viewSortMode: 'teacher' })).toBe('(教室：301教室)');
+  });
+  it('time sort prints BOTH teacher and classroom (design §5.2)', () => {
+    const out = resolvePdfBottomText({ ...base, viewSortMode: 'time' });
+    expect(out).toContain('張老師');
+    expect(out).toContain('301教室');
+  });
+  it('classroom sort prints teacher only (unchanged)', () => {
+    expect(resolvePdfBottomText({ ...base, viewSortMode: 'classroom' })).toBe('(張老師)');
+  });
+  it('missing classroom does not crash time sort', () => {
+    expect(() => resolvePdfBottomText({ teacher: '王', classroom: '', viewSortMode: 'time' })).not.toThrow();
+  });
+});
+
+describe('resolvePdfDiagonalLabel (shared day/week hook)', () => {
+  const wk = { weekMode: 'week' };
+  it('week + time → 時間', () => {
+    expect(resolvePdfDiagonalLabel({ ...wk, currentViewMode: 'week', viewSortMode: 'time' })).toBe('時間');
+  });
+  it('DAY + time → 教室 (day-time left column is classroom; acceptance #9)', () => {
+    expect(resolvePdfDiagonalLabel({ ...wk, currentViewMode: 'day', viewSortMode: 'time' })).toBe('教室');
+  });
+  it('teacher sort → 老師 in both views', () => {
+    expect(resolvePdfDiagonalLabel({ ...wk, currentViewMode: 'week', viewSortMode: 'teacher' })).toBe('老師');
+    expect(resolvePdfDiagonalLabel({ ...wk, currentViewMode: 'day', viewSortMode: 'teacher' })).toBe('老師');
+  });
+  it('classroom sort → 教室', () => {
+    expect(resolvePdfDiagonalLabel({ ...wk, currentViewMode: 'week', viewSortMode: 'classroom' })).toBe('教室');
+  });
+});
+```
+
+- [ ] **Step 0b: 跑測試確認失敗**
+
+Run: `npm test -- uiHelpers`
+Expected: FAIL — 兩函式尚未 export（紅燈即可）
+
+- [ ] **Step 0c: 實作（`tests/lib/uiHelpers.js`）**
+
+```javascript
+/** Bottom line of a course card in the WEEK PDF. Mirror of PDFExport.js.html week branch. */
+export function resolvePdfBottomText({ viewSortMode, teacher = '', classroom = '' }) {
+  if (viewSortMode === 'teacher') return `(教室：${classroom})`;
+  if (viewSortMode === 'time') return `${teacher} · ${classroom}`;
+  return `(${teacher})`;
+}
+
+/** Diagonal header label. Shared by day+week PDF — only week+time shows 時間. */
+export function resolvePdfDiagonalLabel({ currentViewMode, viewSortMode, weekMode }) {
+  if (currentViewMode === weekMode && viewSortMode === 'time') return '時間';
+  return viewSortMode === 'teacher' ? '老師' : '教室';
+}
+```
+
+- [ ] **Step 0d: 跑測試確認通過**
+
+Run: `npm test -- uiHelpers`
+Expected: PASS
+
+- [ ] **Step 1: production `bottomObj` 三分支**
+
+`PDFExport.js.html:262-266` 現只有 teacher 分支改讀 classroom。加 time 分支使 time mode 同列老師與教室（選 A：呼叫共享全域 `resolvePdfBottomText`；選 B：inline 並加註解 `// mirror of tests/lib/uiHelpers.js:resolvePdfBottomText`）：
 
 ```javascript
                   let bottomObj = `(${refTeacher})`;
@@ -603,7 +733,7 @@ git commit -m "feat: all-schedules week-time readonly time-axis branch (refs #16
           const bottomText = App.viewSortMode === 'teacher' ? '老師' : '教室';
 ```
 
-⚠️ **不可只加 `time → 時間`**：day-time PDF 左欄是教室（`renderDayViewByTime` 一課一列、左欄教室），標籤「教室」正確；只有 week-time 左欄才是時間。故必須用 `currentViewMode` scope 到 week，否則改到 day-time、違反驗收 #9。改為：
+⚠️ **不可只加 `time → 時間`**：day-time PDF 左欄是教室（`renderDayViewByTime` 一課一列、左欄教室），標籤「教室」正確；只有 week-time 左欄才是時間。故必須用 `currentViewMode` scope 到 week，否則改到 day-time、違反驗收 #9（此不變量已由 Step 0a 的 `DAY + time → 教室` 測試鎖住）。改為（選 A：呼叫共享 `resolvePdfDiagonalLabel`；選 B：inline + mirror 註解）：
 
 ```javascript
           let bottomText = App.viewSortMode === 'teacher' ? '老師' : '教室';
@@ -614,13 +744,16 @@ git commit -m "feat: all-schedules week-time readonly time-axis branch (refs #16
 
 （Step 1 的 `bottomObj` body 分支位於 week branch `:252-266`、僅影響 week PDF；day-time body 在獨立 day branch `:160`、不受影響——故只有本 Step 的共用 hook 需 currentViewMode guard。）
 
-- [ ] **Step 3: 手動驗證（PDF 匯出）+ commit**
+- [ ] **Step 3: 跑測試 + 手動驗證（PDF 匯出）+ commit**
 
-手動：週檢視 time 匯出 PDF → 每張卡含老師且教室、左上角「星期／時間」（WT-5，附 PDF 檔）。
+Run: `npm test -- uiHelpers`（Step 0 的 fixture/assertion 全綠）
+手動：**兩份 PDF 都要**（WT-5 + 驗收 #9）——
+- 週檢視 time 匯出 → 每張卡含老師且教室、左上角「星期／時間」
+- 日檢視 time 匯出 → 左上角維持「星期／教室」、版面不變（回歸證據）
 
 ```bash
-git add PDFExport.js.html
-git commit -m "feat: week-time PDF outputs both teacher and classroom (refs #162)"
+git add tests/lib/uiHelpers.js tests/unit/uiHelpers.test.js PDFExport.js.html
+git commit -m "feat: week-time PDF prints teacher+classroom, day PDF unchanged (refs #162)"
 ```
 
 ---
@@ -664,7 +797,7 @@ git commit -m "test: week-time contract + mirror-only note + WT-1~WT-8 manual ca
 
 ## 收尾：PR + 手動證據
 
-- [ ] 開 PR（`writing-prs` skill），body 含 `Closes #162`、`Closes <task-id>`、workflow.sh t6 5/5 證據。
+- [ ] 開 PR（`writing-prs` skill）。**PR/squash-merge commit 訊息**必須含 `Closes #162` + `Closes <impl-task-id>`（TaskSweep 歸檔契約，見 Global Constraints）。body 貼 `./workflow.sh` t6 **8/8** 全綠證據（t6 = t1,t2,t3,t4,t5,t7,t8,t9 共 8 步，PROJECT.md §5）。
 - [ ] 附 WT-1~WT-8 手動證據，每案標 provenance（tested head SHA + clasp dev 版/preview + 時間 + 執行者）。
 - [ ] 回報 lead：PR URL + diff stat + 四個 production call-site 已驗真呼叫共享決策物件（分支 A）或已加 mirror 交叉註解（分支 B）。
 
