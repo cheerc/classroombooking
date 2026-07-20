@@ -8,7 +8,10 @@ import {
   computeClassElementProps,
   resolveLoadingActions,
   resolveHeaderState,
+  flattenCoursesForDays,
+  groupCoursesByStartTime,
 } from '../lib/uiHelpers.js';
+import { timeToMinutes } from '../lib/frontendUtils.js';
 
 // ============================================================
 // resolveRenderTarget
@@ -209,6 +212,86 @@ describe('computeClassElementProps', () => {
     const result = computeClassElementProps(classItem, 'Room A', 0, {}, state);
     expect(result.cssClasses).toContain('conflict');
     expect(result.cssClasses).toContain('upcoming-highlight');
+  });
+});
+
+// ============================================================
+// flattenCoursesForDays / groupCoursesByStartTime
+// ============================================================
+describe('flattenCoursesForDays', () => {
+  const data = {
+    R1: { 0: [{ id: 'a', timeStart: '09:10' }], 6: [{ id: 'b', timeStart: '19:00' }] },
+    R2: { 0: [{ id: 'c', timeStart: '09:10' }] },
+  };
+
+  it('flattens all 7 days, tagging classroom + day (7-day placement)', () => {
+    const flat = flattenCoursesForDays(data, [0, 1, 2, 3, 4, 5, 6]);
+    expect(flat).toHaveLength(3);
+    expect(flat.find(c => c.id === 'b')).toMatchObject({ classroom: 'R1', day: 6 });
+    expect(flat.find(c => c.id === 'a')).toMatchObject({ classroom: 'R1', day: 0 });
+    expect(flat.find(c => c.id === 'c')).toMatchObject({ classroom: 'R2', day: 0 });
+  });
+
+  it('single-day slice returns only that day (day-view reuse)', () => {
+    expect(flattenCoursesForDays(data, [0])).toHaveLength(2);
+  });
+
+  it('empty data yields empty flat', () => {
+    expect(flattenCoursesForDays({}, [0, 1, 2, 3, 4, 5, 6])).toEqual([]);
+  });
+
+  it('filtered-to-empty containers yield empty flat', () => {
+    const filtered = { R1: { 0: [], 3: [] }, R2: {} };
+    expect(flattenCoursesForDays(filtered, [0, 1, 2, 3, 4, 5, 6])).toEqual([]);
+  });
+});
+
+describe('groupCoursesByStartTime', () => {
+  it('groups by timeStart, sorts ascending, keeps day for placement', () => {
+    const flat = [
+      { id: '1', timeStart: '13:30', classroom: 'R2', day: 1 },
+      { id: '2', timeStart: '09:10', classroom: 'R1', day: 0 },
+      { id: '3', timeStart: '09:10', classroom: 'R3', day: 2 },
+    ];
+    const groups = groupCoursesByStartTime(flat, timeToMinutes);
+    expect(groups.map(x => x.timeStart)).toEqual(['09:10', '13:30']);
+    expect(groups[0].courses.map(c => c.day).sort()).toEqual([0, 2]);
+  });
+
+  it('sorts irregular non-aligned start times correctly', () => {
+    const flat = [
+      { timeStart: '09:10', day: 0 }, { timeStart: '08:55', day: 0 }, { timeStart: '13:05', day: 0 },
+    ];
+    expect(groupCoursesByStartTime(flat, timeToMinutes).map(x => x.timeStart))
+      .toEqual(['08:55', '09:10', '13:05']);
+  });
+
+  it('groups same start with different end times together', () => {
+    const flat = [
+      { timeStart: '09:10', timeEnd: '11:00', day: 0 },
+      { timeStart: '09:10', timeEnd: '10:00', day: 0 },
+    ];
+    expect(groupCoursesByStartTime(flat, timeToMinutes)).toHaveLength(1);
+  });
+
+  it('returns empty groups for empty input', () => {
+    expect(groupCoursesByStartTime([], timeToMinutes)).toEqual([]);
+  });
+
+  it('filtered-to-empty yields zero groups', () => {
+    const filtered = { R1: { 0: [], 3: [] }, R2: {} };
+    const flat = flattenCoursesForDays(filtered, [0, 1, 2, 3, 4, 5, 6]);
+    expect(groupCoursesByStartTime(flat, timeToMinutes)).toEqual([]);
+  });
+
+  it('groups abnormal timeStart without throwing', () => {
+    const flat = [
+      { timeStart: '09:10', day: 0 },
+      { timeStart: 'N/A', day: 1 },
+    ];
+    const groups = groupCoursesByStartTime(flat, timeToMinutes);
+    expect(groups.map(x => x.timeStart)).toContain('N/A');
+    expect(groups).toHaveLength(2);
   });
 });
 

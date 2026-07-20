@@ -60,6 +60,30 @@ export function resolveRestoredSort({ currentViewMode, storedSort, dayMode, week
   return legal.includes(storedSort) ? storedSort : 'classroom';
 }
 
+/** Flatten { classroom → day → course[] } into tagged course records. */
+export function flattenCoursesForDays(dataToRender, days) {
+  const out = [];
+  for (const classroom in dataToRender) {
+    for (const day of days) {
+      const list = dataToRender[classroom] && dataToRender[classroom][day];
+      if (list) list.forEach(course => out.push({ ...course, classroom, day }));
+    }
+  }
+  return out;
+}
+
+/** Group flat courses by timeStart, ascending by injected time converter. */
+export function groupCoursesByStartTime(flatCourses, timeToMinutes) {
+  const map = new Map();
+  for (const course of flatCourses) {
+    if (!map.has(course.timeStart)) map.set(course.timeStart, []);
+    map.get(course.timeStart).push(course);
+  }
+  return [...map.entries()]
+    .sort((a, b) => timeToMinutes(a[0]) - timeToMinutes(b[0]))
+    .map(([timeStart, courses]) => ({ timeStart, courses }));
+}
+
 /**
  * Computes the CSS classes, background color, and content flags for a class element.
  * Original: createClassElement data→props (UI.js.html L338-376)
