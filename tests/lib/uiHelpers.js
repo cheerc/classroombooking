@@ -1,4 +1,8 @@
 /**
+ * ⚠️ mirror-only: 本檔為 UI 決策邏輯的平行實作。本檔綠不代表 production
+ * (.html) 正確——.html 被 coverage 排除。production HTML 正確性由
+ * TestCases.md 的 WT-1~WT-9 手動案例（provenance-bound 證據）gate。
+ *
  * UI helpers — extracted pure decision/transform logic from UI.js.html.
  * Ref: #92 — Wave 3B UI rendering core
  *
