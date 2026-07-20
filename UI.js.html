@@ -606,6 +606,27 @@ function createUIModule(app) {
                 tr.appendChild(td);
                 AppElements.scheduleBody.appendChild(tr);
             });
+        } else if (app.currentViewMode === AppConfig.MODES.WEEK && app.viewSortMode === 'time') {
+            const days = [0, 1, 2, 3, 4, 5, 6];
+            const flat = this._flattenCoursesForDays(dataToRender, days);
+            const groups = this._groupCoursesByStartTime(flat);
+            groups.forEach(({ timeStart, courses }) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${escapeHtml(timeStart)}</span></td>`;
+                for (const day of days) {
+                    const td = document.createElement('td');
+                    td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top readonly-cell');
+                    td.dataset.day = day;
+                    courses.filter(course => course.day === day).forEach(course => {
+                        const classDiv = this.createClassElement(course, course.classroom, day, { viewContext: 'timeSort' });
+                        classDiv.classList.add('readonly');
+                        classDiv.querySelector('.delete-btn')?.remove();
+                        td.appendChild(classDiv);
+                    });
+                    tr.appendChild(td);
+                }
+                AppElements.scheduleBody.appendChild(tr);
+            });
         } else {
             const sortedClassrooms = Object.keys(dataToRender).sort();
             sortedClassrooms.forEach(uniqueClassroomName => {
