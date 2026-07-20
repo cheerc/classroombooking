@@ -1,8 +1,8 @@
 # 週檢視「依時間」時間軸模式：驗證清單
 
 > Generated: 2026-07-20
-> PR: 待建立
-> Verified-at: `8108110`（程式碼驗證當下；checklist commit 會推進 PR head）
+> PR: #163
+> Verified-at: `9b86677`（修正程式碼驗證當下；checklist commit 會推進 PR head）
 > Plan: `docs/superpowers/plans/2026-07-20-week-view-time-axis.md`
 
 ## How to test
