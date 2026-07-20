@@ -345,11 +345,13 @@ function createUIModule(app) {
         const allTagsTooltip = escapeHtml((classItem.tags || []).join(', '));
         const notesHtml = app.currentViewMode === AppConfig.MODES.DAY ? `<div class="course-notes editable" data-field="notes">${escapeHtml(classItem.notes || '')}</div>` : '';
         
+        const { showTeacher, showClassroom } = ViewDecisionHelpers.resolveClassElementFields(viewContext);
         let contextSpecificHtml = '';
-        if (viewContext === 'teacherSort') {
-            contextSpecificHtml = `<div>教室：${escapeHtml(classroom)}</div>`;
-        } else {
-            contextSpecificHtml = `<div class="editable" data-field="teacher">${escapeHtml(classItem.teacher)}</div>`;
+        if (showTeacher) {
+            contextSpecificHtml += `<div class="editable" data-field="teacher">${escapeHtml(classItem.teacher)}</div>`;
+        }
+        if (showClassroom) {
+            contextSpecificHtml += `<div>教室：${escapeHtml(classroom)}</div>`;
         }
 
         const viewModeClass = app.currentViewMode === AppConfig.MODES.DAY ? 'day-view-layout' : '';
@@ -411,11 +413,7 @@ function createUIModule(app) {
             // Default sort for day view is by time
             app.viewSortMode = 'time'; 
         } else { // mode === AppConfig.MODES.WEEK
-            // If switching to week view and the sort mode was 'time' (which is invalid for week view),
-            // default to 'classroom' sort.
-            if (app.viewSortMode === 'time') {
-                app.viewSortMode = 'classroom';
-            }
+            // Week view supports the time sort mode.
         }
         this.renderScheduleTable();
     },
@@ -423,6 +421,7 @@ function createUIModule(app) {
     setViewSortMode: function(mode) {
         if (app.viewSortMode === mode) return;
         app.viewSortMode = mode;
+        localStorage.setItem('lastViewSortMode', mode);
         // The actual button state is updated in updateViewControls
         this.renderScheduleTable();
     },
@@ -439,7 +438,7 @@ function createUIModule(app) {
 
         // --- Control visibility of sort selectors ---
         AppElements.viewSortSelector.style.display = isAllSchedules ? 'none' : 'flex';
-        AppElements.daySortTimeBtn.style.display = isDayView ? 'block' : 'none';
+        AppElements.daySortTimeBtn.style.display = 'block';
 
         const tableHead = AppElements.scheduleBody.previousElementSibling;
         tableHead.innerHTML = '';
@@ -473,7 +472,8 @@ function createUIModule(app) {
             `
             );
         } else { // Week View
-            const weekViewHeaderLabel = app.viewSortMode === 'teacher' ? '老師' : '教室';
+            const weekViewHeaderLabel = app.viewSortMode === 'teacher' ? '老師'
+                : app.viewSortMode === 'time' ? '時間' : '教室';
             tr.innerHTML = (
                 `<th class="border border-gray-300 p-2 w-20 bg-gray-200 diagonal-split">
                     <span class="diagonal-split-top">星期</span>
@@ -486,14 +486,43 @@ function createUIModule(app) {
         tableHead.appendChild(tr);
     },
 
+    _flattenCoursesForDays: function(dataToRender, days) {
+        const out = [];
+        for (const classroom in dataToRender) {
+            for (const day of days) {
+                const list = dataToRender[classroom] && dataToRender[classroom][day];
+                if (list) list.forEach(course => out.push({ ...course, classroom, day }));
+            }
+        }
+        return out;
+    },
+
+    _groupCoursesByStartTime: function(flat) {
+        const map = new Map();
+        flat.forEach(course => {
+            if (!map.has(course.timeStart)) map.set(course.timeStart, []);
+            map.get(course.timeStart).push(course);
+        });
+        return [...map.entries()]
+            .sort((a, b) => app.timeToMinutes(a[0]) - app.timeToMinutes(b[0]))
+            .map(([timeStart, courses]) => ({ timeStart, courses }));
+    },
+
     renderScheduleTable: function() {
         try {
             this.hideActiveTooltip();
             app.findNextUpcomingClasses();
             this.updateViewControls(); // This now handles the header and button visibility
 
-            if (app.activeScheduleId === AppConfig.ALL_SCHEDULES_ID) {
-                this.renderAllSchedulesView();
+            const renderTarget = ViewDecisionHelpers.resolveRenderTarget({
+                activeScheduleId: app.activeScheduleId,
+                allSchedulesId: AppConfig.ALL_SCHEDULES_ID,
+                currentViewMode: app.currentViewMode,
+                viewSortMode: app.viewSortMode,
+                dayMode: AppConfig.MODES.DAY
+            });
+            if (renderTarget.renderer === 'allSchedules') {
+                this.renderAllSchedulesView(renderTarget.scheduleRenderer);
                 return;
             }
 
@@ -504,14 +533,16 @@ function createUIModule(app) {
 
             AppElements.scheduleBody.innerHTML = '';
 
-            if (app.viewSortMode === 'classroom') {
+            const renderer = renderTarget.scheduleRenderer;
+            if (renderer === 'classroom') {
                 this.renderByClassroom(dataToRender);
-            } else if (app.viewSortMode === 'teacher') {
+            } else if (renderer === 'teacher') {
                 this.renderByTeacher(dataToRender);
-            } else if (app.currentViewMode === AppConfig.MODES.DAY && app.viewSortMode === 'time') {
+            } else if (renderer === 'time') {
                 this.renderDayViewByTime(dataToRender);
+            } else if (renderer === 'weekTime') {
+                this.renderWeekViewByTime(dataToRender);
             } else {
-                // Fallback for any invalid state
                 this.renderByClassroom(dataToRender);
             }
 
@@ -524,7 +555,18 @@ function createUIModule(app) {
         }
     },
 
-    renderAllSchedulesView: function() {
+    renderAllSchedulesView: function(scheduleRenderer) {
+        if (!scheduleRenderer) {
+            const renderTarget = ViewDecisionHelpers.resolveRenderTarget({
+                activeScheduleId: app.activeScheduleId,
+                allSchedulesId: AppConfig.ALL_SCHEDULES_ID,
+                currentViewMode: app.currentViewMode,
+                viewSortMode: app.viewSortMode,
+                dayMode: AppConfig.MODES.DAY
+            });
+            scheduleRenderer = renderTarget.scheduleRenderer;
+        }
+
         AppElements.scheduleBody.innerHTML = '';
         const classroomMetadataMap = new Map();
         const dataForFiltering = {};
@@ -559,16 +601,9 @@ function createUIModule(app) {
             dataToRender = app.filterDataByActiveFilters(dataToRender);
         }
 
-        if (app.currentViewMode === AppConfig.MODES.DAY && app.viewSortMode === 'time') {
+        if (scheduleRenderer === 'time') {
             const day = app.currentDayIndex;
-            let allCoursesForDay = [];
-            for (const uniqueClassroomName in dataToRender) {
-                if (dataToRender[uniqueClassroomName][day]) {
-                    dataToRender[uniqueClassroomName][day].forEach(course => {
-                        allCoursesForDay.push({ ...course, classroom: uniqueClassroomName });
-                    });
-                }
-            }
+            const allCoursesForDay = this._flattenCoursesForDays(dataToRender, [day]);
             allCoursesForDay.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
             allCoursesForDay.forEach(course => {
                 const tr = document.createElement('tr');
@@ -583,6 +618,27 @@ function createUIModule(app) {
                 classDiv.querySelector('.delete-btn').remove();
                 td.appendChild(classDiv);
                 tr.appendChild(td);
+                AppElements.scheduleBody.appendChild(tr);
+            });
+        } else if (scheduleRenderer === 'weekTime') {
+            const days = [0, 1, 2, 3, 4, 5, 6];
+            const flat = this._flattenCoursesForDays(dataToRender, days);
+            const groups = this._groupCoursesByStartTime(flat);
+            groups.forEach(({ timeStart, courses }) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${escapeHtml(timeStart)}</span></td>`;
+                for (const day of days) {
+                    const td = document.createElement('td');
+                    td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top readonly-cell');
+                    td.dataset.day = day;
+                    courses.filter(course => course.day === day).forEach(course => {
+                        const classDiv = this.createClassElement(course, course.classroom, day, { viewContext: 'timeSort' });
+                        classDiv.classList.add('readonly');
+                        classDiv.querySelector('.delete-btn')?.remove();
+                        td.appendChild(classDiv);
+                    });
+                    tr.appendChild(td);
+                }
                 AppElements.scheduleBody.appendChild(tr);
             });
         } else {
@@ -632,14 +688,7 @@ function createUIModule(app) {
 
     renderDayViewByTime: function(dataToRender) {
         const day = app.currentDayIndex;
-        let allCoursesForDay = [];
-        for (const classroom in dataToRender) {
-            if (dataToRender[classroom][day]) {
-                dataToRender[classroom][day].forEach(course => {
-                    allCoursesForDay.push({ ...course, classroom: classroom });
-                });
-            }
-        }
+        const allCoursesForDay = this._flattenCoursesForDays(dataToRender, [day]);
         allCoursesForDay.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));
         allCoursesForDay.forEach(course => {
             const tr = document.createElement('tr');
@@ -651,6 +700,27 @@ function createUIModule(app) {
             const classDiv = this.createClassElement(course, course.classroom, day, {});
             td.appendChild(classDiv);
             tr.appendChild(td);
+            AppElements.scheduleBody.appendChild(tr);
+        });
+    },
+
+    renderWeekViewByTime: function(dataToRender) {
+        const days = [0, 1, 2, 3, 4, 5, 6];
+        const flat = this._flattenCoursesForDays(dataToRender, days);
+        const groups = this._groupCoursesByStartTime(flat);
+        groups.forEach(({ timeStart, courses }) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="border border-gray-300 p-2 font-medium bg-gray-100 classroom-cell-stacked"><span class="classroom-name-main">${escapeHtml(timeStart)}</span></td>`;
+            for (const day of days) {
+                const td = document.createElement('td');
+                td.setAttribute('class', 'border border-gray-300 p-2 schedule-cell align-top');
+                td.dataset.day = day;
+                courses.filter(course => course.day === day).forEach(course => {
+                    const classDiv = this.createClassElement(course, course.classroom, day, { viewContext: 'timeSort' });
+                    td.appendChild(classDiv);
+                });
+                tr.appendChild(td);
+            }
             AppElements.scheduleBody.appendChild(tr);
         });
     },
@@ -683,16 +753,8 @@ function createUIModule(app) {
                 td.dataset.day = day;
 
                 // 4. Find all courses for this teacher on this day
-                let coursesForDay = [];
-                for (const classroom in dataToRender) {
-                    if (dataToRender[classroom][day]) {
-                        dataToRender[classroom][day].forEach(course => {
-                            if (course.teacher === teacher) {
-                                coursesForDay.push({ ...course, classroom: classroom }); // Add classroom info
-                            }
-                        });
-                    }
-                }
+                let coursesForDay = this._flattenCoursesForDays(dataToRender, [day])
+                    .filter(course => course.teacher === teacher);
 
                 // 5. Sort and render the courses into the cell
                 coursesForDay.sort((a, b) => app.timeToMinutes(a.timeStart) - app.timeToMinutes(b.timeStart));

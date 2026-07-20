@@ -4,10 +4,16 @@
  */
 import {
   resolveRenderTarget,
+  resolveRestoredSort,
   computeClassElementProps,
   resolveLoadingActions,
   resolveHeaderState,
+  flattenCoursesForDays,
+  groupCoursesByStartTime,
+  resolvePdfBottomText,
+  resolvePdfDiagonalLabel,
 } from '../lib/uiHelpers.js';
+import { timeToMinutes } from '../lib/frontendUtils.js';
 
 // ============================================================
 // resolveRenderTarget
@@ -25,17 +31,29 @@ describe('resolveRenderTarget', () => {
 
   it('routes to allSchedules when activeScheduleId matches allSchedulesId', () => {
     const result = resolveRenderTarget({ ...base, activeScheduleId: ALL_ID });
-    expect(result).toEqual({ renderer: 'allSchedules', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'allSchedules',
+      scheduleRenderer: 'classroom',
+      shouldFilter: false,
+    });
   });
 
   it('routes to classroom renderer by default', () => {
     const result = resolveRenderTarget(base);
-    expect(result).toEqual({ renderer: 'classroom', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'classroom',
+      scheduleRenderer: 'classroom',
+      shouldFilter: false,
+    });
   });
 
   it('routes to teacher renderer', () => {
     const result = resolveRenderTarget({ ...base, viewSortMode: 'teacher' });
-    expect(result).toEqual({ renderer: 'teacher', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'teacher',
+      scheduleRenderer: 'teacher',
+      shouldFilter: false,
+    });
   });
 
   it('routes to time renderer in day mode', () => {
@@ -44,16 +62,24 @@ describe('resolveRenderTarget', () => {
       viewSortMode: 'time',
       currentViewMode: 'day',
     });
-    expect(result).toEqual({ renderer: 'time', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'time',
+      scheduleRenderer: 'time',
+      shouldFilter: false,
+    });
   });
 
-  it('falls back to classroom for time sort in week mode', () => {
+  it('routes week + time to the week-time renderer', () => {
     const result = resolveRenderTarget({
       ...base,
       viewSortMode: 'time',
       currentViewMode: 'week',
     });
-    expect(result).toEqual({ renderer: 'classroom', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'weekTime',
+      scheduleRenderer: 'weekTime',
+      shouldFilter: false,
+    });
   });
 
   it('sets shouldFilter true when activeFilters non-empty', () => {
@@ -73,9 +99,47 @@ describe('resolveRenderTarget', () => {
     expect(result.shouldFilter).toBe(false);
   });
 
+  it('routes all-schedules plus unsupported view mode to the shared week-time renderer', () => {
+    const result = resolveRenderTarget({
+      ...base,
+      activeScheduleId: ALL_ID,
+      currentViewMode: 'preview',
+      viewSortMode: 'time',
+    });
+    expect(result).toEqual({
+      renderer: 'allSchedules',
+      scheduleRenderer: 'weekTime',
+      shouldFilter: false,
+    });
+  });
+
   it('falls back to classroom for unknown viewSortMode', () => {
     const result = resolveRenderTarget({ ...base, viewSortMode: 'unknown' });
     expect(result.renderer).toBe('classroom');
+    expect(result.scheduleRenderer).toBe('classroom');
+  });
+});
+
+// ============================================================
+// resolveRestoredSort
+// ============================================================
+describe('resolveRestoredSort', () => {
+  const base = { dayMode: 'day', weekMode: 'week' };
+
+  it('week + stored time restores time (week+time persists)', () => {
+    expect(resolveRestoredSort({ ...base, currentViewMode: 'week', storedSort: 'time' })).toBe('time');
+  });
+
+  it('day forces time regardless of stored teacher (day behavior unchanged)', () => {
+    expect(resolveRestoredSort({ ...base, currentViewMode: 'day', storedSort: 'teacher' })).toBe('time');
+  });
+
+  it('week + illegal stored falls back to classroom', () => {
+    expect(resolveRestoredSort({ ...base, currentViewMode: 'week', storedSort: 'bogus' })).toBe('classroom');
+  });
+
+  it('week + missing key (null) falls back to classroom (back-compat)', () => {
+    expect(resolveRestoredSort({ ...base, currentViewMode: 'week', storedSort: null })).toBe('classroom');
   });
 });
 
@@ -107,7 +171,8 @@ describe('computeClassElementProps', () => {
     expect(result.isUpcoming).toBe(false);
     expect(result.hasConflict).toBe(false);
     expect(result.showNotes).toBe(false);
-    expect(result.showClassroomInContent).toBe(false);
+    expect(result.showTeacher).toBe(true);
+    expect(result.showClassroom).toBe(false);
     expect(result.tags).toEqual(['core', 'math']);
     expect(result.dataAttributes).toEqual({
       id: 'c1', name: 'Math', classroom: 'Room A', day: 0,
@@ -151,7 +216,16 @@ describe('computeClassElementProps', () => {
     const result = computeClassElementProps(
       classItem, 'Room A', 0, { viewContext: 'teacherSort' }, defaultAppState
     );
-    expect(result.showClassroomInContent).toBe(true);
+    expect(result.showTeacher).toBe(false);
+    expect(result.showClassroom).toBe(true);
+  });
+
+  it('shows both teacher and classroom in time sort view context', () => {
+    const result = computeClassElementProps(
+      classItem, 'Room A', 0, { viewContext: 'timeSort' }, defaultAppState
+    );
+    expect(result.showTeacher).toBe(true);
+    expect(result.showClassroom).toBe(true);
   });
 
   it('handles course with no tags', () => {
@@ -175,6 +249,132 @@ describe('computeClassElementProps', () => {
     const result = computeClassElementProps(classItem, 'Room A', 0, {}, state);
     expect(result.cssClasses).toContain('conflict');
     expect(result.cssClasses).toContain('upcoming-highlight');
+  });
+});
+
+// ============================================================
+// flattenCoursesForDays / groupCoursesByStartTime
+// ============================================================
+describe('flattenCoursesForDays', () => {
+  const data = {
+    R1: { 0: [{ id: 'a', timeStart: '09:10' }], 6: [{ id: 'b', timeStart: '19:00' }] },
+    R2: { 0: [{ id: 'c', timeStart: '09:10' }] },
+  };
+
+  it('flattens all 7 days, tagging classroom + day (7-day placement)', () => {
+    const flat = flattenCoursesForDays(data, [0, 1, 2, 3, 4, 5, 6]);
+    expect(flat).toHaveLength(3);
+    expect(flat.find(c => c.id === 'b')).toMatchObject({ classroom: 'R1', day: 6 });
+    expect(flat.find(c => c.id === 'a')).toMatchObject({ classroom: 'R1', day: 0 });
+    expect(flat.find(c => c.id === 'c')).toMatchObject({ classroom: 'R2', day: 0 });
+  });
+
+  it('single-day slice returns only that day (day-view reuse)', () => {
+    expect(flattenCoursesForDays(data, [0])).toHaveLength(2);
+  });
+
+  it('empty data yields empty flat', () => {
+    expect(flattenCoursesForDays({}, [0, 1, 2, 3, 4, 5, 6])).toEqual([]);
+  });
+
+  it('filtered-to-empty containers yield empty flat', () => {
+    const filtered = { R1: { 0: [], 3: [] }, R2: {} };
+    expect(flattenCoursesForDays(filtered, [0, 1, 2, 3, 4, 5, 6])).toEqual([]);
+  });
+});
+
+describe('groupCoursesByStartTime', () => {
+  it('groups by timeStart, sorts ascending, keeps day for placement', () => {
+    const flat = [
+      { id: '1', timeStart: '13:30', classroom: 'R2', day: 1 },
+      { id: '2', timeStart: '09:10', classroom: 'R1', day: 0 },
+      { id: '3', timeStart: '09:10', classroom: 'R3', day: 2 },
+    ];
+    const groups = groupCoursesByStartTime(flat, timeToMinutes);
+    expect(groups.map(x => x.timeStart)).toEqual(['09:10', '13:30']);
+    expect(groups[0].courses.map(c => c.day).sort()).toEqual([0, 2]);
+  });
+
+  it('sorts irregular non-aligned start times correctly', () => {
+    const flat = [
+      { timeStart: '09:10', day: 0 }, { timeStart: '08:55', day: 0 }, { timeStart: '13:05', day: 0 },
+    ];
+    expect(groupCoursesByStartTime(flat, timeToMinutes).map(x => x.timeStart))
+      .toEqual(['08:55', '09:10', '13:05']);
+  });
+
+  it('groups same start with different end times together', () => {
+    const flat = [
+      { timeStart: '09:10', timeEnd: '11:00', day: 0 },
+      { timeStart: '09:10', timeEnd: '10:00', day: 0 },
+    ];
+    expect(groupCoursesByStartTime(flat, timeToMinutes)).toHaveLength(1);
+  });
+
+  it('returns empty groups for empty input', () => {
+    expect(groupCoursesByStartTime([], timeToMinutes)).toEqual([]);
+  });
+
+  it('filtered-to-empty yields zero groups', () => {
+    const filtered = { R1: { 0: [], 3: [] }, R2: {} };
+    const flat = flattenCoursesForDays(filtered, [0, 1, 2, 3, 4, 5, 6]);
+    expect(groupCoursesByStartTime(flat, timeToMinutes)).toEqual([]);
+  });
+
+  it('groups abnormal timeStart without throwing', () => {
+    const flat = [
+      { timeStart: '09:10', day: 0 },
+      { timeStart: 'N/A', day: 1 },
+    ];
+    const groups = groupCoursesByStartTime(flat, timeToMinutes);
+    expect(groups.map(x => x.timeStart)).toContain('N/A');
+    expect(groups).toHaveLength(2);
+  });
+});
+
+// ============================================================
+// PDF view decisions
+// ============================================================
+describe('resolvePdfBottomText (week PDF card bottom line)', () => {
+  const base = { teacher: '張老師', classroom: '301教室' };
+
+  it('teacher sort prints classroom only', () => {
+    expect(resolvePdfBottomText({ ...base, viewSortMode: 'teacher' })).toBe('(教室：301教室)');
+  });
+
+  it('time sort prints both teacher and classroom', () => {
+    const output = resolvePdfBottomText({ ...base, viewSortMode: 'time' });
+    expect(output).toContain('張老師');
+    expect(output).toContain('301教室');
+  });
+
+  it('classroom sort prints teacher only', () => {
+    expect(resolvePdfBottomText({ ...base, viewSortMode: 'classroom' })).toBe('(張老師)');
+  });
+
+  it('missing classroom does not crash time sort', () => {
+    expect(() => resolvePdfBottomText({ teacher: '王', classroom: '', viewSortMode: 'time' })).not.toThrow();
+  });
+});
+
+describe('resolvePdfDiagonalLabel (shared day/week hook)', () => {
+  const base = { weekMode: 'week' };
+
+  it('week + time uses 時間', () => {
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'week', viewSortMode: 'time' })).toBe('時間');
+  });
+
+  it('day + time keeps 教室 for day-time PDF', () => {
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'day', viewSortMode: 'time' })).toBe('教室');
+  });
+
+  it('teacher sort uses 老師 in both views', () => {
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'week', viewSortMode: 'teacher' })).toBe('老師');
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'day', viewSortMode: 'teacher' })).toBe('老師');
+  });
+
+  it('classroom sort uses 教室', () => {
+    expect(resolvePdfDiagonalLabel({ ...base, currentViewMode: 'week', viewSortMode: 'classroom' })).toBe('教室');
   });
 });
 

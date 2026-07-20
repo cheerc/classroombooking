@@ -1,4 +1,8 @@
 /**
+ * ⚠️ mirror-only: 本檔為 UI 決策邏輯的平行實作。本檔綠不代表 production
+ * (.html) 正確——.html 被 coverage 排除。production HTML 正確性由
+ * TestCases.md 的 WT-1~WT-9 手動案例（provenance-bound 證據）gate。
+ *
  * UI helpers — extracted pure decision/transform logic from UI.js.html.
  * Ref: #92 — Wave 3B UI rendering core
  *
@@ -17,7 +21,7 @@
  * @param {string} state.viewSortMode - 'classroom' | 'teacher' | 'time'
  * @param {string} state.currentViewMode - 'week' | 'day'
  * @param {string} state.dayMode - AppConfig.MODES.DAY value
- * @returns {{ renderer: string, shouldFilter: boolean }}
+ * @returns {{ renderer: string, scheduleRenderer: string, shouldFilter: boolean }}
  */
 export function resolveRenderTarget(state) {
   const {
@@ -29,22 +33,76 @@ export function resolveRenderTarget(state) {
     dayMode,
   } = state;
 
-  if (activeScheduleId === allSchedulesId) {
-    return { renderer: 'allSchedules', shouldFilter: false };
-  }
+  const shouldFilter = activeScheduleId === allSchedulesId
+    ? false
+    : activeFilters && activeFilters.length > 0;
 
-  const shouldFilter = activeFilters && activeFilters.length > 0;
-
+  let scheduleRenderer;
   if (viewSortMode === 'classroom') {
-    return { renderer: 'classroom', shouldFilter };
+    scheduleRenderer = 'classroom';
   } else if (viewSortMode === 'teacher') {
-    return { renderer: 'teacher', shouldFilter };
+    scheduleRenderer = 'teacher';
   } else if (currentViewMode === dayMode && viewSortMode === 'time') {
-    return { renderer: 'time', shouldFilter };
+    scheduleRenderer = 'time';
+  } else if (viewSortMode === 'time') {
+    scheduleRenderer = 'weekTime';
+  } else {
+    scheduleRenderer = 'classroom';
   }
 
-  // Fallback
-  return { renderer: 'classroom', shouldFilter };
+  return {
+    renderer: activeScheduleId === allSchedulesId ? 'allSchedules' : scheduleRenderer,
+    scheduleRenderer,
+    shouldFilter,
+  };
+}
+
+/**
+ * View-scoped sort restore. Day always forces 'time' (day behavior unchanged);
+ * only week reads the persisted sort with legal-value fallback.
+ * Mirror of production restore in JavaScript.html:26-35.
+ */
+export function resolveRestoredSort({ currentViewMode, storedSort, dayMode, weekMode }) {
+  if (currentViewMode === dayMode) return 'time';
+  const legal = ['classroom', 'teacher', 'time'];
+  return legal.includes(storedSort) ? storedSort : 'classroom';
+}
+
+/** Flatten { classroom → day → course[] } into tagged course records. */
+export function flattenCoursesForDays(dataToRender, days) {
+  const out = [];
+  for (const classroom in dataToRender) {
+    for (const day of days) {
+      const list = dataToRender[classroom] && dataToRender[classroom][day];
+      if (list) list.forEach(course => out.push({ ...course, classroom, day }));
+    }
+  }
+  return out;
+}
+
+/** Group flat courses by timeStart, ascending by injected time converter. */
+export function groupCoursesByStartTime(flatCourses, timeToMinutes) {
+  const map = new Map();
+  for (const course of flatCourses) {
+    if (!map.has(course.timeStart)) map.set(course.timeStart, []);
+    map.get(course.timeStart).push(course);
+  }
+  return [...map.entries()]
+    .sort((a, b) => timeToMinutes(a[0]) - timeToMinutes(b[0]))
+    .map(([timeStart, courses]) => ({ timeStart, courses }));
+}
+
+/** Bottom line of a course card in the week PDF. */
+export function resolvePdfBottomText({ viewSortMode, teacher = '', classroom = '' }) {
+  if (viewSortMode === 'teacher') return `(教室：${classroom})`;
+  if (viewSortMode === 'time') return `${teacher} · ${classroom}`;
+  return `(${teacher})`;
+}
+
+/** Diagonal header label; only week + time uses 時間. */
+export function resolvePdfDiagonalLabel({ currentViewMode, viewSortMode, weekMode }) {
+  if (currentViewMode === weekMode && viewSortMode === 'time') return '時間';
+  return viewSortMode === 'teacher' ? '老師' : '教室';
 }
 
 /**
@@ -80,7 +138,8 @@ export function computeClassElementProps(classItem, classroom, day, options = {}
   const bgColor = overrideColor || courseColorMap[classItem.name] || '#E2E8F0';
   const viewModeClass = currentViewMode === dayMode ? 'day-view-layout' : '';
   const showNotes = currentViewMode === dayMode;
-  const showClassroomInContent = viewContext === 'teacherSort';
+  const showTeacher = viewContext === 'default' || viewContext === 'timeSort';
+  const showClassroom = viewContext === 'teacherSort' || viewContext === 'timeSort';
 
   const cssClasses = [
     'class-item',
@@ -95,7 +154,8 @@ export function computeClassElementProps(classItem, classroom, day, options = {}
     isUpcoming,
     hasConflict,
     showNotes,
-    showClassroomInContent,
+    showTeacher,
+    showClassroom,
     tags: classItem.tags || [],
     dataAttributes: {
       id: classItem.id,

@@ -24,7 +24,11 @@
             activeFilters: [],
             currentUserEmail: '',
             currentViewMode: localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK,
-            viewSortMode: (localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK) === AppConfig.MODES.DAY ? 'time' : 'classroom',
+            viewSortMode: ViewDecisionHelpers.resolveRestoredSort({
+                currentViewMode: localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK,
+                storedSort: localStorage.getItem('lastViewSortMode'),
+                dayMode: AppConfig.MODES.DAY
+            }),
             currentDayIndex: (() => {
                 // If the initial view mode is 'day', set the index to today. Otherwise, default to Monday (0).
                 if ((localStorage.getItem('lastViewMode') || AppConfig.MODES.WEEK) === AppConfig.MODES.DAY) {
