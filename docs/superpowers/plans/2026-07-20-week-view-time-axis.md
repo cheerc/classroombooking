@@ -64,7 +64,7 @@ required_reads:
 GAS `.html`（GAS runtime）與 vitest（Node ESM）**無法執行同一份 source 檔**，故「單一 authored source」為 best-effort。impl 二選一，**先做可行性判斷再進 Task 1**：
 
 - **分支 A（優先，抽新 extracted-module）**：新增一個 `.js.html`（依 `DataCollection.js.html` IIFE 慣例）定義決策全域；production 在 `Index.html` 組裝區以 `HtmlService.createHtmlOutputFromFile('<現地 stem>').getContent()` 內嵌、**先於** `UI.js.html`(@473) 與 `JavaScript`(@475)；四個 call-site 實際呼叫該全域；`.eslintrc.json` globals 加該全域；`tests/lib/` import 其等價抽出。
-- **分支 B（fallback，mirror + 交叉註解）**：production 各 call-site 保留 inline 邏輯，但每處加註解 `// mirror of tests/lib/uiHelpers.js:<fn>`，`tests/lib/` 為 coverage-gated 權威。**選 B 不放寬** production 正確性驗收——完全依賴手動 TestCases（WT-1~WT-8）。
+- **分支 B（fallback，mirror + 交叉註解）**：production 各 call-site 保留 inline 邏輯，但每處加註解 `// mirror of tests/lib/uiHelpers.js:<fn>`，`tests/lib/` 為 coverage-gated 權威。**選 B 不放寬** production 正確性驗收——完全依賴手動 TestCases（WT-1~WT-9）。
 
 > ⚠️ 檔名 stem 慣例在 `Index.html:468-482` 不一致（`:473` 用 `'UI.js.html'` 帶副檔名、`:476` 用 `'UtilityFunctions.js'` 去 `.html`）→ 選 A 時 impl 依 GAS 檔名解析對齊實際，不假設單一形式。
 
@@ -371,7 +371,7 @@ git commit -m "feat: timeSort card shows both teacher and classroom (refs #162)"
 > | **restore 決策** | `JavaScript.html:26-27` App **constructor state 初始化** | ⚠️ **此時 `this.ui` 尚未存在**（`createUIModule` 在 `init()` 才跑）→ **不可**用 UI module helper。必須是 **extracted-module 全域**（分支 A）或 **inline + mirror 註解**（分支 B） |
 > | PDF 內容決策 | `PDFExport.js.html`（另一 module） | 分支 A：全域；分支 B：inline + mirror 註解 |
 >
-> **分支 A** 若要讓 restore 也同源，該全域必須在 `Index.html` 內嵌順序上**先於 `JavaScript`（:475）**（constructor 執行時就要存在）。**分支 B** 則 restore／PDF 各自 inline，僅 UI module 三處共用 `this.` helper。**兩種都不得為了補 receiver 而複製第二份 helper**——impl-review 逐一驗。
+> **分支 A** 若要讓 restore 也同源，該全域必須在 `Index.html` 內嵌順序上**先於 `JavaScript`（:475）**（constructor 執行時就要存在）。**分支 B** 則 restore／PDF 各自 inline + mirror 註解。**兩種分支下，flatten/group 的四個 UI module consumer 一律共用同一份 `this.` helper**（差異只在 restore／PDF 那兩個 module 外 call-site）。**兩種都不得為了補 receiver 而複製第二份 helper**——impl-review 逐一驗。
 
 - [ ] **Step 1: 寫失敗測試（分組排序 + 7-day placement + 邊界，覆蓋設計 §7.3）**
 
@@ -435,10 +435,11 @@ describe('groupCoursesByStartTime', () => {
   it('empty input yields empty groups', () => {
     expect(groupCoursesByStartTime([], timeToMinutes)).toEqual([]);
   });
-  it('filtered-to-empty produces NO time rows (design §7.3 — the row must not appear)', () => {
-    // End-to-end of the filter path: non-empty outer structure, zero courses
-    // → zero groups → renderWeekViewByTime emits no <tr>. Guards against a
-    // renderer that builds rows from outer keys instead of actual courses.
+  it('filtered-to-empty yields zero groups (design §7.3, decision layer only)', () => {
+    // Filter path shape: non-empty outer structure, zero courses → zero groups.
+    // ⚠️ SCOPE: this proves the DECISION layer only. It does NOT prove the
+    // renderer emits no <tr> — a renderer that builds rows from
+    // Object.keys(dataToRender) would still pass this. That is gated by WT-9.
     const filtered = { R1: { 0: [], 3: [] }, R2: {} };
     const flat = flattenCoursesForDays(filtered, [0, 1, 2, 3, 4, 5, 6]);
     expect(groupCoursesByStartTime(flat, timeToMinutes)).toEqual([]);
@@ -455,7 +456,7 @@ describe('groupCoursesByStartTime', () => {
 });
 ```
 
-（filtered-to-empty 已由上方兩個具名案例直接覆蓋——**非**以 `{}` 空輸入代替：filter 後外層 classroom/day 容器仍在、只是課程被濾光，與整包空輸入不等價。DOM 層另由 WT-2 手動驗。）
+（filtered-to-empty 的**決策層**已由上方兩個具名案例覆蓋——**非**以 `{}` 空輸入代替：filter 後外層 classroom/day 容器仍在、只是課程被濾光，與整包空輸入不等價。⚠️ **但決策層測試證明不了「renderer 不產列」**：若 renderer 以 `Object.keys(dataToRender)` 建列，這兩案仍全綠。**DOM 層由新增的 WT-9 gate**（見 §Task 9 手動 TestCases）。）
 
 - [ ] **Step 2: 跑測試確認失敗**
 
@@ -495,9 +496,11 @@ export function groupCoursesByStartTime(flatCourses, timeToMinutes) {
 Run: `npm test -- uiHelpers`
 Expected: PASS
 
-- [ ] **Step 5: production 共用 helper（`UI.js.html` 或選 A 的 extracted-module）**
+- [ ] **Step 5: production 共用 helper — 定義為 uiModule method（`UI.js.html`）**
 
-新增與 tests/lib 等價的 production 共用 helper（選 A：定義於新 extracted-module 全域；選 B：掛 `App` 並加註解 `// mirror of tests/lib/uiHelpers.js:flattenCoursesForDays`）：
+flatten/group 的**四個 consumer 全在 UI module 內** → **兩種分支都把它們定義為 `uiModule` 的 method**（與 `renderByClassroom` 等同層），consumer 以 `this._flattenCoursesForDays(...)` 呼叫。**不得掛 `App` root**——consumer 用 `this.`（= uiModule）會取不到（receiver 契約見上方 Interfaces 表）。
+
+分支差異**只作用於另兩個 call-site**（restore / PDF，它們不在 UI module 內）：分支 A = 另定 extracted-module 全域供 restore／PDF 使用（須早於 `JavaScript`@475 內嵌）；分支 B = restore／PDF 各自 inline + `// mirror of tests/lib/uiHelpers.js:<fn>` 註解。**flatten/group 這兩個 helper 在 A/B 下都是 uiModule method，寫法相同**：
 
 ```javascript
     _flattenCoursesForDays: function(dataToRender, days) {
@@ -825,13 +828,21 @@ git commit -m "feat: week-time PDF prints teacher+classroom, day PDF unchanged (
 /**
  * ⚠️ mirror-only: 本檔為 UI 決策邏輯的平行實作。本檔綠不代表 production
  * (.html) 正確——.html 被 coverage 排除。production HTML 正確性由
- * TestCases.md 的 WT-1~WT-8 手動案例（provenance-bound 證據）gate。
+ * TestCases.md 的 WT-1~WT-9 手動案例（provenance-bound 證據）gate。
  */
 ```
 
 - [ ] **Step 3: 寫入手動 TestCases（`TestCases.md`）**
 
-加入 WT-1~WT-8（設計 §7.2 表），每案含通過判準與**證據 provenance 欄位**：tested head SHA / clasp dev 版或 preview 識別 / 執行時間 / 執行者。
+加入 WT-1~WT-9（設計 §7.2 表）**＋ WT-9（本 plan 新增）**，每案含通過判準與**證據 provenance 欄位**：tested head SHA / clasp dev 版或 preview 識別 / 執行時間 / 執行者。
+
+**WT-9（新增，補設計 §7.2 未涵蓋的 renderer false-green）**：
+
+| # | 案例 | 通過判準 | 證據形式 |
+|---|---|---|---|
+| WT-9 | **篩選後全空不產列** | 週檢視 + 依時間下，套用一個會濾掉**全部**課程的篩選條件（教室/日容器仍在、課程為零）→ 表格**不出現任何時間列**（tbody 零 `<tr>`，只剩表頭） | 截圖 |
+
+> **為何需要 WT-9**：Task 4 的 filtered-to-empty 測試只證明**決策層**（flatten→group 回空）。若 renderer 改以 `Object.keys(dataToRender)` 建列，決策層測試仍全綠、畫面卻出現空時間列。coverage 排除 `.html` → 只有這條手動案例能 gate 住 production renderer 的這個 false-green。
 
 - [ ] **Step 4: 跑 full workflow + commit**
 
@@ -840,7 +851,7 @@ Expected: 全綠、coverage 維持 95/95/90/95
 
 ```bash
 git add tests/lib/integrationHelpers.js tests/unit/integrationHelpers.test.js tests/lib/uiHelpers.js TestCases.md
-git commit -m "test: week-time contract + mirror-only note + WT-1~WT-8 manual cases (refs #162)"
+git commit -m "test: week-time contract + mirror-only note + WT-1~WT-9 manual cases (refs #162)"
 ```
 
 ---
@@ -848,7 +859,7 @@ git commit -m "test: week-time contract + mirror-only note + WT-1~WT-8 manual ca
 ## 收尾：PR + 手動證據
 
 - [ ] 開 PR（`writing-prs` skill）。**PR/squash-merge commit 訊息**必須含 `Closes #162` + `Closes <impl-task-id>`（TaskSweep 歸檔契約，見 Global Constraints）。body 貼 `./workflow.sh` t6 **8/8** 全綠證據（t6 = t1,t2,t3,t4,t5,t7,t8,t9 共 8 步，PROJECT.md §5）。
-- [ ] 附 WT-1~WT-8 手動證據，每案標 provenance（tested head SHA + clasp dev 版/preview + 時間 + 執行者）。
+- [ ] 附 WT-1~WT-9 手動證據，每案標 provenance（tested head SHA + clasp dev 版/preview + 時間 + 執行者）。
 - [ ] 回報 lead：PR URL + diff stat + 四個 production call-site 已驗真呼叫共享決策物件（分支 A）或已加 mirror 交叉註解（分支 B）。
 
 ## Self-Review 對照（plan ↔ 設計驗收）
