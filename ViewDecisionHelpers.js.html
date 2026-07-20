@@ -13,12 +13,24 @@ var ViewDecisionHelpers = (function() {
       return LEGAL_SORT_MODES.includes(storedSort) ? storedSort : 'classroom';
     },
 
-    resolveRenderTarget: function({ currentViewMode, viewSortMode, dayMode }) {
-      if (viewSortMode === 'classroom') return 'classroom';
-      if (viewSortMode === 'teacher') return 'teacher';
-      if (currentViewMode === dayMode && viewSortMode === 'time') return 'time';
-      if (viewSortMode === 'time') return 'weekTime';
-      return 'classroom';
+    resolveRenderTarget: function({ activeScheduleId, allSchedulesId, currentViewMode, viewSortMode, dayMode }) {
+      let scheduleRenderer;
+      if (viewSortMode === 'classroom') {
+        scheduleRenderer = 'classroom';
+      } else if (viewSortMode === 'teacher') {
+        scheduleRenderer = 'teacher';
+      } else if (currentViewMode === dayMode && viewSortMode === 'time') {
+        scheduleRenderer = 'time';
+      } else if (viewSortMode === 'time') {
+        scheduleRenderer = 'weekTime';
+      } else {
+        scheduleRenderer = 'classroom';
+      }
+
+      return {
+        renderer: activeScheduleId === allSchedulesId ? 'allSchedules' : scheduleRenderer,
+        scheduleRenderer
+      };
     },
 
     resolveClassElementFields: function(viewContext) {

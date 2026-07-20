@@ -31,17 +31,29 @@ describe('resolveRenderTarget', () => {
 
   it('routes to allSchedules when activeScheduleId matches allSchedulesId', () => {
     const result = resolveRenderTarget({ ...base, activeScheduleId: ALL_ID });
-    expect(result).toEqual({ renderer: 'allSchedules', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'allSchedules',
+      scheduleRenderer: 'classroom',
+      shouldFilter: false,
+    });
   });
 
   it('routes to classroom renderer by default', () => {
     const result = resolveRenderTarget(base);
-    expect(result).toEqual({ renderer: 'classroom', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'classroom',
+      scheduleRenderer: 'classroom',
+      shouldFilter: false,
+    });
   });
 
   it('routes to teacher renderer', () => {
     const result = resolveRenderTarget({ ...base, viewSortMode: 'teacher' });
-    expect(result).toEqual({ renderer: 'teacher', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'teacher',
+      scheduleRenderer: 'teacher',
+      shouldFilter: false,
+    });
   });
 
   it('routes to time renderer in day mode', () => {
@@ -50,7 +62,11 @@ describe('resolveRenderTarget', () => {
       viewSortMode: 'time',
       currentViewMode: 'day',
     });
-    expect(result).toEqual({ renderer: 'time', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'time',
+      scheduleRenderer: 'time',
+      shouldFilter: false,
+    });
   });
 
   it('routes week + time to the week-time renderer', () => {
@@ -59,7 +75,11 @@ describe('resolveRenderTarget', () => {
       viewSortMode: 'time',
       currentViewMode: 'week',
     });
-    expect(result).toEqual({ renderer: 'weekTime', shouldFilter: false });
+    expect(result).toEqual({
+      renderer: 'weekTime',
+      scheduleRenderer: 'weekTime',
+      shouldFilter: false,
+    });
   });
 
   it('sets shouldFilter true when activeFilters non-empty', () => {
@@ -79,9 +99,24 @@ describe('resolveRenderTarget', () => {
     expect(result.shouldFilter).toBe(false);
   });
 
+  it('routes all-schedules plus unsupported view mode to the shared week-time renderer', () => {
+    const result = resolveRenderTarget({
+      ...base,
+      activeScheduleId: ALL_ID,
+      currentViewMode: 'preview',
+      viewSortMode: 'time',
+    });
+    expect(result).toEqual({
+      renderer: 'allSchedules',
+      scheduleRenderer: 'weekTime',
+      shouldFilter: false,
+    });
+  });
+
   it('falls back to classroom for unknown viewSortMode', () => {
     const result = resolveRenderTarget({ ...base, viewSortMode: 'unknown' });
     expect(result.renderer).toBe('classroom');
+    expect(result.scheduleRenderer).toBe('classroom');
   });
 });
 

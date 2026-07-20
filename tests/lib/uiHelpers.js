@@ -21,7 +21,7 @@
  * @param {string} state.viewSortMode - 'classroom' | 'teacher' | 'time'
  * @param {string} state.currentViewMode - 'week' | 'day'
  * @param {string} state.dayMode - AppConfig.MODES.DAY value
- * @returns {{ renderer: string, shouldFilter: boolean }}
+ * @returns {{ renderer: string, scheduleRenderer: string, shouldFilter: boolean }}
  */
 export function resolveRenderTarget(state) {
   const {
@@ -33,24 +33,28 @@ export function resolveRenderTarget(state) {
     dayMode,
   } = state;
 
-  if (activeScheduleId === allSchedulesId) {
-    return { renderer: 'allSchedules', shouldFilter: false };
-  }
+  const shouldFilter = activeScheduleId === allSchedulesId
+    ? false
+    : activeFilters && activeFilters.length > 0;
 
-  const shouldFilter = activeFilters && activeFilters.length > 0;
-
+  let scheduleRenderer;
   if (viewSortMode === 'classroom') {
-    return { renderer: 'classroom', shouldFilter };
+    scheduleRenderer = 'classroom';
   } else if (viewSortMode === 'teacher') {
-    return { renderer: 'teacher', shouldFilter };
+    scheduleRenderer = 'teacher';
   } else if (currentViewMode === dayMode && viewSortMode === 'time') {
-    return { renderer: 'time', shouldFilter };
+    scheduleRenderer = 'time';
   } else if (viewSortMode === 'time') {
-    return { renderer: 'weekTime', shouldFilter };
+    scheduleRenderer = 'weekTime';
+  } else {
+    scheduleRenderer = 'classroom';
   }
 
-  // Fallback
-  return { renderer: 'classroom', shouldFilter };
+  return {
+    renderer: activeScheduleId === allSchedulesId ? 'allSchedules' : scheduleRenderer,
+    scheduleRenderer,
+    shouldFilter,
+  };
 }
 
 /**
