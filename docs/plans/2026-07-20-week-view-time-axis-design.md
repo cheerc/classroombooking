@@ -194,7 +194,7 @@
 
 ### 7.2 防 false-green（回應 re-review blocker 2 — 具名 wiring + 證據門檻）
 
-**根本前提（誠實面對 GAS 架構）**：production 邏輯在 GAS `.html` include（runtime = GAS，透過 `Index.html` 的 `<?!= include() ?>` 組裝、以全域物件串接），test 在 vitest（runtime = Node ESM）。兩者**無法執行同一份 source 檔**，故 `tests/lib/` 對 production HTML 的正確性**在架構上不可能提供自動化保證**。因此 false-green 的真正對策**不是**更嚴的自動化，而是「mirror 降級為輔助 + 手動案例升為 production 唯一 gate + best-effort 抽單一 source 降 drift」。
+**根本前提（誠實面對 GAS 架構）**：production 邏輯在 GAS `.html` include（runtime = GAS，透過 `Index.html:468-482` 逐檔 `<?!= HtmlService.createHtmlOutputFromFile('<stem>').getContent(); ?>` 內嵌組裝、以全域物件串接；**repo 無 `include()` helper**），test 在 vitest（runtime = Node ESM）。兩者**無法執行同一份 source 檔**，故 `tests/lib/` 對 production HTML 的正確性**在架構上不可能提供自動化保證**。因此 false-green 的真正對策**不是**更嚴的自動化，而是「mirror 降級為輔助 + 手動案例升為 production 唯一 gate + best-effort 抽單一 source 降 drift」。
 
 **第 1 道 — mirror 降級為輔助（非 gate）**：`tests/lib/` 測試檔頭明確標註「mirror-only：本檔綠不代表 production HTML 正確；production 正確性由 §7.2 手動 TestCases gate」。自動化測試不得被當作 week-time 功能的驗收依據。
 
@@ -203,28 +203,31 @@
 | 決策邏輯 | production 呼叫點（call-site） | 抽離目標 |
 |---|---|---|
 | render dispatch keying（viewMode × sortMode → 哪個 renderer） | `UI.js.html` `renderScheduleTable`（現 `:507-516` 分派段） | 抽成具名純函式，供 dispatch 直接呼叫 |
+| **全部課表 dispatch**（ALL_SCHEDULES_ID 提前 return 後的 week-time 路徑） | `UI.js.html` `renderAllSchedulesView`（現 `:562-588`；`renderScheduleTable:495-497` 先對 ALL_SCHEDULES_ID return，故此路徑**不經** `:507-516`，須獨立接同一決策物件） | 同上 |
 | 持久化還原 fallback（§5.1 view-scoped restore） | `JavaScript.html` constructor `:26-27` | 同上 |
 | 卡片欄位旗標（default／teacherSort／timeSort → showTeacher/showClassroom） | `UI.js.html` `createClassElement`（現 `:349-353`） | 同上 |
 
-- **具體形式**：新增一個 `.js.html` include（依現有 IIFE-module 慣例，如 `UtilityFunctions.js.html` / `DataCollection.js.html` 的形式），定義一個全域決策物件；production 的 `UI.js.html` / `JavaScript.html` 在上述 call-site **實際呼叫它**（不是各自 inline 一份邏輯）。
-- **wiring 硬約束**：此 include 必須在 `Index.html` 的 include 順序中**先於** `UI.js.html` / `JavaScript.html`（全域須先定義後消費）——**`Index.html` 列入 Required Reads，impl 改 include 順序前先確認**（見 PROJECT.md §12 / LEAD SOP 對跨檔全域的規定）。若暴露新全域，**同步 `.eslintrc.json` globals**（否則 lint no-undef）。
+- **具體形式**：新增一個 extracted-module 檔（依現有慣例，如 `DataCollection.js.html` / `UtilityFunctions.js.html`），定義一個全域決策物件；production 在 `Index.html:468-482` 的組裝區以 `<?!= HtmlService.createHtmlOutputFromFile('<stem>').getContent(); ?>` 內嵌（**不是** `include()`——repo 無此 helper），並在上述 call-site **實際呼叫該全域物件**（非各自 inline 一份邏輯）。
+  - ⚠️ **檔名 stem 慣例在現有區塊不一致**（`:473` 用 `'UI.js.html'` 帶副檔名、`:476` 用 `'UtilityFunctions.js'` 去 `.html`）——impl 依 GAS 檔名解析對齊實際，**不得假設單一形式**（列入 Required Reads 由 impl 現地確認）。
+- **wiring 硬約束**：此檔在 `Index.html:468-482` 的內嵌順序須**先於消費者** `UI.js.html`（`:473`）與 `JavaScript`（`:475`）——全域須先定義後消費。**`Index.html` 列入 Required Reads，impl 改內嵌順序前先確認**（見 PROJECT.md §12 / LEAD SOP 對跨檔全域的規定）。暴露新全域須**同步 `.eslintrc.json` globals**（否則 lint no-undef）。
 - **降 drift 原理**：production 與 test 對的是**同一份 authored 邏輯**（production 呼叫它、test import 它的等價抽出），而非兩份獨立副本。
-- **可行性 fallback**：若 impl 評估 GAS include 順序或 IIFE 域無法乾淨承載此抽離（實作時判定），**降級為 mirror + 在該處加對照註解指明 production 對應行號**，並**完全依賴第 3 道手動 gate**——不得因抽離失敗而放寬 production 正確性驗收。
+- **可行性 fallback**：若 impl 評估 GAS 組裝順序或 IIFE 域無法乾淨承載此抽離（實作時判定），**降級為 mirror + 在該處加對照註解指明 production 對應行號**，並**完全依賴第 3 道手動 gate**——不得因抽離失敗而放寬 production 正確性驗收。
+- **impl-review 檢查點**（re-review watchpoint 2）：實作 PR 須逐一驗**四個** production call-site（含全部課表路徑）**真正呼叫**共享決策物件，非各自複製；並附第 3 道的 current-head 證據。
 
-**第 3 道 — 強制手動 TestCases（production HTML 的唯一 gate；寫入 `TestCases.md`，每案附證據）**：
+**第 3 道 — 強制手動 TestCases（production HTML 的唯一 gate；寫入 `TestCases.md`，每案附 provenance-bound 證據）**：
 
-| # | 案例 | 通過判準 | 證據門檻 |
+| # | 案例 | 通過判準 | 證據形式 |
 |---|---|---|---|
-| WT-1 | 週檢視選「依時間」的 **renderer dispatch** | 畫面呈**時間軸網格**（左欄時間、非教室列），**非** classroom fallback | 截圖貼 PR |
-| WT-2 | **7-day placement** | 同一起始時間橫跨週一～日正確落欄；同時段多教室同格堆疊 | 截圖貼 PR |
-| WT-3 | **卡片雙欄位** | 每張課程卡同時顯示老師**與**教室 | 截圖貼 PR |
-| WT-4 | **持久化** | 週檢視選「依時間」→ refresh → 仍 week+time | 操作錄影/前後截圖貼 PR |
-| WT-5 | **week-time PDF** | 匯出每張卡含老師**且**教室、左上角「星期／時間」 | PDF 檔/截圖貼 PR |
-| WT-6 | **空 cell 無新增** | time-grid 空白格 double-click **不**開新增表單 | 操作錄影/截圖貼 PR |
-| WT-7 | **全部課表唯讀** | week-time 下課程卡唯讀、無刪除鈕、editable 欄位不繞過 guard | 截圖貼 PR |
-| WT-8 | **日檢視回歸** | 日檢視「依時間」仍一課一列、教室左欄、notes 行為不變；**day 選 teacher → refresh → 仍 day+time** | 截圖貼 PR |
+| WT-1 | 週檢視選「依時間」的 **renderer dispatch** | 畫面呈**時間軸網格**（左欄時間、非教室列），**非** classroom fallback | 截圖 |
+| WT-2 | **7-day placement** | 同一起始時間橫跨週一～日正確落欄；同時段多教室同格堆疊 | 截圖 |
+| WT-3 | **卡片雙欄位** | 每張課程卡同時顯示老師**與**教室 | 截圖 |
+| WT-4 | **持久化** | 週檢視選「依時間」→ refresh → 仍 week+time | 操作錄影/前後截圖 |
+| WT-5 | **week-time PDF** | 匯出每張卡含老師**且**教室、左上角「星期／時間」 | PDF 檔/截圖 |
+| WT-6 | **空 cell 無新增** | time-grid 空白格 double-click **不**開新增表單 | 操作錄影/截圖 |
+| WT-7 | **全部課表 week-time** | 走 week-time 時間軸 dispatch（**非** classroom fallback）**且** 課程卡唯讀、無刪除鈕、editable 欄位不繞過 `activeScheduleId` guard | 截圖 |
+| WT-8 | **日檢視回歸** | 日檢視「依時間」仍一課一列、教室左欄、notes 行為不變；**day 選 teacher → refresh → 仍 day+time** | 截圖 |
 
-> **證據門檻語意**：上述每案**須有 PR-attached 證據方可判 pass**；無證據 = 未驗收（不得以「code 看起來對」替代）。這是 GAS 架構下 production HTML 唯一的實質 gate。
+> **證據 provenance 門檻（回應 re-review blocker 2 — 防 stale evidence）**：上述每案的 PR-attached 證據**必須標註**：① tested head SHA（該次驗證的 commit）② GAS/preview 部署或版本識別（`clasp push` 的 dev 版或 preview URL）③ 執行時間 ④ 執行者。**驗收方（reviewer/lead）以「當前 PR head SHA」核對**——證據 SHA ≠ 當前 head（PR 有 force-push / 重 push / 重部署後沿用舊證據）→ **判未驗收，須以當前 head 重驗**。缺 provenance、或 provenance 標示的 SHA 對不上當前 head = 未驗收，不得以「code 看起來對」或舊證據替代。這是 GAS 架構下 production HTML 唯一的實質 gate。
 
 ### 7.3 自動化測試清單
 
