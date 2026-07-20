@@ -29,7 +29,7 @@
 2. `updateViewControls` — 「依時間」按鈕在週檢視 `style.display = 'none'`
 3. `renderScheduleTable` — 分派條件要求 `currentViewMode === MODES.DAY`
 
-另 `JavaScript.html` 的 localStorage 還原邏輯亦將 week + time 視為無效組合。
+另 `JavaScript.html:26-27` 的 localStorage 還原邏輯**根本沒有獨立儲存 `viewSortMode`**——它從 `lastViewMode` 推導：`day` → `time`，否則 → `classroom`。因此 week + time 不僅被視為無效組合，而是**在現行儲存模型下無法表達**（見 §5.1 blocker 1 的處理）。
 
 ### 2.4 既有可複用基礎
 
@@ -99,24 +99,69 @@
 | `updateViewControls` | 「依時間」按鈕兩種檢視皆顯示；週檢視 time 模式表頭左上角斜線標籤改為「星期／時間」 |
 | `renderScheduleTable` | 分派邏輯依 `currentViewMode` 導向 `renderDayViewByTime` 或 `renderWeekViewByTime` |
 | `renderWeekViewByTime` | **新增** |
-| `renderAllSchedulesView` | 加 week + time 分支，走唯讀變體（加 `readonly` class、移除刪除鈕） |
-| `addUpcomingClassIndicators` | 「即將上課」徽章目前掛在左欄教室名旁；time 模式左欄是時間，改掛到課程卡上 |
+| `renderAllSchedulesView` | 加 week + time 分支，走唯讀變體（加 `readonly` class、移除刪除鈕）。**唯讀變體不得讓 timeSort card 的 editable 欄位繞過 `activeScheduleId` guard**（見 §5.4） |
+| `renderWeekViewByTime` 空 cell | 時間 × 星期沒有天然教室，**空 cell 不得帶 `data-classroom` dataset**，避免 `handleEmptyCellDoubleClick` 誤觸新增（見 §5.5） |
 | 共用 helper | 新增資料攤平 helper，收斂四處重複 |
 
-### `JavaScript.html`
+> 「即將上課」徽章相關改動已從本節移除 —— 見 §9 非範圍第 5 項與 §5.3。
 
-localStorage 還原邏輯允許 week + time 組合（Risk-Flag #2，改動需標記）。
+### 5.1 週檢視 + time 的持久化（blocker 1）
 
-### `PDFExport.js.html`
+**現況**：`JavaScript.html:26-27` 只儲存 `lastViewMode`，`viewSortMode` 由它推導而非獨立儲存；`setViewSortMode`（`UI.js.html:423-427`）只改 `app.viewSortMode` 並重繪，**完全沒有 localStorage write**。因此使用者在週檢視按「依時間」後 refresh，constructor 會重新推導出 week + classroom，直接違反驗收條件 #5。
 
-左上角斜線標籤 `bottomText` 加入 `time` → `'時間'`。表格本體靠 DOM scraping 自動跟進，須驗證左欄取值選擇器與新結構相容。
+**設計**：
 
-### `tests/lib/`
+1. **新增獨立持久化 key `lastViewSortMode`**：
+   - `setViewSortMode`（`UI.js.html:423`）在改 `app.viewSortMode` 時 `localStorage.setItem('lastViewSortMode', mode)`。
+   - `setViewMode`（`UI.js.html:402`）切到 day 時仍將 sort 預設為 `time`、亦寫入 `lastViewSortMode`，維持既有日檢視預設行為。
+2. **constructor 還原邏輯**（`JavaScript.html:27`）改為讀取 `lastViewSortMode`，並做**合法值 fallback**：
+   - 讀到的值須落在 `{classroom, teacher, time}`；非法／不存在 → 依 `currentViewMode` 給預設（day → `time`，week → `classroom`），維持與現行完全相同的首次載入行為。
+   - week + time 為合法組合，直接還原。
+3. **測試**：新增 refresh／初始化的還原測試——涵蓋 (a) week+time 存後還原、(b) 非法值 fallback、(c) 舊使用者無 `lastViewSortMode` key 時的向後相容預設。此邏輯需可在 `tests/lib/` 以純函式測試（見 §7 的 production-importable 要求）。
+
+### 5.2 週檢視 time 模式 PDF 內容契約（blocker 2）
+
+**現況**：`PDFExport.js.html:252-266` 的 week branch 逐欄位抽取——`name`（`[data-field="name"]`）、`time`（`[data-field="time"]`）、`refTeacher`（`[data-field="teacher"]`）；`bottomObj` 預設 `(老師)`，**只有** `viewSortMode === 'teacher'` 時才改讀 `dataset.classroom` 印教室。新的 time mode 既非 teacher，會落入 else → PDF 每張課程卡**只有老師、遺漏教室**，違反驗收條件 #7 與資訊完整性。
+
+**設計**：week PDF 的 `bottomObj` 組法擴為三分支，與螢幕卡片的 `viewContext` 對齊：
+
+| `App.viewSortMode` | PDF `bottomObj` |
+|---|---|
+| `teacher` | `(教室：<classroom>)` |
+| `time`（新增） | `<老師> · <教室>`（兩者皆列，格式實作時定） |
+| 其餘（classroom 等） | `(<老師>)` |
+
+- 教室值取 `item.dataset.classroom`（課程卡保留此 dataset，見 §5.4），老師取 `[data-field="teacher"]`。
+- **測試**：新增 week-time PDF 的 fixture／assertion，驗證輸出同時含老師與教室。此段屬 `PDFExport.js.html`（HTML，coverage 排除）→ 對應**強制手動 TestCase**（見 §7）。
+
+### 5.3 「即將上課」徽章 — 明確 day-only（blocker 3）
+
+**現況**：徽章的**產生端** `findNextUpcomingClasses`（`DataCollection.js.html:181-188`）先 `nextUpcomingClassIds.clear()`，且 `currentViewMode !== DAY || currentDayIndex !== today` 即 early-return；每分鐘重繪的 timer（`JavaScript.html:67-76`）同樣只在 DAY + today 執行。只改 consumer `addUpcomingClassIndicators` 的掛載位置**沒有任何可觀察效果**（ID 集合恆為空）。
+
+**決策（operator 拍板 2026-07-20）**：維持 day-only。週檢視 time 模式**不支援**「即將上課」徽章。故：
+
+- 本設計**不改** `DataCollection.js.html` 的 producer guard、**不改** `JavaScript.html` 的 timer。
+- `addUpcomingClassIndicators`（`UI.js.html`）在 time 模式左欄為時間、無教室名可掛，須確保**不因找不到 `.classroom-name-main` 而報錯**（防禦性 null check），但不主動渲染徽章。
+- 列入 §9 非範圍。
+
+### 5.4 課程卡 dataset 與唯讀 guard（watchpoint）
+
+- time-grid 課程卡**仍須保留** `dataset.classroom` / `dataset.day` —— inline edit / delete 依賴它們定位課程（`Interaction.js.html` 的編輯/刪除路徑）。可省的是**空 cell** 的 classroom dataset（§5.5），不是課程卡的。
+- 全部課表 week-time 的唯讀變體：card 加 `readonly`、移除 delete 鈕，且 editable 欄位不得繞過 `activeScheduleId === ALL_SCHEDULES_ID` 的唯讀 guard。
+
+### 5.5 空 cell 不帶 classroom（watchpoint）
+
+`Interaction.js.html:613-619`：任何空白 `.schedule-cell` 的 double-click 會呼叫 `handleEmptyCellDoubleClick`，該 handler 依 `cell.dataset.classroom` / `cell.dataset.day` 開新增表單。時間 × 星期沒有天然教室 → time-grid 的空 cell **不得**帶可誤用的 `data-classroom`（否則會誤建課程到任意教室）。實作須保證：time-grid 空 cell 無 classroom dataset，或在 event path 明確禁止 time mode 新增。
+
+### `tests/lib/` 與測試鏡像層
 
 | 檔案 | 改動 |
 |---|---|
-| `uiHelpers.js` | `resolveRenderTarget` 分派條件同步；`computeClassElementProps` 的 `showClassroomInContent` 擴為獨立的顯示老師／顯示教室旗標 |
-| `integrationHelpers.js` | render 函式清單契約加入新函式 |
+| `uiHelpers.js` | `resolveRenderTarget` 分派條件同步（week+time → 新 renderer、day+time → 舊 renderer，兩者須區分）；`computeClassElementProps` 的 `showClassroomInContent` 二選一**擴為兩個獨立旗標** `showTeacher` / `showClassroom`，覆蓋 default／teacherSort／timeSort 三 context |
+| `integrationHelpers.js` | render 函式清單契約加入新函式（**僅驗存在性，不能取代行為測試**，見 §7） |
+| `tests/unit/uiHelpers.test.js` | `:50-57` 目前明確期待 week+time fallback 為 classroom → 須改為期待新 renderer |
+
+> ⚠️ **鏡像層本質**：`tests/lib/` 是 UI 決策邏輯的**平行實作（mirror）**，它綠**不代表** production HTML 正確（見 §7 blocker 4）。
 
 ## 6. 邊界情況與錯誤處理
 
@@ -132,14 +177,32 @@ localStorage 還原邏輯允許 week + time 組合（Risk-Flag #2，改動需標
 
 ## 7. 測試策略
 
-CI 有 coverage gate（95/90/95/95），`tests/lib/` 為 UI 決策邏輯的平行實作，改一處須改兩處，否則契約測試會抓到不一致。
+### 7.1 Coverage gate 的結構性限制（blocker 4）
 
-- `resolveRenderTarget`：week + time 導向新 renderer、日檢視維持原 renderer、fallback 行為
-- `computeClassElementProps`：三種 `viewContext` 的欄位顯示旗標
-- 分組邏輯純函式：空資料、篩選後全空、不規則時間、同時段多教室、同起始不同結束
-- 函式清單契約：`integrationHelpers.js`
+⚠️ **關鍵前提**：`vitest.config.js:14-20` 的 coverage **只 instrument `程式碼.js` 與 `tests/lib/**`**，**所有 `.html` 檔（含 `UI.js.html` / `JavaScript.html` / `PDFExport.js.html` / `Interaction.js.html`）被明確排除**（GAS template `<script>` 無法被 v8 provider instrument）。gate 值為 lines 95 / functions 95 / branches 90 / statements 95。
 
-本地驗證跑 `workflow.sh` t6（full run）。無 E2E（GAS sandbox 限制），端到端正確性靠 `TestCases.md` 手動驗收。
+**後果**：新增在 `UI.js.html` 的 `renderWeekViewByTime`、`JavaScript.html` 的持久化還原、`PDFExport.js.html` 的 time-mode 分支，**完全不計入 coverage**。若只讓 `tests/lib/` 的 mirror 通過，production HTML 就算保留 week+time fallback、timeSort 顯示錯欄位、或 PDF 漏教室，gate 仍會**全綠（false-green）**。`tests/unit/integrationHelpers.test.js:74-87` 的 UI 契約也只比對 factory method 名稱，不驗 dispatch／DOM row-cell／viewContext／readonly／PDF／persistence。
+
+### 7.2 防 false-green 的三道措施
+
+1. **鏡像層定位為 mirror-only**：`tests/lib/` 測試明確標註「這是決策邏輯的平行實作，不保證 production HTML 一致」，避免後人誤信它綠 = 功能對。
+2. **抽 production-importable 純邏輯**：把可抽離的決策函式（如持久化還原的合法值 fallback、分組排序、三 context 的欄位旗標）抽成 production 與 test **共用同一份 source** 的模組（而非 mirror），讓 `tests/lib/` 對「真的被 production import 的實作」失敗，而非對副本失敗。抽離範圍以不破壞 GAS include 載入順序為界（實作時判定）。
+3. **強制手動 TestCases**（補足 HTML surface 的 coverage 缺口，寫入 `TestCases.md`）：
+   - **持久化**：週檢視選「依時間」→ refresh → 仍停在 week + time
+   - **week-time PDF**：週檢視 time 匯出 → 每張課程卡含老師**且**教室、左上角「星期／時間」
+   - **空 cell 無新增**：time-grid 空白格 double-click **不**開新增表單
+   - **唯讀**：全部課表 week-time → 課程卡唯讀、無刪除鈕
+   - **日檢視回歸**：日檢視「依時間」仍一課一列、教室左欄、notes 行為不變
+
+### 7.3 自動化測試清單
+
+- `resolveRenderTarget`：week+time → 新 renderer、day+time → 舊 renderer（兩者須區分）、fallback 行為
+- `computeClassElementProps`：default／teacherSort／timeSort 三 context 的 `showTeacher` / `showClassroom` 旗標
+- 持久化還原純函式：week+time 存還原、非法值 fallback、無 key 向後相容
+- 分組 helper：空資料、篩選後全空、不規則時間、同時段多教室、同起始不同結束、異常 `timeStart`；並驗**時間排序**與 **7-day placement**
+- 函式清單契約：`integrationHelpers.js`（僅存在性）
+
+本地驗證跑 `workflow.sh` t6（full run）。無 E2E（GAS sandbox 限制），端到端正確性靠上列 §7.2 手動 TestCases。
 
 ## 8. 驗收條件
 
@@ -147,10 +210,11 @@ CI 有 coverage gate（95/90/95/95），`tests/lib/` 為 UI 決策邏輯的平�
 2. 切換後左欄變時間軸，每列為一個上課起始時間，橫向對應週一～日
 3. 課程卡同時顯示老師與教室
 4. 可 inline 編輯、可刪除、不可拖拉、無「+ 新增課程」
-5. 重新整理後仍停在 week + time
-6. 「全部課表」模式下 week + time 走唯讀時間軸
-7. PDF 匯出版面正確、左上角標「星期／時間」
-8. 日檢視「依時間」行為完全不變（回歸）
+5. 重新整理後仍停在 week + time（**需 §5.1 獨立 `lastViewSortMode` 持久化**）
+6. 「全部課表」模式下 week + time 走唯讀時間軸（card 唯讀、無刪除鈕、不繞過 guard）
+7. PDF 匯出版面正確、左上角標「星期／時間」，**且每張課程卡含老師與教室**（需 §5.2 PDF time 分支）
+8. time-grid 空白格 double-click 不開新增表單（§5.5）
+9. 日檢視「依時間」行為完全不變（回歸：一課一列、教室左欄、notes）
 
 ## 9. 非範圍
 
@@ -158,12 +222,15 @@ CI 有 coverage gate（95/90/95/95），`tests/lib/` 為 UI 決策邏輯的平�
 - 時間軸模式的拖拉排課
 - 時間軸模式的「+ 新增課程」（含選教室 UI）
 - 固定間隔時間軸／空堂視覺化
+- **週檢視 time 模式的「即將上課」徽章**（operator 2026-07-20 拍板維持 day-only；不改 `DataCollection.js.html` producer guard 與 `JavaScript.html` timer）
 
 ## 10. 風險
 
 | 風險 | 緩解 |
 |---|---|
-| `JavaScript.html` 為 App 主物件（Risk-Flag #2） | 本次改動限於 localStorage 還原邏輯，範圍極小；review depth D3 |
-| 測試鏡像層漂移 | 逐項對照 `tests/lib/` 與 `UI.js.html` 的對應邏輯 |
-| PDF DOM scraping 對新結構的相容性 | 實作時實際匯出驗證，不僅靠靜態推論 |
-| 日檢視回歸 | 驗收條件第 8 項明列；`TestCases.md` B-1-1 手動案例覆蓋週／日切換 |
+| `JavaScript.html` 為 App 主物件（Risk-Flag #2） | 改動 = 新增 `lastViewSortMode` 持久化 + 還原 fallback，範圍受控；review depth D3；含向後相容測試 |
+| **測試鏡像層 false-green**（blocker 4） | §7.2：mirror-only 標註 + 抽 production-importable 純邏輯 + 強制手動 TestCases 補 HTML surface |
+| **PDF time 分支漏教室**（blocker 2） | §5.2 明列三分支內容契約 + week-time PDF fixture；實作時實際匯出驗證，不僅靠靜態推論 |
+| **持久化無法表達 week+time**（blocker 1） | §5.1 獨立 key + 合法值 fallback + refresh 測試 |
+| 空 cell 誤觸新增（watchpoint） | §5.5：time-grid 空 cell 不帶 classroom dataset |
+| 日檢視回歸 | 驗收條件第 9 項明列；`TestCases.md` B-1-1 手動案例覆蓋週／日切換 |
