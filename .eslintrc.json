@@ -15,7 +15,8 @@
     "SCRIPT_USER_EMAIL": "readonly",
     "IS_ADMIN": "readonly",
     "escapeHtml": "readonly",
-    "App": "writable"
+    "App": "writable",
+    "ViewDecisionHelpers": "readonly"
   },
   "rules": {
     "no-unused-vars": "warn",

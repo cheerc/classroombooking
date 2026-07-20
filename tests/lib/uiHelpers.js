@@ -48,6 +48,17 @@ export function resolveRenderTarget(state) {
 }
 
 /**
+ * View-scoped sort restore. Day always forces 'time' (day behavior unchanged);
+ * only week reads the persisted sort with legal-value fallback.
+ * Mirror of production restore in JavaScript.html:26-35.
+ */
+export function resolveRestoredSort({ currentViewMode, storedSort, dayMode, weekMode }) {
+  if (currentViewMode === dayMode) return 'time';
+  const legal = ['classroom', 'teacher', 'time'];
+  return legal.includes(storedSort) ? storedSort : 'classroom';
+}
+
+/**
  * Computes the CSS classes, background color, and content flags for a class element.
  * Original: createClassElement data→props (UI.js.html L338-376)
  *

@@ -411,11 +411,7 @@ function createUIModule(app) {
             // Default sort for day view is by time
             app.viewSortMode = 'time'; 
         } else { // mode === AppConfig.MODES.WEEK
-            // If switching to week view and the sort mode was 'time' (which is invalid for week view),
-            // default to 'classroom' sort.
-            if (app.viewSortMode === 'time') {
-                app.viewSortMode = 'classroom';
-            }
+            // Week view supports the time sort mode.
         }
         this.renderScheduleTable();
     },
@@ -423,6 +419,7 @@ function createUIModule(app) {
     setViewSortMode: function(mode) {
         if (app.viewSortMode === mode) return;
         app.viewSortMode = mode;
+        localStorage.setItem('lastViewSortMode', mode);
         // The actual button state is updated in updateViewControls
         this.renderScheduleTable();
     },

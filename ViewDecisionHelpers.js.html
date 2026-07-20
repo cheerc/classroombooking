@@ -1,0 +1,43 @@
+<script>
+/**
+ * Shared view-decision helpers used by production HTML modules.
+ * Pure decisions live here so restore, renderer, card, and PDF call-sites
+ * use one authored implementation at runtime.
+ */
+var ViewDecisionHelpers = (function() {
+  const LEGAL_SORT_MODES = ['classroom', 'teacher', 'time'];
+
+  return {
+    resolveRestoredSort: function({ currentViewMode, storedSort, dayMode }) {
+      if (currentViewMode === dayMode) return 'time';
+      return LEGAL_SORT_MODES.includes(storedSort) ? storedSort : 'classroom';
+    },
+
+    resolveRenderTarget: function({ currentViewMode, viewSortMode, dayMode }) {
+      if (viewSortMode === 'classroom') return 'classroom';
+      if (viewSortMode === 'teacher') return 'teacher';
+      if (currentViewMode === dayMode && viewSortMode === 'time') return 'time';
+      if (viewSortMode === 'time') return 'weekTime';
+      return 'classroom';
+    },
+
+    resolveClassElementFields: function(viewContext) {
+      return {
+        showTeacher: viewContext === 'default' || viewContext === 'timeSort',
+        showClassroom: viewContext === 'teacherSort' || viewContext === 'timeSort'
+      };
+    },
+
+    resolvePdfBottomText: function({ viewSortMode, teacher = '', classroom = '' }) {
+      if (viewSortMode === 'teacher') return `(教室：${classroom})`;
+      if (viewSortMode === 'time') return `${teacher} · ${classroom}`;
+      return `(${teacher})`;
+    },
+
+    resolvePdfDiagonalLabel: function({ currentViewMode, viewSortMode, weekMode }) {
+      if (currentViewMode === weekMode && viewSortMode === 'time') return '時間';
+      return viewSortMode === 'teacher' ? '老師' : '教室';
+    }
+  };
+})();
+</script>

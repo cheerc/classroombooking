@@ -4,6 +4,7 @@
  */
 import {
   resolveRenderTarget,
+  resolveRestoredSort,
   computeClassElementProps,
   resolveLoadingActions,
   resolveHeaderState,
@@ -76,6 +77,29 @@ describe('resolveRenderTarget', () => {
   it('falls back to classroom for unknown viewSortMode', () => {
     const result = resolveRenderTarget({ ...base, viewSortMode: 'unknown' });
     expect(result.renderer).toBe('classroom');
+  });
+});
+
+// ============================================================
+// resolveRestoredSort
+// ============================================================
+describe('resolveRestoredSort', () => {
+  const base = { dayMode: 'day', weekMode: 'week' };
+
+  it('week + stored time restores time (week+time persists)', () => {
+    expect(resolveRestoredSort({ ...base, currentViewMode: 'week', storedSort: 'time' })).toBe('time');
+  });
+
+  it('day forces time regardless of stored teacher (day behavior unchanged)', () => {
+    expect(resolveRestoredSort({ ...base, currentViewMode: 'day', storedSort: 'teacher' })).toBe('time');
+  });
+
+  it('week + illegal stored falls back to classroom', () => {
+    expect(resolveRestoredSort({ ...base, currentViewMode: 'week', storedSort: 'bogus' })).toBe('classroom');
+  });
+
+  it('week + missing key (null) falls back to classroom (back-compat)', () => {
+    expect(resolveRestoredSort({ ...base, currentViewMode: 'week', storedSort: null })).toBe('classroom');
   });
 });
 
